@@ -47,8 +47,11 @@ const api = {
   // Hapus skill custom (hapus folder di ~/.hermes/skills/).
   deleteSkill: (payload) => ipcRenderer.invoke('avatar:delete-skill', payload),
 
-  // Tes koneksi ke base URL provider.
-  testConnection: (url) => ipcRenderer.invoke('avatar:test-connection', url),
+  // Tes koneksi model (chat completion sungguhan ke provider).
+  testConnection: (url, model, apiKey) => ipcRenderer.invoke('avatar:test-connection', url, model, apiKey),
+
+  // Set model aktif (via hermes config set — mekanisme resmi).
+  setModel: (model) => ipcRenderer.invoke('avatar:set-model', model),
 
   // Enkripsi/dekripsi secret (API key) via safeStorage.
   encryptSecret: (text) => ipcRenderer.invoke('avatar:encrypt-secret', text),

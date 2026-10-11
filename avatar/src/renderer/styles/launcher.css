@@ -369,6 +369,11 @@ button {
   color: #fff;
 }
 
+.mini-btn.activate {
+  background: var(--accent);
+  color: #fff;
+}
+
 .mini-btn.edit {
   background: rgba(255, 255, 255, 0.1);
   color: #f5f5f7;
@@ -377,6 +382,16 @@ button {
 .mini-btn.test {
   background: rgba(48, 209, 88, 0.15);
   color: #63df83;
+}
+
+.mini-btn.test-ok {
+  background: rgba(48, 209, 88, 0.3);
+  color: #63df83;
+}
+
+.mini-btn.test-fail {
+  background: rgba(255, 69, 58, 0.25);
+  color: #ff8b83;
 }
 
 .mini-btn.del {

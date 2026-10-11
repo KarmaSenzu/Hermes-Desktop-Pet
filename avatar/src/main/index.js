@@ -4,6 +4,7 @@ import { readFile, writeFile, mkdir, rm } from 'fs/promises'
 import { homedir } from 'os'
 import http from 'http'
 import https from 'https'
+import { execFile } from 'child_process'
 import { startAllServices, stopAllServices, SESSION_TOKEN, isPortOpen, ROUTER_PORT, HERMES_PORT } from './service-manager.js'
 import { connectGateway, disconnectGateway, request as gatewayRequest, isGatewayConnected } from './hermes-gateway.js'
 import { registerShortcuts, unregisterShortcuts, getShortcutList, updateShortcut } from './shortcuts.js'
@@ -299,25 +300,83 @@ ipcMain.handle('avatar:delete-skill', async (_event, { name, category }) => {
   }
 })
 
-// IPC: tes koneksi ke base URL provider (HTTP reachable check).
-ipcMain.handle('avatar:test-connection', async (_event, url) => {
+// IPC: tes koneksi model (chat completion sungguhan ke provider).
+// Kirim request "ping" ke model → verifikasi model benar-benar berfungsi.
+ipcMain.handle('avatar:test-connection', async (_event, url, model, apiKey) => {
   try {
     const target = String(url || '').trim()
+    const modelName = String(model || '').trim()
     if (!target) return { ok: false, error: 'URL kosong.' }
+    if (!modelName) return { ok: false, error: 'Model kosong.' }
 
-    const u = new URL(target)
+    const base = target.replace(/\/+$/, '')
+    const endpoint = base.endsWith('/v1') ? `${base}/chat/completions` : `${base}/v1/chat/completions`
+    const u = new URL(endpoint)
     const mod = u.protocol === 'https:' ? https : http
 
+    const body = JSON.stringify({
+      model: modelName,
+      messages: [{ role: 'user', content: 'ping' }],
+      max_tokens: 5
+    })
+
+    const headers = {
+      'Content-Type': 'application/json',
+      'Content-Length': Buffer.byteLength(body)
+    }
+    if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`
+
     return await new Promise((resolve) => {
-      const req = mod.get(u, { timeout: 5000 }, (res) => {
-        resolve({ ok: true, status: res.statusCode, reachable: res.statusCode < 500 })
+      const req = mod.request(u, { method: 'POST', headers, timeout: 15000 }, (res) => {
+        let data = ''
+        res.on('data', (chunk) => { data += chunk })
+        res.on('end', () => {
+          if (res.statusCode >= 200 && res.statusCode < 300) {
+            resolve({ ok: true, status: res.statusCode, reachable: true })
+          } else {
+            // 401/404/500 dll → model gagal.
+            let msg = `HTTP ${res.statusCode}`
+            try {
+              const j = JSON.parse(data)
+              if (j.error?.message) msg = j.error.message
+            } catch { /* ignore */ }
+            resolve({ ok: false, status: res.statusCode, error: msg })
+          }
+        })
       })
       req.on('error', (err) => resolve({ ok: false, error: err?.message || 'Tidak dapat terhubung' }))
       req.on('timeout', () => {
         req.destroy()
         resolve({ ok: false, error: 'Timeout' })
       })
+      req.write(body)
+      req.end()
     })
+  } catch (err) {
+    return { ok: false, error: err?.message || String(err) }
+  }
+})
+
+// IPC: set model aktif via `hermes config set` (mekanisme resmi, pasti benar).
+// Jalankan: hermes config set model.default "<model>" + model.provider custom.
+ipcMain.handle('avatar:set-model', async (_event, model) => {
+  try {
+    const modelName = String(model || '').trim()
+    if (!modelName) return { ok: false, error: 'Model kosong.' }
+
+    const hermesCmd = process.platform === 'win32' ? 'hermes.cmd' : 'hermes'
+
+    const run = (args) => new Promise((resolve, reject) => {
+      execFile(hermesCmd, args, { timeout: 20000 }, (err, stdout, stderr) => {
+        if (err) reject(new Error(stderr?.trim() || err.message))
+        else resolve(stdout?.trim() || '')
+      })
+    })
+
+    await run(['config', 'set', 'model.default', modelName])
+    await run(['config', 'set', 'model.provider', 'custom'])
+
+    return { ok: true, model: modelName }
   } catch (err) {
     return { ok: false, error: err?.message || String(err) }
   }

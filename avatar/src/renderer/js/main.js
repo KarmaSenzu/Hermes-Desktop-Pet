@@ -255,30 +255,33 @@ async function initHermes() {
       chatLog.scrollTop = chatLog.scrollHeight
     })
 
-    // Turn dimulai → thinking + kunci input + bubble.
+    // Turn dimulai → thinking + kunci input + bubble + bicara progress.
     hermes.on('message.start', () => {
       controller?.setExpression('thinking')
-      setStatus('Thinking')
+      setStatus('Memproses…')
+      sayProgress('Memproses')
       setInputLocked(true)
     })
 
-    // Thinking presisi (reasoning stream).
+    // Thinking presisi (reasoning stream) → "Berpikir…".
     hermes.on('thinking.delta', () => {
       controller?.setExpression('thinking')
-      setStatus('Thinking')
+      setStatus('Berpikir…')
     })
 
-    // Tool mulai dipakai → bubble spesifik sesuai nama tool.
+    // Tool mulai dipakai → bubble spesifik + bicara progress.
     hermes.on('tool.start', (evt) => {
       const tool = evt?.payload?.name || evt?.payload?.tool || 'tool'
       const label = toolLabel(tool)
       log('avatar', `${label}`)
       setStatus(label)
+      sayProgress(label)
     })
 
-    // Tool selesai → kembali thinking (Hermes lanjut berpikir).
+    // Tool selesai → "Menyusun jawaban…".
     hermes.on('tool.complete', () => {
-      setStatus('Thinking')
+      setStatus('Menyusun jawaban…')
+      sayProgress('Menyusun jawaban')
     })
 
     // Turn error/berhenti → pastikan input tidak terkunci selamanya.
@@ -297,7 +300,7 @@ async function initHermes() {
       if (text.trim()) {
         log('user', text)
         setInputLocked(true)
-        hermes.submitPrompt(text).catch((err) => {
+        hermes.submitPrompt(buildPrompt(text)).catch((err) => {
           log('avatar', `Gagal kirim suara: ${err.message}`)
           setInputLocked(false)
         })
@@ -317,24 +320,33 @@ setStatus('')
 // --- Emosi heuristik (Fase 3 awal) ---
 // Klasifikasi teks sederhana → ekspresi. Bisa diganti tag [emotion:] nanti.
 
-// Mapping nama tool Hermes → label ramah user (untuk bubble status).
+// Mapping nama tool Hermes → progress deskriptif (untuk bubble status).
 function toolLabel(name) {
   const t = String(name || '').toLowerCase()
   const map = [
-    [/browser|navigate|tab|scroll|click|snapshot|press|type|get_images/, 'Membuka browser'],
-    [/terminal|process|execute_code|shell/, 'Menjalankan terminal'],
-    [/ha_|homeassistant/, 'Mengontrol perangkat'],
-    [/read_file|write_file|patch|search_files/, 'Mengakses file'],
-    [/memory|mnemosyne/, 'Mengingat'],
-    [/image_generate/, 'Membuat gambar'],
-    [/todo/, 'Mengatur tugas'],
-    [/web|search/, 'Mencari di web'],
-    [/project/, 'Mengelola proyek']
+    [/browser_navigate|navigate/, 'Membuka halaman…'],
+    [/browser_click|click/, 'Mengklik elemen…'],
+    [/browser_type|type/, 'Mengetik di browser…'],
+    [/browser_snapshot|snapshot/, 'Melihat halaman…'],
+    [/browser_scroll|scroll/, 'Menggulir halaman…'],
+    [/browser_console|browser_vision/, 'Menganalisis browser…'],
+    [/tab/, 'Mengelola tab…'],
+    [/browser/, 'Mengontrol browser…'],
+    [/terminal|process|execute_code|shell/, 'Menjalankan terminal…'],
+    [/ha_|homeassistant/, 'Mengontrol perangkat…'],
+    [/read_file|search_files/, 'Membaca file…'],
+    [/write_file|patch/, 'Menulis file…'],
+    [/file/, 'Mengakses file…'],
+    [/memory|mnemosyne/, 'Mengingat…'],
+    [/image_generate/, 'Membuat gambar…'],
+    [/todo/, 'Mengatur tugas…'],
+    [/web|search/, 'Mencari di web…'],
+    [/project/, 'Mengelola proyek…']
   ]
   for (const [re, label] of map) {
     if (re.test(t)) return label
   }
-  return 'Memproses'
+  return 'Memproses…'
 }
 
 function detectEmotion(text) {
@@ -365,23 +377,66 @@ function summaryText(text) {
   return t.length > MAX ? t.slice(0, MAX).trimEnd() + '…' : t
 }
 
-// --- TTS + lip sync ---
-async function speak(text, emotion = 'neutral') {
+// --- TTS + lip sync (dengan antrian audio) ---
+const speechQueue = []
+let isSpeaking = false
+
+async function processSpeechQueue() {
+  if (isSpeaking) return
+  isSpeaking = true
   try {
-    setStatus('Speaking')
-    const { buffer } = await synthesize(text)
-    controller?.setExpression(emotion)
-    await audioPlayer.play(buffer)
-    // Selesai bicara → tutup mulut, kembali neutral, kembalikan ringkasan.
-    controller?.setMouthLevel(0)
-    controller?.setExpression('neutral')
-    setStatus(lastSummary)
-  } catch (err) {
-    // TTS gagal → jangan ganggu chat, cukup log + kembalikan ringkasan.
-    setStatus(lastSummary)
-    log('avatar', `(TTS gagal: ${err?.message || err})`)
-    console.error('[TTS error]', err)
+    while (speechQueue.length > 0) {
+      const item = speechQueue.shift()
+      const { text, emotion, isProgress } = item
+
+      if (isProgress) setStatus('Speaking')
+      try {
+        const { buffer } = await synthesize(text)
+        if (emotion) controller?.setExpression(emotion)
+        await audioPlayer.play(buffer)
+      } catch (err) {
+        console.error('[TTS error]', err)
+      }
+      controller?.setMouthLevel(0)
+      controller?.setExpression('neutral')
+    }
+  } finally {
+    isSpeaking = false
+    // Kembalikan bubble ke ringkasan terakhir (jika ada) atau idle.
+    setStatus(lastSummary || '')
   }
+}
+
+function speak(text, emotion = 'neutral', { isProgress = false } = {}) {
+  speechQueue.push({ text, emotion, isProgress })
+  processSpeechQueue()
+}
+
+// Progress singkat (dibaca TTS tanpa mengubah ringkasan final).
+function sayProgress(text) {
+  if (!ttsEnabled) return
+  if (!text) return
+  speak(text, 'neutral', { isProgress: true })
+}
+
+// Baca daftar aplikasi terdaftar (dari localStorage settings) → konteks untuk Hermes.
+function getRegisteredApps() {
+  try {
+    const raw = localStorage.getItem('hermes-avatar-settings')
+    if (!raw) return []
+    const s = JSON.parse(raw)
+    return (s.actionApps || []).map((a) => a.name).filter(Boolean)
+  } catch {
+    return []
+  }
+}
+
+// Prepend konteks aplikasi terdaftar agar Hermes tahu "buka <app>" = buka aplikasi.
+function buildPrompt(text) {
+  const apps = getRegisteredApps()
+  if (apps.length === 0) return text
+  const ctx = `[Aplikasi terdaftar yang bisa dibuka: ${apps.join(', ')}]`
+  return `${ctx}\n${text}`
 }
 
 form.addEventListener('submit', async (e) => {
@@ -406,7 +461,7 @@ form.addEventListener('submit', async (e) => {
   setInputLocked(true)
 
   try {
-    await hermes.submitPrompt(text)
+    await hermes.submitPrompt(buildPrompt(text))
   } catch (err) {
     log('avatar', `Gagal kirim: ${err.message}`)
     setInputLocked(false)

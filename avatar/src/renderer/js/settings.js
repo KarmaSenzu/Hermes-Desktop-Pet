@@ -402,6 +402,7 @@ function renderLlmList() {
         <div class="llm-item-main">
           <strong>${escapeHtml(p.name)}</strong>
           <span class="muted">${escapeHtml(p.model || '')}</span>
+          <button class="mini-btn activate llm-activate" data-id="${escapeHtml(p.id)}">Aktifkan</button>
           <button class="mini-btn test llm-test" data-id="${escapeHtml(p.id)}">Tes</button>
           <button class="mini-btn edit llm-edit" data-id="${escapeHtml(p.id)}">Edit</button>
           <button class="mini-btn del llm-del" data-id="${escapeHtml(p.id)}">Hapus</button>
@@ -410,6 +411,34 @@ function renderLlmList() {
       </div>`
     })
     .join('')
+
+  // Bind tombol "Aktifkan" → set model + base_url ke Hermes.
+  llmList.querySelectorAll('.llm-activate').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const id = btn.dataset.id
+      const p = settings.llm.providers.find((x) => x.id === id)
+      if (!p?.model) { statusEl.textContent = '⚠️ Model kosong.'; return }
+
+      btn.disabled = true
+      const original = btn.textContent
+      btn.textContent = '…'
+
+      try {
+        // Set model aktif via `hermes config set` (mekanisme resmi, pasti benar).
+        const res = await window.hermesAvatar.setModel(p.model)
+        if (!res.ok) throw new Error(res.error)
+
+        statusEl.textContent = `✓ Provider "${p.name}" diaktifkan (${p.model}).`
+        await refreshLlmActive()
+        await refreshModelOptions()
+      } catch (err) {
+        statusEl.textContent = `✗ Gagal aktifkan: ${err?.message || err}`
+      } finally {
+        btn.disabled = false
+        btn.textContent = original
+      }
+    })
+  })
 
   // Bind tombol hapus.
   llmList.querySelectorAll('.llm-del').forEach((btn) => {
@@ -444,24 +473,47 @@ function renderLlmList() {
     })
   })
 
-  // Bind tombol tes koneksi.
+  // Bind tombol tes koneksi (chat completion sungguhan).
   llmList.querySelectorAll('.llm-test').forEach((btn) => {
     btn.addEventListener('click', async () => {
       const id = btn.dataset.id
       const p = settings.llm.providers.find((x) => x.id === id)
       if (!p?.baseUrl) { statusEl.textContent = '⚠️ Base URL kosong.'; return }
+      if (!p?.model) { statusEl.textContent = '⚠️ Model kosong.'; return }
+
       btn.disabled = true
+      const originalText = btn.textContent
       btn.textContent = '…'
+
+      // Decrypt API key untuk dikirim.
+      let apiKey = ''
       try {
-        const res = await window.hermesAvatar.testConnection(p.baseUrl)
-        statusEl.textContent = res.ok
-          ? `✓ Terhubung (HTTP ${res.status ?? 'ok'})`
-          : `✗ Gagal: ${res.error || 'tidak terhubung'}`
+        const decRes = await window.hermesAvatar.decryptSecret(p.apiKey || '')
+        apiKey = decRes.ok ? decRes.value : ''
+      } catch { /* key kosong */ }
+
+      try {
+        const res = await window.hermesAvatar.testConnection(p.baseUrl, p.model, apiKey)
+        if (res.ok) {
+          btn.textContent = '✓'
+          btn.classList.add('test-ok')
+          statusEl.textContent = `✓ ${p.model} berfungsi (HTTP ${res.status ?? 'ok'})`
+        } else {
+          btn.textContent = '✗'
+          btn.classList.add('test-fail')
+          statusEl.textContent = `✗ Gagal: ${res.error || 'tidak berfungsi'}`
+        }
       } catch (err) {
+        btn.textContent = '✗'
+        btn.classList.add('test-fail')
         statusEl.textContent = `✗ Gagal: ${err?.message || err}`
       } finally {
         btn.disabled = false
-        btn.textContent = 'Tes'
+        // Kembalikan label "Tes" setelah beberapa detik.
+        setTimeout(() => {
+          btn.textContent = originalText
+          btn.classList.remove('test-ok', 'test-fail')
+        }, 2500)
       }
     })
   })
@@ -582,40 +634,66 @@ const llmRefreshBtn = document.getElementById('llm-refresh-btn')
 const llmSwitchModel = document.getElementById('llm-switch-model')
 const llmSwitchBtn = document.getElementById('llm-switch-btn')
 
+function modelItemHtml(r) {
+  return `<div class="llm-item">
+    <div class="llm-item-main"><strong>${escapeHtml(r.model || '—')}</strong></div>
+    <div class="llm-item-sub">provider: ${escapeHtml(r.provider || '—')}</div>
+  </div>`
+}
+
 async function refreshLlmActive() {
+  const homeModelEl = document.getElementById('home-model')
   try {
     const res = await window.hermesAvatar.rpc('config.get', { key: 'provider' })
     if (!res.ok) throw new Error(res.error)
     const r = res.result
-    llmActiveEl.innerHTML = `
-      <div class="llm-item">
-        <div class="llm-item-main"><strong>${escapeHtml(r.model || '—')}</strong></div>
-        <div class="llm-item-sub">provider: ${escapeHtml(r.provider || '—')}</div>
-      </div>`
+    const html = modelItemHtml(r)
+    llmActiveEl.innerHTML = html
+    if (homeModelEl) homeModelEl.innerHTML = html
   } catch (err) {
-    llmActiveEl.innerHTML = `<p class="hint">Tidak dapat memuat (${escapeHtml(err?.message || err)})</p>`
+    const fallback = `<p class="hint">Tidak dapat memuat (${escapeHtml(err?.message || err)})</p>`
+    llmActiveEl.innerHTML = fallback
+    if (homeModelEl) homeModelEl.innerHTML = fallback
   }
 }
 
-// Ambil daftar model (provider + models) dari model.options, isi dropdown.
+// Ambil daftar model dari model.options — HANYA custom/user-defined provider
+// (mis. 9Router / "Hermes Avatar"), bukan provider canonical (OpenRouter, dll).
 async function refreshModelOptions() {
   try {
     const res = await window.hermesAvatar.rpc('model.options', {})
     if (!res.ok) throw new Error(res.error)
     const providers = res.result?.providers || []
 
-    const options = []
+    const custom = []
+
     for (const p of providers) {
       const slug = p.slug || 'custom'
       const name = p.name || slug
       const models = p.models || []
+      const isCustom = p.is_user_defined || slug === 'custom' || /^custom(:|$)/.test(slug) || /localhost|127\.0\.0\.1/.test(p.base_url || '')
+
+      if (!isCustom) continue // abaikan provider canonical (OpenRouter, Anthropic, dll)
+
       for (const m of models) {
-        const value = `${slug}:${m}`
-        options.push({ value, label: `${name} — ${m}` })
+        // Value = nama model langsung (tanpa prefix), karena switch pakai
+        // config.set model.default (bukan format custom:model yang salah parse).
+        custom.push({ value: m, label: `${name} — ${m}` })
       }
-      // Jika provider tidak punya daftar model, tetap tampilkan slug.
       if (models.length === 0) {
-        options.push({ value: slug, label: name })
+        custom.push({ value: '', label: name })
+      }
+    }
+
+    // Jika tidak ada custom, fallback tampilkan semua (jaga-jaga).
+    let options = custom
+    if (custom.length === 0) {
+      for (const p of providers) {
+        const slug = p.slug || 'custom'
+        const name = p.name || slug
+        for (const m of (p.models || [])) {
+          options.push({ value: `${slug}:${m}`, label: `${name} — ${m}` })
+        }
       }
     }
 
@@ -1013,7 +1091,7 @@ llmSwitchBtn.addEventListener('click', async () => {
   }
   llmSwitchBtn.disabled = true
   try {
-    const res = await window.hermesAvatar.rpc('config.set', { key: 'model', value })
+    const res = await window.hermesAvatar.setModel(value)
     if (!res.ok) throw new Error(res.error)
     statusEl.textContent = 'Model diterapkan.'
     await refreshLlmActive()
