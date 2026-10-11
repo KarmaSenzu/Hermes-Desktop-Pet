@@ -382,7 +382,7 @@ form.addEventListener('submit', async (e) => {
 // --- Tombol mic (push-to-talk via Hermes voice.record) ---
 let recording = false
 
-micBtn.addEventListener('click', async () => {
+async function toggleMic() {
   if (!hermesReady) {
     log('avatar', '(offline) Hermes belum terhubung.')
     return
@@ -390,10 +390,8 @@ micBtn.addEventListener('click', async () => {
 
   try {
     if (!recording) {
-      const toggleResp = await hermes.voiceToggle('on')
-      log('avatar', `voice.toggle: ${JSON.stringify(toggleResp)}`)
-      const recResp = await hermes.voiceRecord('start')
-      log('avatar', `voice.record: ${JSON.stringify(recResp)}`)
+      await hermes.voiceToggle('on')
+      await hermes.voiceRecord('start')
       recording = true
       micBtn.textContent = '⏹️'
       micBtn.classList.add('recording')
@@ -405,5 +403,17 @@ micBtn.addEventListener('click', async () => {
     }
   } catch (err) {
     log('avatar', `Mic gagal: ${err.message}`)
+  }
+}
+
+micBtn.addEventListener('click', toggleMic)
+
+// --- Global shortcut (dari main process) ---
+window.hermesAvatar.onShortcut((payload) => {
+  const action = payload?.action
+  if (action === 'toggle-chat') {
+    toggleChat()
+  } else if (action === 'toggle-mic') {
+    toggleMic()
   }
 })

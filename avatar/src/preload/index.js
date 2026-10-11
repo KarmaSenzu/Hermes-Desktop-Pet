@@ -41,6 +41,30 @@ const api = {
   // RPC ke Hermes (shared gateway) — untuk config/model di LLM section.
   rpc: (method, params) => ipcRenderer.invoke('avatar:rpc', method, params),
 
+  // Tambah skill custom (tulis SKILL.md ke ~/.hermes/skills/).
+  addSkill: (payload) => ipcRenderer.invoke('avatar:add-skill', payload),
+
+  // Hapus skill custom (hapus folder di ~/.hermes/skills/).
+  deleteSkill: (payload) => ipcRenderer.invoke('avatar:delete-skill', payload),
+
+  // Tes koneksi ke base URL provider.
+  testConnection: (url) => ipcRenderer.invoke('avatar:test-connection', url),
+
+  // Enkripsi/dekripsi secret (API key) via safeStorage.
+  encryptSecret: (text) => ipcRenderer.invoke('avatar:encrypt-secret', text),
+  decryptSecret: (encrypted) => ipcRenderer.invoke('avatar:decrypt-secret', encrypted),
+
+  // Daftar global shortcut (untuk settings).
+  getShortcuts: () => ipcRenderer.invoke('avatar:shortcuts'),
+
+  // Ubah kombinasi shortcut.
+  setShortcut: (id, accel) => ipcRenderer.invoke('avatar:set-shortcut', id, accel),
+
+  // Terima event shortcut global (dikirim main → avatar renderer).
+  onShortcut: (callback) => {
+    ipcRenderer.on('avatar:shortcut', (_event, payload) => callback(payload))
+  },
+
   // TTS: kirim teks → dapatkan audio base64 (diproses di main process).
   synthesizeSpeech: (text, voice) => ipcRenderer.invoke('avatar:tts', text, voice)
 }

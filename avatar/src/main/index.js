@@ -1,8 +1,12 @@
-import { app, BrowserWindow, ipcMain, protocol, dialog, screen } from 'electron'
+import { app, BrowserWindow, ipcMain, protocol, dialog, screen, safeStorage } from 'electron'
 import { join, extname } from 'path'
-import { readFile } from 'fs/promises'
+import { readFile, writeFile, mkdir, rm } from 'fs/promises'
+import { homedir } from 'os'
+import http from 'http'
+import https from 'https'
 import { startAllServices, stopAllServices, SESSION_TOKEN, isPortOpen, ROUTER_PORT, HERMES_PORT } from './service-manager.js'
 import { connectGateway, disconnectGateway, request as gatewayRequest, isGatewayConnected } from './hermes-gateway.js'
+import { registerShortcuts, unregisterShortcuts, getShortcutList, updateShortcut } from './shortcuts.js'
 
 /**
  * Main process — Hermes 3D Avatar
@@ -138,6 +142,51 @@ function createAvatarWindow(modelPath) {
   })
 }
 
+// --- Global shortcut (dari modul shortcuts.js, bisa di-custom user) ---
+function sendToAvatar(channel, payload) {
+  if (avatarWindow && !avatarWindow.isDestroyed()) {
+    avatarWindow.webContents.send(channel, payload)
+  }
+}
+
+function registerGlobalShortcuts() {
+  registerShortcuts((id) => {
+    if (id === 'toggle-chat') {
+      sendToAvatar('avatar:shortcut', { action: 'toggle-chat' })
+    } else if (id === 'toggle-mic') {
+      sendToAvatar('avatar:shortcut', { action: 'toggle-mic' })
+    } else if (id === 'open-settings') {
+      if (launcherWindow && !launcherWindow.isDestroyed()) {
+        launcherWindow.show()
+        launcherWindow.focus()
+      } else {
+        createLauncherWindow()
+      }
+    }
+  })
+}
+
+function unregisterGlobalShortcuts() {
+  unregisterShortcuts()
+}
+
+// IPC: daftar shortcut (untuk settings panel).
+ipcMain.handle('avatar:shortcuts', () => {
+  return getShortcutList()
+})
+
+// IPC: ubah kombinasi shortcut (custom user).
+ipcMain.handle('avatar:set-shortcut', (_event, id, accel) => {
+  try {
+    const list = updateShortcut(id, accel)
+    // Re-register agar perubahan langsung aktif.
+    registerGlobalShortcuts()
+    return { ok: true, list }
+  } catch (err) {
+    return { ok: false, error: err?.message || String(err) }
+  }
+})
+
 // IPC: launcher → main → buka avatar window dengan model terpilih.
 ipcMain.handle('avatar:start', (_event, modelPath) => {
   if (avatarWindow && !avatarWindow.isDestroyed()) {
@@ -205,6 +254,98 @@ ipcMain.handle('avatar:rpc', async (_event, method, params) => {
     }
     const result = await gatewayRequest(method, params || {})
     return { ok: true, result }
+  } catch (err) {
+    return { ok: false, error: err?.message || String(err) }
+  }
+})
+
+// IPC: tambah skill custom → tulis SKILL.md ke ~/.hermes/skills/<category>/<name>/.
+ipcMain.handle('avatar:add-skill', async (_event, { name, category, content }) => {
+  try {
+    if (!name || !content) {
+      return { ok: false, error: 'Nama & isi skill wajib diisi.' }
+    }
+    // Sanitasi nama & kategori (hindari path traversal).
+    const safeName = String(name).replace(/[^a-zA-Z0-9_-]/g, '-').replace(/^-+/, '')
+    const safeCat = (category || 'general').replace(/[^a-zA-Z0-9_-]/g, '-').replace(/^-+/, '') || 'general'
+    if (!safeName) return { ok: false, error: 'Nama skill tidak valid.' }
+
+    const skillsDir = join(homedir(), '.hermes', 'skills', safeCat, safeName)
+    await mkdir(skillsDir, { recursive: true })
+
+    // Buat SKILL.md dengan frontmatter minimal.
+    const frontmatter = `---\nname: ${safeName}\ndescription: ${safeName}\n---\n\n`
+    await writeFile(join(skillsDir, 'SKILL.md'), frontmatter + String(content), 'utf8')
+
+    return { ok: true, path: skillsDir }
+  } catch (err) {
+    return { ok: false, error: err?.message || String(err) }
+  }
+})
+
+// IPC: hapus skill custom → hapus folder ~/.hermes/skills/<category>/<name>.
+ipcMain.handle('avatar:delete-skill', async (_event, { name, category }) => {
+  try {
+    const safeName = String(name || '').replace(/[^a-zA-Z0-9_-]/g, '-').replace(/^-+/, '')
+    const safeCat = (category || 'general').replace(/[^a-zA-Z0-9_-]/g, '-').replace(/^-+/, '') || 'general'
+    if (!safeName) return { ok: false, error: 'Nama skill tidak valid.' }
+
+    const skillsDir = join(homedir(), '.hermes', 'skills', safeCat, safeName)
+    await rm(skillsDir, { recursive: true, force: true })
+
+    return { ok: true, path: skillsDir }
+  } catch (err) {
+    return { ok: false, error: err?.message || String(err) }
+  }
+})
+
+// IPC: tes koneksi ke base URL provider (HTTP reachable check).
+ipcMain.handle('avatar:test-connection', async (_event, url) => {
+  try {
+    const target = String(url || '').trim()
+    if (!target) return { ok: false, error: 'URL kosong.' }
+
+    const u = new URL(target)
+    const mod = u.protocol === 'https:' ? https : http
+
+    return await new Promise((resolve) => {
+      const req = mod.get(u, { timeout: 5000 }, (res) => {
+        resolve({ ok: true, status: res.statusCode, reachable: res.statusCode < 500 })
+      })
+      req.on('error', (err) => resolve({ ok: false, error: err?.message || 'Tidak dapat terhubung' }))
+      req.on('timeout', () => {
+        req.destroy()
+        resolve({ ok: false, error: 'Timeout' })
+      })
+    })
+  } catch (err) {
+    return { ok: false, error: err?.message || String(err) }
+  }
+})
+
+// IPC: encrypt secret (API key) via safeStorage → base64.
+ipcMain.handle('avatar:encrypt-secret', (_event, plaintext) => {
+  try {
+    if (!plaintext) return { ok: true, value: '' }
+    if (!safeStorage.isEncryptionAvailable()) {
+      return { ok: false, error: 'safeStorage tidak tersedia di sistem ini.' }
+    }
+    const buf = safeStorage.encryptString(String(plaintext))
+    return { ok: true, value: buf.toString('base64') }
+  } catch (err) {
+    return { ok: false, error: err?.message || String(err) }
+  }
+})
+
+// IPC: decrypt secret (base64) via safeStorage → plaintext.
+ipcMain.handle('avatar:decrypt-secret', (_event, encrypted) => {
+  try {
+    if (!encrypted) return { ok: true, value: '' }
+    if (!safeStorage.isEncryptionAvailable()) {
+      return { ok: false, error: 'safeStorage tidak tersedia di sistem ini.' }
+    }
+    const buf = Buffer.from(String(encrypted), 'base64')
+    return { ok: true, value: safeStorage.decryptString(buf) }
   } catch (err) {
     return { ok: false, error: err?.message || String(err) }
   }
@@ -353,6 +494,7 @@ function registerModelProtocol() {
 app.whenReady().then(() => {
   registerModelProtocol()
   createLauncherWindow()
+  registerGlobalShortcuts()
 
   // Jalankan service (9Router + hermes serve) secara otomatis di background.
   startAllServices()
@@ -380,6 +522,7 @@ app.whenReady().then(() => {
 
 app.on('window-all-closed', () => {
   stopMotion()
+  unregisterGlobalShortcuts()
   disconnectGateway()
   stopAllServices()
   if (process.platform !== 'darwin') app.quit()

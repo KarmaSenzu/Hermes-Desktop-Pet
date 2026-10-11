@@ -4,6 +4,7 @@
  */
 
 import { loadSettings, saveSettings } from './settings-store.js'
+import { renderIcon } from './icons.js'
 
 const startBtn = document.getElementById('start-btn')
 const statusEl = document.getElementById('status')
@@ -44,13 +45,14 @@ const FORMAT_INFO = [
   }
 ]
 
-// --- Definisi sidebar (terpusat, mudah ditambah item/skill baru) ---
+// --- Definisi sidebar (terpusat; icon = nama Lucide outline) ---
 const SECTIONS = [
-  { id: 'home', icon: '🏠', label: 'Home' },
-  { id: 'character', icon: '🎭', label: 'Karakter' },
-  { id: 'voice', icon: '🎤', label: 'Suara' },
-  { id: 'llm', icon: '🧠', label: 'LLM & Provider' },
-  { id: 'shortcut', icon: '⌨️', label: 'Shortcut' }
+  { id: 'home', icon: 'house', label: 'Home' },
+  { id: 'character', icon: 'user-round', label: 'Karakter' },
+  { id: 'voice', icon: 'mic', label: 'Suara' },
+  { id: 'llm', icon: 'brain', label: 'LLM & Provider' },
+  { id: 'skill', icon: 'puzzle', label: 'Skill' },
+  { id: 'shortcut', icon: 'keyboard', label: 'Shortcut' }
 ]
 
 // --- Navigasi sidebar ---
@@ -61,7 +63,7 @@ function renderNav() {
   nav.innerHTML = SECTIONS.map((s, i) => {
     const active = i === 0 ? 'active' : ''
     return `<button class="nav-item ${active}" data-section="${s.id}">
-      <span class="nav-icon">${s.icon}</span> ${escapeHtml(s.label)}
+      <span class="nav-icon">${renderIcon(s.icon, { size: 20 })}</span> ${escapeHtml(s.label)}
     </button>`
   }).join('')
 
@@ -103,7 +105,7 @@ function renderActiveChar() {
   }
   const thumb = active.image
     ? `<img class="char-thumb" src="${active.image}" alt="" />`
-    : `<div class="char-thumb placeholder">🎭</div>`
+    : `<div class="char-thumb placeholder">${renderIcon('user-round', { size: 24 })}</div>`
   activeCharEl.innerHTML = `
     <div class="active-char-row">
       ${thumb}
@@ -123,6 +125,7 @@ const backToFormats = document.getElementById('back-to-formats')
 
 let currentFormat = null
 let pendingImage = null // foto JPG (data URL) untuk karakter baru
+let editingCharId = null // null = tambah; id = edit karakter
 
 function extOf(path) {
   return (path || '').split('.').pop().toLowerCase()
@@ -219,17 +222,35 @@ function openFormatDetail(ext) {
 
   document.getElementById('char-add-btn').addEventListener('click', () => {
     const path = document.getElementById('char-path').value.trim()
+    const name = document.getElementById('char-name').value.trim()
+
+    if (editingCharId) {
+      // Mode edit: update metadata (nama + foto). Path tetap (format tidak berubah).
+      const c = settings.characters.find((x) => x.id === editingCharId)
+      if (c) {
+        if (name) c.name = name
+        if (pendingImage) c.image = pendingImage
+        saveSettings(settings)
+        statusEl.textContent = 'Karakter diperbarui.'
+      }
+      editingCharId = null
+      pendingImage = null
+      openFormatDetail(ext)
+      return
+    }
+
+    // Mode tambah.
     if (!path) { statusEl.textContent = '⚠️ Pilih file model.'; return }
-    const name = document.getElementById('char-name').value.trim() || path.split('/').pop() || 'Karakter'
+    const finalName = name || path.split('/').pop() || 'Karakter'
     const id = Date.now().toString(36)
-    settings.characters.push({ id, name, path, format: ext, image: pendingImage || '', active: false })
+    settings.characters.push({ id, name: finalName, path, format: ext, image: pendingImage || '', active: false })
     saveSettings(settings)
     pendingImage = null
     openFormatDetail(ext) // refresh detail (galeri + reset form)
     statusEl.textContent = 'Karakter disimpan.'
   })
 
-  document.getElementById('char-gallery').addEventListener('click', (e) => {
+  document.getElementById('char-gallery').addEventListener('click', async (e) => {
     const btn = e.target.closest('.mini-btn')
     if (!btn) return
     const id = btn.dataset.id
@@ -239,9 +260,30 @@ function openFormatDetail(ext) {
       saveSettings(settings)
       renderActiveChar()
       openFormatDetail(ext)
+    } else if (action === 'edit') {
+      const c = settings.characters.find((x) => x.id === id)
+      if (!c) return
+      editingCharId = id
+      pendingImage = c.image || null
+      // Isi form dengan data karakter untuk diedit.
+      const nameInput = document.getElementById('char-name')
+      const pathInput = document.getElementById('char-path')
+      if (nameInput) nameInput.value = c.name
+      if (pathInput) pathInput.value = c.path
+      const addBtn = document.getElementById('char-add-btn')
+      if (addBtn) addBtn.textContent = 'Simpan Perubahan'
+      // Scroll ke form.
+      const formCard = addBtn?.closest('.card')
+      if (formCard) formCard.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      statusEl.textContent = `Mengedit: ${c.name}`
     } else if (action === 'delete') {
-      settings.characters = settings.characters.filter((c) => c.id !== id)
+      const c = settings.characters.find((x) => x.id === id)
+      const ok = await showConfirm(`Hapus karakter "${c?.name || ''}"?`, { title: 'Hapus Karakter' })
+      if (!ok) return
+      settings.characters = settings.characters.filter((x) => x.id !== id)
+      if (editingCharId === id) editingCharId = null
       saveSettings(settings)
+      renderActiveChar()
       openFormatDetail(ext)
     }
   })
@@ -253,12 +295,13 @@ function renderGallery(chars) {
     const active = c.active ? 'active' : ''
     const thumb = c.image
       ? `<img class="char-thumb" src="${c.image}" alt="" />`
-      : `<div class="char-thumb placeholder">🎭</div>`
+      : `<div class="char-thumb placeholder">${renderIcon('user-round', { size: 24 })}</div>`
     return `<div class="char-card ${active}" data-id="${c.id}">
       ${thumb}
       <div class="char-card-name">${escapeHtml(c.name)}</div>
       <div class="char-card-actions">
         <button class="mini-btn use" data-action="use" data-id="${c.id}">Gunakan</button>
+        <button class="mini-btn edit" data-action="edit" data-id="${c.id}">Edit</button>
         <button class="mini-btn del" data-action="delete" data-id="${c.id}">Hapus</button>
       </div>
     </div>`
@@ -341,9 +384,10 @@ const llmList = document.getElementById('llm-list')
 
 function maskKey(key) {
   if (!key) return ''
-  if (key.length <= 6) return '••••'
-  return key.slice(0, 4) + '••••' + key.slice(-4)
+  return '••••••••' // apiKey sudah terenkripsi, tampilkan mask saja
 }
+
+let editingProviderId = null // null = mode tambah; id = mode edit
 
 function renderLlmList() {
   const providers = settings.llm.providers || []
@@ -353,43 +397,185 @@ function renderLlmList() {
   }
   llmList.innerHTML = providers
     .map((p) => {
-      return `<div class="llm-item">
+      return `<div class="llm-item" data-id="${escapeHtml(p.id)}">
         <div class="llm-item-main">
           <strong>${escapeHtml(p.name)}</strong>
           <span class="muted">${escapeHtml(p.model || '')}</span>
+          <button class="mini-btn test llm-test" data-id="${escapeHtml(p.id)}">Tes</button>
+          <button class="mini-btn edit llm-edit" data-id="${escapeHtml(p.id)}">Edit</button>
+          <button class="mini-btn del llm-del" data-id="${escapeHtml(p.id)}">Hapus</button>
         </div>
         <div class="llm-item-sub">${escapeHtml(p.baseUrl || '')} · ${maskKey(p.apiKey)}</div>
       </div>`
     })
     .join('')
+
+  // Bind tombol hapus.
+  llmList.querySelectorAll('.llm-del').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const id = btn.dataset.id
+      const p = settings.llm.providers.find((x) => x.id === id)
+      const ok = await showConfirm(`Hapus provider "${p?.name || ''}"?`, { title: 'Hapus Provider' })
+      if (!ok) return
+      settings.llm.providers = settings.llm.providers.filter((x) => x.id !== id)
+      if (editingProviderId === id) resetProviderForm()
+      saveSettings(settings)
+      renderLlmList()
+      statusEl.textContent = 'Provider dihapus.'
+    })
+  })
+
+  // Bind tombol edit.
+  llmList.querySelectorAll('.llm-edit').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const id = btn.dataset.id
+      const p = settings.llm.providers.find((x) => x.id === id)
+      if (!p) return
+      editingProviderId = id
+      llmName.value = p.name
+      llmBaseUrl.value = p.baseUrl || ''
+      // Decrypt API key untuk diedit.
+      const decRes = await window.hermesAvatar.decryptSecret(p.apiKey || '')
+      llmApiKey.value = decRes.ok ? decRes.value : ''
+      llmModel.value = p.model || ''
+      llmAddBtn.textContent = 'Simpan Perubahan'
+      statusEl.textContent = `Mengedit: ${p.name}`
+    })
+  })
+
+  // Bind tombol tes koneksi.
+  llmList.querySelectorAll('.llm-test').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const id = btn.dataset.id
+      const p = settings.llm.providers.find((x) => x.id === id)
+      if (!p?.baseUrl) { statusEl.textContent = '⚠️ Base URL kosong.'; return }
+      btn.disabled = true
+      btn.textContent = '…'
+      try {
+        const res = await window.hermesAvatar.testConnection(p.baseUrl)
+        statusEl.textContent = res.ok
+          ? `✓ Terhubung (HTTP ${res.status ?? 'ok'})`
+          : `✗ Gagal: ${res.error || 'tidak terhubung'}`
+      } catch (err) {
+        statusEl.textContent = `✗ Gagal: ${err?.message || err}`
+      } finally {
+        btn.disabled = false
+        btn.textContent = 'Tes'
+      }
+    })
+  })
+}
+
+function resetProviderForm() {
+  editingProviderId = null
+  llmName.value = ''
+  llmBaseUrl.value = ''
+  llmApiKey.value = ''
+  llmModel.value = ''
+  llmAddBtn.textContent = 'Simpan Provider'
 }
 
 function escapeHtml(s) {
   return String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))
 }
 
-llmAddBtn.addEventListener('click', () => {
+// --- Modal konfirmasi (custom, sesuai tema) ---
+const confirmModal = document.getElementById('confirm-modal')
+const confirmTitle = document.getElementById('confirm-title')
+const confirmMessage = document.getElementById('confirm-message')
+const confirmOk = document.getElementById('confirm-ok')
+const confirmCancel = document.getElementById('confirm-cancel')
+
+function showConfirm(message, { title = 'Konfirmasi', okLabel = 'Hapus', danger = true } = {}) {
+  return new Promise((resolve) => {
+    let settled = false
+
+    confirmTitle.textContent = title
+    confirmMessage.textContent = message
+    confirmOk.textContent = okLabel
+    confirmOk.classList.toggle('danger', danger)
+
+    confirmModal.hidden = false
+
+    const finish = (val) => {
+      if (settled) return
+      settled = true
+      cleanup()
+      resolve(val)
+    }
+
+    const cleanup = () => {
+      confirmModal.hidden = true
+      confirmOk.removeEventListener('click', onOk)
+      confirmCancel.removeEventListener('click', onCancel)
+      confirmModal.removeEventListener('click', onBackdrop)
+      document.removeEventListener('keydown', onKey)
+    }
+
+    const onOk = () => finish(true)
+    const onCancel = () => finish(false)
+    const onBackdrop = (e) => {
+      if (e.target === confirmModal) finish(false)
+    }
+    const onKey = (e) => {
+      if (e.key === 'Escape') finish(false)
+    }
+
+    confirmOk.addEventListener('click', onOk)
+    confirmCancel.addEventListener('click', onCancel)
+    confirmModal.addEventListener('click', onBackdrop)
+    document.addEventListener('keydown', onKey)
+
+    // Fokus tombol batal agar keyboard/aksesibilitas baik.
+    confirmCancel.focus()
+  })
+}
+
+llmAddBtn.addEventListener('click', async () => {
   const name = llmName.value.trim()
   if (!name) {
     statusEl.textContent = '⚠️ Isi nama provider.'
     return
   }
-  settings.llm.providers.push({
-    name,
-    baseUrl: llmBaseUrl.value.trim(),
-    apiKey: llmApiKey.value.trim(),
-    model: llmModel.value.trim()
-  })
-  saveSettings(settings)
+
+  // Enkripsi API key sebelum disimpan (aman, tidak plaintext di localStorage).
+  const apiKeyPlain = llmApiKey.value.trim()
+  const encRes = await window.hermesAvatar.encryptSecret(apiKeyPlain)
+  const apiKeyEnc = encRes.ok ? encRes.value : ''
+
+  if (editingProviderId) {
+    // Mode edit: update provider yang ada.
+    const p = settings.llm.providers.find((x) => x.id === editingProviderId)
+    if (p) {
+      p.name = name
+      p.baseUrl = llmBaseUrl.value.trim()
+      p.apiKey = apiKeyEnc
+      p.model = llmModel.value.trim()
+      saveSettings(settings)
+      statusEl.textContent = 'Provider diperbarui.'
+    }
+    resetProviderForm()
+  } else {
+    // Mode tambah.
+    settings.llm.providers.push({
+      id: Date.now().toString(36),
+      name,
+      baseUrl: llmBaseUrl.value.trim(),
+      apiKey: apiKeyEnc,
+      model: llmModel.value.trim()
+    })
+    saveSettings(settings)
+    statusEl.textContent = 'Provider disimpan (lokal).'
+    llmName.value = ''
+    llmBaseUrl.value = ''
+    llmApiKey.value = ''
+    llmModel.value = ''
+  }
+
   renderLlmList()
-  llmName.value = ''
-  llmBaseUrl.value = ''
-  llmApiKey.value = ''
-  llmModel.value = ''
-  statusEl.textContent = 'Provider disimpan (lokal).'
 })
 
-// --- LLM via RPC (model aktif + switch) ---
+// --- LLM via RPC (model aktif + switch via dropdown) ---
 const llmActiveEl = document.getElementById('llm-active')
 const llmRefreshBtn = document.getElementById('llm-refresh-btn')
 const llmSwitchModel = document.getElementById('llm-switch-model')
@@ -410,12 +596,302 @@ async function refreshLlmActive() {
   }
 }
 
-llmRefreshBtn.addEventListener('click', refreshLlmActive)
+// Ambil daftar model (provider + models) dari model.options, isi dropdown.
+async function refreshModelOptions() {
+  try {
+    const res = await window.hermesAvatar.rpc('model.options', {})
+    if (!res.ok) throw new Error(res.error)
+    const providers = res.result?.providers || []
+
+    const options = []
+    for (const p of providers) {
+      const slug = p.slug || 'custom'
+      const name = p.name || slug
+      const models = p.models || []
+      for (const m of models) {
+        const value = `${slug}:${m}`
+        options.push({ value, label: `${name} — ${m}` })
+      }
+      // Jika provider tidak punya daftar model, tetap tampilkan slug.
+      if (models.length === 0) {
+        options.push({ value: slug, label: name })
+      }
+    }
+
+    llmSwitchModel.innerHTML = options.length
+      ? options.map((o) => `<option value="${escapeHtml(o.value)}">${escapeHtml(o.label)}</option>`).join('')
+      : '<option value="">Tidak ada model</option>'
+  } catch (err) {
+    llmSwitchModel.innerHTML = `<option value="">Gagal memuat (${escapeHtml(err?.message || err)})</option>`
+  }
+}
+
+llmRefreshBtn.addEventListener('click', () => {
+  refreshLlmActive()
+  refreshModelOptions()
+})
+
+// --- Skill Hermes ---
+const skillList = document.getElementById('skill-list')
+const skillRefreshBtn = document.getElementById('skill-refresh-btn')
+const skillSearch = document.getElementById('skill-search')
+
+let allSkills = [] // cache: [{name, category}]
+
+async function loadSkills() {
+  const res = await window.hermesAvatar.rpc('skills.manage', { action: 'list' })
+  if (!res.ok) throw new Error(res.error)
+  const skills = res.result?.skills
+
+  // skills bisa: Dict { category: [names] } ATAU Array.
+  const flat = []
+  if (Array.isArray(skills)) {
+    for (const s of skills) flat.push({ name: typeof s === 'string' ? s : s.name, category: typeof s === 'string' ? '' : (s.category || 'general') })
+  } else if (skills && typeof skills === 'object') {
+    for (const [cat, names] of Object.entries(skills)) {
+      for (const n of names) flat.push({ name: n, category: cat })
+    }
+  }
+  return flat
+}
+
+function groupByCategory(list) {
+  const map = {}
+  for (const s of list) {
+    const cat = s.category || 'general'
+    if (!map[cat]) map[cat] = []
+    map[cat].push(s.name)
+  }
+  return map
+}
+
+function renderSkills() {
+  const q = (skillSearch.value || '').trim().toLowerCase()
+
+  let filtered = allSkills
+  if (q) {
+    filtered = allSkills.filter((s) => s.name.toLowerCase().includes(q) || (s.category || '').toLowerCase().includes(q))
+  }
+
+  if (filtered.length === 0) {
+    skillList.innerHTML = '<p class="hint">Tidak ada skill.</p>'
+    return
+  }
+
+  const grouped = groupByCategory(filtered)
+  const cats = Object.keys(grouped).sort()
+
+  skillList.innerHTML = cats.map((cat) => {
+    const names = grouped[cat]
+    const items = names.map((n) => {
+      return `<span class="skill-chip">
+        <span class="skill-chip-name">${escapeHtml(n)}</span>
+        <button class="skill-chip-del" data-name="${escapeHtml(n)}" data-cat="${escapeHtml(cat)}" title="Hapus skill">×</button>
+      </span>`
+    }).join('')
+    return `<div class="skill-acc">
+      <button class="skill-acc-head" type="button">
+        <span class="skill-acc-cat">${escapeHtml(cat)}</span>
+        <span class="skill-acc-count">${names.length}</span>
+        <span class="skill-acc-arrow">▾</span>
+      </button>
+      <div class="skill-acc-body">
+        <div class="skill-chips">${items}</div>
+      </div>
+    </div>`
+  }).join('')
+
+  // Accordion toggle.
+  skillList.querySelectorAll('.skill-acc-head').forEach((head) => {
+    head.addEventListener('click', () => {
+      const acc = head.parentElement
+      acc.classList.toggle('open')
+    })
+  })
+
+  // Tombol hapus skill.
+  skillList.querySelectorAll('.skill-chip-del').forEach((btn) => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation()
+      const name = btn.dataset.name
+      const cat = btn.dataset.cat
+      const ok = await showConfirm(`Hapus skill "${name}"? Tindakan ini tidak bisa dibatalkan.`, { title: 'Hapus Skill' })
+      if (!ok) return
+      try {
+        const res = await window.hermesAvatar.deleteSkill({ name, category: cat })
+        if (!res.ok) throw new Error(res.error)
+        statusEl.textContent = 'Skill dihapus.'
+        reloadAndRefreshSkills()
+      } catch (err) {
+        statusEl.textContent = `Gagal hapus skill: ${err?.message || err}`
+      }
+    })
+  })
+}
+
+async function refreshSkills() {
+  try {
+    allSkills = await loadSkills()
+    renderSkills()
+  } catch (err) {
+    skillList.innerHTML = `<p class="hint">Gagal memuat (${escapeHtml(err?.message || err)})</p>`
+  }
+}
+
+// Reload skill di Hermes (agar add/delete langsung terdeteksi) + refresh list.
+async function reloadAndRefreshSkills() {
+  try {
+    await window.hermesAvatar.rpc('skills.reload', {})
+  } catch (err) {
+    // reload opsional — jangan hentikan refresh list.
+    console.warn('[skills.reload]', err?.message || err)
+  }
+  await refreshSkills()
+}
+
+skillRefreshBtn.addEventListener('click', refreshSkills)
+skillSearch.addEventListener('input', renderSkills)
+
+// --- Tambah skill (upload .md atau ketik manual) ---
+const skillName = document.getElementById('skill-name')
+const skillCategory = document.getElementById('skill-category')
+const skillContent = document.getElementById('skill-content')
+const skillAddBtn = document.getElementById('skill-add-btn')
+const skillUploadBtn = document.getElementById('skill-upload-btn')
+const skillFile = document.getElementById('skill-file')
+const skillFileName = document.getElementById('skill-file-name')
+
+// Upload file .md → baca isi → isi textarea + nama otomatis.
+skillUploadBtn.addEventListener('click', () => skillFile.click())
+
+skillFile.addEventListener('change', () => {
+  const file = skillFile.files[0]
+  if (!file) return
+  const reader = new FileReader()
+  reader.onload = () => {
+    skillContent.value = reader.result
+    // Auto-isi nama dari nama file (tanpa ekstensi) jika kosong.
+    if (!skillName.value) {
+      skillName.value = file.name.replace(/\.(md|markdown)$/i, '')
+    }
+    skillFileName.textContent = file.name
+  }
+  reader.readAsText(file)
+})
+
+skillAddBtn.addEventListener('click', async () => {
+  const name = skillName.value.trim()
+  const content = skillContent.value.trim()
+  if (!name || !content) {
+    statusEl.textContent = '⚠️ Isi nama & isi skill (atau unggah file .md).'
+    return
+  }
+  skillAddBtn.disabled = true
+  try {
+    const res = await window.hermesAvatar.addSkill({
+      name,
+      category: skillCategory.value.trim(),
+      content
+    })
+    if (!res.ok) throw new Error(res.error)
+    statusEl.textContent = 'Skill disimpan.'
+    skillName.value = ''
+    skillCategory.value = ''
+    skillContent.value = ''
+    skillFileName.textContent = ''
+    skillFile.value = ''
+    reloadAndRefreshSkills()
+  } catch (err) {
+    statusEl.textContent = `Gagal simpan skill: ${err?.message || err}`
+  } finally {
+    skillAddBtn.disabled = false
+  }
+})
+
+// --- Shortcut global ---
+const shortcutList = document.getElementById('shortcut-list')
+
+async function renderShortcuts() {
+  try {
+    const list = await window.hermesAvatar.getShortcuts()
+    if (!list || list.length === 0) {
+      shortcutList.innerHTML = '<p class="hint">Tidak ada shortcut.</p>'
+      return
+    }
+    shortcutList.innerHTML = list.map((s) => {
+      return `<div class="shortcut-row" data-id="${escapeHtml(s.id)}">
+        <span>${escapeHtml(s.label)}</span>
+        <div class="shortcut-edit">
+          <input class="shortcut-input" type="text" value="${escapeHtml(s.accel)}" placeholder="Tekan kombinasi..." readonly />
+          <button class="mini-btn use shortcut-save" data-id="${escapeHtml(s.id)}">Simpan</button>
+        </div>
+      </div>`
+    }).join('')
+
+    // Bind key capture (deteksi keyboard) + tombol simpan.
+    shortcutList.querySelectorAll('.shortcut-input').forEach((input) => {
+      input.addEventListener('focus', () => input.classList.add('capturing'))
+      input.addEventListener('blur', () => input.classList.remove('capturing'))
+
+      input.addEventListener('keydown', (e) => {
+        e.preventDefault()
+        const accel = keyEventToAccelerator(e)
+        if (accel) input.value = accel
+      })
+    })
+
+    shortcutList.querySelectorAll('.shortcut-save').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const id = btn.dataset.id
+        const row = btn.closest('.shortcut-row')
+        const input = row.querySelector('.shortcut-input')
+        const accel = input.value.trim()
+        if (!accel) { statusEl.textContent = '⚠️ Tekan kombinasi dulu.'; return }
+        try {
+          const res = await window.hermesAvatar.setShortcut(id, accel)
+          if (!res.ok) throw new Error(res.error)
+          statusEl.textContent = 'Shortcut disimpan.'
+          renderShortcuts()
+        } catch (err) {
+          statusEl.textContent = `Gagal simpan shortcut: ${err?.message || err}`
+        }
+      })
+    })
+  } catch (err) {
+    shortcutList.innerHTML = `<p class="hint">Gagal memuat (${escapeHtml(err?.message || err)})</p>`
+  }
+}
+
+// Ubah KeyboardEvent → string accelerator Electron (rapi & konsisten).
+function keyEventToAccelerator(e) {
+  const key = e.key
+  // Abaikan tombol modifier saja.
+  if (['Control', 'Shift', 'Alt', 'Meta', 'Escape'].includes(key)) return null
+
+  const mods = []
+  if (e.metaKey || e.ctrlKey) mods.push('CommandOrControl')
+  if (e.altKey) mods.push('Alt')
+  if (e.shiftKey) mods.push('Shift')
+
+  // Normalisasi key utama.
+  let main = key
+  if (key === ' ') main = 'Space'
+  else if (key === 'ArrowUp') main = 'Up'
+  else if (key === 'ArrowDown') main = 'Down'
+  else if (key === 'ArrowLeft') main = 'Left'
+  else if (key === 'ArrowRight') main = 'Right'
+  else if (key.length === 1) main = key.toUpperCase()
+  else if (key.startsWith('F') && /^F\d+$/.test(key)) main = key
+  else main = key
+
+  if (!main) return null
+  return [...mods, main].join('+')
+}
 
 llmSwitchBtn.addEventListener('click', async () => {
   const value = llmSwitchModel.value.trim()
   if (!value) {
-    statusEl.textContent = '⚠️ Isi model (format: custom:nama-model).'
+    statusEl.textContent = '⚠️ Pilih model dulu.'
     return
   }
   llmSwitchBtn.disabled = true
@@ -439,6 +915,9 @@ function init() {
   renderFormatList()
   renderActiveChar()
   refreshLlmActive()
+  refreshModelOptions()
+  renderShortcuts()
+  refreshSkills()
 }
 
 init()

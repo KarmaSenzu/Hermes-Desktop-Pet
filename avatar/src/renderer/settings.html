@@ -122,8 +122,8 @@
           <div class="card">
             <h2>Switch Model</h2>
             <label class="field">
-              <span>Model (format: custom:nama-model)</span>
-              <input id="llm-switch-model" type="text" placeholder="custom:cbcn/deepseek-v4-pro" />
+              <span>Pilih model</span>
+              <select id="llm-switch-model"></select>
             </label>
             <button id="llm-switch-btn" class="primary">Terapkan</button>
           </div>
@@ -155,28 +155,66 @@
           </div>
         </section>
 
+        <!-- SKILL -->
+        <section id="panel-skill" class="panel">
+          <h1>Skill</h1>
+          <p class="subtitle">Kelola skill Hermes.</p>
+
+          <div class="card">
+            <h2>Tambah Skill</h2>
+            <label class="field">
+              <span>Nama skill</span>
+              <input id="skill-name" type="text" placeholder="cth. my-custom-skill" />
+            </label>
+            <label class="field">
+              <span>Kategori (opsional)</span>
+              <input id="skill-category" type="text" placeholder="cth. general" />
+            </label>
+            <label class="field">
+              <span>Isi SKILL.md</span>
+              <textarea id="skill-content" rows="5" placeholder="Tulis instruksi skill di sini..."></textarea>
+            </label>
+            <div class="skill-upload-row">
+              <button type="button" id="skill-upload-btn" class="browse">Unggah file .md</button>
+              <input id="skill-file" type="file" accept=".md,.markdown,text/markdown" hidden />
+              <span class="hint" id="skill-file-name"></span>
+            </div>
+            <button id="skill-add-btn" class="primary">Simpan Skill</button>
+          </div>
+
+          <div class="card">
+            <h2>Skill Tersedia</h2>
+            <div class="skill-toolbar">
+              <input id="skill-search" type="text" placeholder="Cari skill..." />
+              <button id="skill-refresh-btn" class="browse">Muat ulang</button>
+            </div>
+            <div id="skill-list" class="skill-list"></div>
+          </div>
+        </section>
+
         <!-- SHORTCUT -->
         <section id="panel-shortcut" class="panel">
           <h1>Shortcut</h1>
-          <p class="subtitle">Pintasan keyboard.</p>
+          <p class="subtitle">Pintasan keyboard global.</p>
 
           <div class="card">
-            <div class="shortcut-row">
-              <span>Buka / tutup chat</span>
-              <code>💬 (tombol)</code>
-            </div>
-            <div class="shortcut-row">
-              <span>Sembunyikan chat</span>
-              <code>Esc</code>
-            </div>
-            <div class="shortcut-row">
-              <span>Rekam suara</span>
-              <code>🎤 (tombol)</code>
-            </div>
-            <p class="hint">Shortcut global (macOS/Windows/Linux) akan ditambahkan segera.</p>
+            <div id="shortcut-list"></div>
+            <p class="hint">Shortcut global bekerja di seluruh sistem (macOS/Windows/Linux).</p>
           </div>
         </section>
       </main>
+    </div>
+
+    <!-- Modal konfirmasi (hapus, dll) — sesuai tema -->
+    <div id="confirm-modal" class="modal-overlay" hidden>
+      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
+        <h2 id="confirm-title" class="modal-title">Konfirmasi</h2>
+        <p id="confirm-message" class="modal-message"></p>
+        <div class="modal-actions">
+          <button id="confirm-cancel" class="modal-btn secondary">Batal</button>
+          <button id="confirm-ok" class="modal-btn danger">Hapus</button>
+        </div>
+      </div>
     </div>
 
     <script type="module" src="./js/settings.js"></script>
