@@ -16,7 +16,7 @@ placeholder dengan milikmu (jangan commit nilai asli).
 # ~/.hermes/config.yaml  (JANGAN di-commit ke repo)
 
 model:
-  default: YOUR_MODEL_NAME          # contoh: cbcn/deepseek-v4-pro
+  default: YOUR_MODEL_NAME          # contoh: nama-model-anda
   provider: custom
   base_url: http://localhost:20128/v1
   api_key: YOUR_API_KEY             # contoh: sk-xxxx (JANGAN bocor)

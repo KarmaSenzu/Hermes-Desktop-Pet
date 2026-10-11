@@ -192,6 +192,32 @@
           </div>
         </section>
 
+        <!-- PERINTAH -->
+        <section id="panel-action" class="panel">
+          <h1>Perintah</h1>
+          <p class="subtitle">Atur aksi yang diizinkan untuk avatar (buka aplikasi, kontrol browser, dll).</p>
+
+          <div class="card">
+            <h2>Aksi yang Diizinkan</h2>
+            <div id="action-list"></div>
+            <p class="hint">Aksi berisiko (terminal/shell) sebaiknya tetap mati. Hermes akan meminta konfirmasi untuk tindakan sensitif.</p>
+          </div>
+
+          <div class="card">
+            <h2>Aplikasi yang Bisa Dibuka</h2>
+            <div class="path-row" style="margin-bottom:12px;">
+              <input id="app-name" type="text" placeholder="Nama aplikasi" />
+              <button type="button" id="app-pick-btn" class="browse">Pilih aplikasi…</button>
+            </div>
+            <label class="field">
+              <span>Path / command</span>
+              <input id="app-command" type="text" placeholder="otomatis terisi setelah pilih" />
+            </label>
+            <button id="app-add-btn" class="primary">Tambah Aplikasi</button>
+            <div id="app-list" class="app-list"></div>
+          </div>
+        </section>
+
         <!-- SHORTCUT -->
         <section id="panel-shortcut" class="panel">
           <h1>Shortcut</h1>

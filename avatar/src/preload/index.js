@@ -54,6 +54,10 @@ const api = {
   encryptSecret: (text) => ipcRenderer.invoke('avatar:encrypt-secret', text),
   decryptSecret: (encrypted) => ipcRenderer.invoke('avatar:decrypt-secret', encrypted),
 
+  // Pilih file aplikasi (native dialog) + ambil icon.
+  pickApp: () => ipcRenderer.invoke('avatar:pick-app'),
+  getAppIcon: (filePath) => ipcRenderer.invoke('avatar:app-icon', filePath),
+
   // Daftar global shortcut (untuk settings).
   getShortcuts: () => ipcRenderer.invoke('avatar:shortcuts'),
 

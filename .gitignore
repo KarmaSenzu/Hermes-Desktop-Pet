@@ -16,6 +16,12 @@ yarn-error.log*
 .env.*
 !.env.example
 
+# Dokumen pribadi (path lokal, token dev, catatan setup device)
+docs/private/
+docs/MANUAL_TASKS.md
+docs/GIT_SETUP.md
+docs/TEST_CHECKLIST.md
+
 # OS / editor junk
 .DS_Store
 Thumbs.db

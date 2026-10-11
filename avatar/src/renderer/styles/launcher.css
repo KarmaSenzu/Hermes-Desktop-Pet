@@ -914,6 +914,94 @@ textarea:focus-visible {
   background: transparent;
 }
 
+/* ===== Perintah (allowlist aksi) ===== */
+.action-label {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1;
+  min-width: 0;
+}
+
+.action-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: var(--text);
+}
+
+.action-name .icon {
+  flex-shrink: 0;
+  color: var(--text-secondary);
+}
+
+.action-desc {
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+/* ===== Aplikasi terdaftar ===== */
+.app-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.app-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--surface-input);
+  border: 1px solid rgba(255, 255, 255, 0.035);
+}
+
+.app-item-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  min-width: 0;
+  flex: 1;
+}
+
+.app-item-main .icon {
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+.app-icon {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
+.app-icon.placeholder {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+}
+
+.app-cmd {
+  background: rgba(255, 255, 255, 0.08);
+  padding: 2px 7px;
+  border-radius: 5px;
+  font-family: 'SF Mono', Menlo, monospace;
+  font-size: 11px;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* ===== Utility ===== */
 .hidden,
 [hidden] {

@@ -351,6 +351,35 @@ ipcMain.handle('avatar:decrypt-secret', (_event, encrypted) => {
   }
 })
 
+// IPC: pilih file aplikasi (native dialog) → path.
+ipcMain.handle('avatar:pick-app', async () => {
+  const filters = process.platform === 'darwin'
+    ? [{ name: 'Aplikasi', extensions: ['app'] }]
+    : process.platform === 'win32'
+      ? [{ name: 'Aplikasi', extensions: ['exe', 'lnk'] }]
+      : [{ name: 'Aplikasi', extensions: ['desktop'] }]
+
+  const result = await dialog.showOpenDialog({
+    title: 'Pilih aplikasi',
+    properties: ['openFile'],
+    filters
+  })
+  if (result.canceled || result.filePaths.length === 0) return null
+  return result.filePaths[0]
+})
+
+// IPC: ambil icon aplikasi (NativeImage → data URL PNG).
+ipcMain.handle('avatar:app-icon', async (_event, filePath) => {
+  try {
+    const icon = await app.getFileIcon(String(filePath), { size: 'normal' })
+    if (!icon || icon.isEmpty()) return { ok: false, error: 'Icon tidak ditemukan' }
+    const png = icon.toDataURL()
+    return { ok: true, dataUrl: png }
+  } catch (err) {
+    return { ok: false, error: err?.message || String(err) }
+  }
+})
+
 // IPC: TTS — jalur utama memakai endpoint /api/audio/speak milik Hermes
 // (dashboard backend, provider edge-tts Hermes yang terbukti stabil).
 // Endpoint Bing lama yang dipakai msedge-tts sering menolak (HTTP 403),

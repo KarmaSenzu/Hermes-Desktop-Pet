@@ -28,7 +28,16 @@ const DEFAULT_SETTINGS = {
     providers: []
   },
   characters: [], // daftar karakter tersimpan: [{ id, name, path, format, active }]
-  routerChecked: false // checklist pengingat 9Router (manual oleh user)
+  routerChecked: false, // checklist pengingat 9Router (manual oleh user)
+  actions: { // allowlist aksi (Perintah) — { id: boolean }
+    open_app: true,
+    open_website: true,
+    browser_control: true,
+    system_monitor: true,
+    file_access: true,
+    terminal: false
+  },
+  actionApps: [] // daftar aplikasi terdaftar: [{ id, name, command }]
 }
 
 export function loadSettings() {

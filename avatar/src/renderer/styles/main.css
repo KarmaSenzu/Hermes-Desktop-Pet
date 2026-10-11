@@ -41,6 +41,7 @@ body {
   left: 96px;
   transform: none;
   z-index: 20;
+  max-width: 220px;
   background: rgba(20, 20, 30, 0.75);
   color: #e8e8f0;
   font-size: 12px;
@@ -52,10 +53,12 @@ body {
   user-select: none;
   -webkit-user-select: none;
   pointer-events: none;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 6px;
-  white-space: nowrap;
+  white-space: normal;
+  word-break: break-word;
+  line-height: 1.4;
 }
 
 /* Titik animasi (loading) di bubble. */

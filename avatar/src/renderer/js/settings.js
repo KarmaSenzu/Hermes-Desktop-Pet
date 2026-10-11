@@ -52,6 +52,7 @@ const SECTIONS = [
   { id: 'voice', icon: 'mic', label: 'Suara' },
   { id: 'llm', icon: 'brain', label: 'LLM & Provider' },
   { id: 'skill', icon: 'puzzle', label: 'Skill' },
+  { id: 'action', icon: 'terminal', label: 'Perintah' },
   { id: 'shortcut', icon: 'keyboard', label: 'Shortcut' }
 ]
 
@@ -808,6 +809,122 @@ skillAddBtn.addEventListener('click', async () => {
   }
 })
 
+// --- Perintah (allowlist aksi) ---
+const actionList = document.getElementById('action-list')
+
+const ACTION_DEFS = [
+  { id: 'open_app', icon: 'play', label: 'Buka aplikasi', desc: 'Buka / jalankan aplikasi (Activity Monitor, browser, dll)' },
+  { id: 'open_website', icon: 'globe', label: 'Buka website', desc: 'Buka URL / cari di web' },
+  { id: 'browser_control', icon: 'monitor', label: 'Kontrol browser', desc: 'Kelola tab, navigasi, interaksi halaman' },
+  { id: 'system_monitor', icon: 'activity', label: 'Aktivitas sistem', desc: 'Lihat proses / monitor yang berjalan' },
+  { id: 'file_access', icon: 'folder', label: 'Akses file', desc: 'Baca / tulis file' },
+  { id: 'terminal', icon: 'terminal', label: 'Terminal / shell', desc: 'Jalankan perintah shell (berisiko)' }
+]
+
+function renderActions() {
+  const actions = settings.actions || {}
+  actionList.innerHTML = ACTION_DEFS.map((a) => {
+    const checked = actions[a.id] ? 'checked' : ''
+    return `<label class="switch-row">
+      <span class="action-label">
+        <span class="action-name">${renderIcon(a.icon, { size: 18 })} ${escapeHtml(a.label)}</span>
+        <span class="action-desc">${escapeHtml(a.desc)}</span>
+      </span>
+      <input type="checkbox" data-action="${a.id}" ${checked} />
+    </label>`
+  }).join('')
+
+  actionList.querySelectorAll('input[type="checkbox"]').forEach((cb) => {
+    cb.addEventListener('change', () => {
+      settings.actions = settings.actions || {}
+      settings.actions[cb.dataset.action] = cb.checked
+      saveSettings(settings)
+      statusEl.textContent = 'Preferensi aksi disimpan.'
+    })
+  })
+}
+
+// --- Aplikasi terdaftar (bisa dibuka) — CRUD ---
+const appName = document.getElementById('app-name')
+const appCommand = document.getElementById('app-command')
+const appAddBtn = document.getElementById('app-add-btn')
+const appPickBtn = document.getElementById('app-pick-btn')
+const appList = document.getElementById('app-list')
+
+let pendingAppIcon = '' // icon (data URL) untuk aplikasi yang akan ditambah
+
+function renderAppList() {
+  const apps = settings.actionApps || []
+  if (apps.length === 0) {
+    appList.innerHTML = '<p class="hint">Belum ada aplikasi terdaftar.</p>'
+    return
+  }
+  appList.innerHTML = apps.map((a) => {
+    const icon = a.icon
+      ? `<img class="app-icon" src="${a.icon}" alt="" />`
+      : `<span class="app-icon placeholder">${renderIcon('play', { size: 16 })}</span>`
+    return `<div class="app-item" data-id="${escapeHtml(a.id)}">
+      <div class="app-item-main">
+        ${icon}
+        <strong>${escapeHtml(a.name)}</strong>
+        ${a.command ? `<code class="app-cmd">${escapeHtml(a.command)}</code>` : ''}
+      </div>
+      <button class="mini-btn del app-del" data-id="${escapeHtml(a.id)}">Hapus</button>
+    </div>`
+  }).join('')
+
+  appList.querySelectorAll('.app-del').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const id = btn.dataset.id
+      const a = (settings.actionApps || []).find((x) => x.id === id)
+      const ok = await showConfirm(`Hapus aplikasi "${a?.name || ''}"?`, { title: 'Hapus Aplikasi' })
+      if (!ok) return
+      settings.actionApps = (settings.actionApps || []).filter((x) => x.id !== id)
+      saveSettings(settings)
+      renderAppList()
+      statusEl.textContent = 'Aplikasi dihapus.'
+    })
+  })
+}
+
+// Pilih aplikasi via dialog → isi nama + path + ambil icon.
+appPickBtn.addEventListener('click', async () => {
+  try {
+    const filePath = await window.hermesAvatar.pickApp()
+    if (!filePath) return
+    appCommand.value = filePath
+    // Auto nama dari path (basename tanpa ekstensi).
+    const base = filePath.split('/').pop().replace(/\.(app|exe|desktop|lnk)$/i, '')
+    if (!appName.value) appName.value = base
+    // Ambil icon asli.
+    const iconRes = await window.hermesAvatar.getAppIcon(filePath)
+    pendingAppIcon = iconRes.ok ? iconRes.dataUrl : ''
+  } catch (err) {
+    statusEl.textContent = `Gagal pilih aplikasi: ${err?.message || err}`
+  }
+})
+
+appAddBtn.addEventListener('click', () => {
+  const name = appName.value.trim()
+  if (!name) {
+    statusEl.textContent = '⚠️ Isi nama aplikasi.'
+    return
+  }
+  settings.actionApps = settings.actionApps || []
+  settings.actionApps.push({
+    id: Date.now().toString(36),
+    name,
+    command: appCommand.value.trim(),
+    icon: pendingAppIcon || ''
+  })
+  saveSettings(settings)
+  renderAppList()
+  appName.value = ''
+  appCommand.value = ''
+  pendingAppIcon = ''
+  statusEl.textContent = 'Aplikasi ditambahkan.'
+})
+
 // --- Shortcut global ---
 const shortcutList = document.getElementById('shortcut-list')
 
@@ -916,6 +1033,8 @@ function init() {
   renderActiveChar()
   refreshLlmActive()
   refreshModelOptions()
+  renderActions()
+  renderAppList()
   renderShortcuts()
   refreshSkills()
 }

@@ -232,11 +232,13 @@ async function initHermes() {
       const emotion = taggedEmotion || detectEmotion(text)
       controller?.setExpression(emotion)
 
+      // Tampilkan ringkasan jawaban di bubble (pendek, muat di atas avatar).
+      lastSummary = summaryText(text)
+      setStatus(lastSummary)
+
       // TTS + lip sync (teks tampil penuh dulu, lalu audio).
       if (ttsEnabled && text.trim()) {
         speak(text, emotion)
-      } else {
-        setStatus('')
       }
     })
 
@@ -266,11 +268,12 @@ async function initHermes() {
       setStatus('Thinking')
     })
 
-    // Tool mulai dipakai → bubble "Processing".
+    // Tool mulai dipakai → bubble spesifik sesuai nama tool.
     hermes.on('tool.start', (evt) => {
       const tool = evt?.payload?.name || evt?.payload?.tool || 'tool'
-      log('avatar', `🔧 Memakai: ${tool}`)
-      setStatus('Processing')
+      const label = toolLabel(tool)
+      log('avatar', `${label}`)
+      setStatus(label)
     })
 
     // Tool selesai → kembali thinking (Hermes lanjut berpikir).
@@ -313,6 +316,27 @@ setStatus('')
 
 // --- Emosi heuristik (Fase 3 awal) ---
 // Klasifikasi teks sederhana → ekspresi. Bisa diganti tag [emotion:] nanti.
+
+// Mapping nama tool Hermes → label ramah user (untuk bubble status).
+function toolLabel(name) {
+  const t = String(name || '').toLowerCase()
+  const map = [
+    [/browser|navigate|tab|scroll|click|snapshot|press|type|get_images/, 'Membuka browser'],
+    [/terminal|process|execute_code|shell/, 'Menjalankan terminal'],
+    [/ha_|homeassistant/, 'Mengontrol perangkat'],
+    [/read_file|write_file|patch|search_files/, 'Mengakses file'],
+    [/memory|mnemosyne/, 'Mengingat'],
+    [/image_generate/, 'Membuat gambar'],
+    [/todo/, 'Mengatur tugas'],
+    [/web|search/, 'Mencari di web'],
+    [/project/, 'Mengelola proyek']
+  ]
+  for (const [re, label] of map) {
+    if (re.test(t)) return label
+  }
+  return 'Memproses'
+}
+
 function detectEmotion(text) {
   const t = (text || '').toLowerCase()
 
@@ -331,6 +355,16 @@ function detectEmotion(text) {
   return 'neutral'
 }
 
+// --- Ringkasan jawaban (untuk bubble di atas avatar) ---
+let lastSummary = ''
+
+function summaryText(text) {
+  const t = (text || '').trim()
+  if (!t) return ''
+  const MAX = 80
+  return t.length > MAX ? t.slice(0, MAX).trimEnd() + '…' : t
+}
+
 // --- TTS + lip sync ---
 async function speak(text, emotion = 'neutral') {
   try {
@@ -338,13 +372,13 @@ async function speak(text, emotion = 'neutral') {
     const { buffer } = await synthesize(text)
     controller?.setExpression(emotion)
     await audioPlayer.play(buffer)
-    // Selesai bicara → tutup mulut, bubble, kembali neutral.
+    // Selesai bicara → tutup mulut, kembali neutral, kembalikan ringkasan.
     controller?.setMouthLevel(0)
     controller?.setExpression('neutral')
-    setStatus('')
+    setStatus(lastSummary)
   } catch (err) {
-    // TTS gagal → jangan ganggu chat, cukup log + sembunyikan bubble.
-    setStatus('')
+    // TTS gagal → jangan ganggu chat, cukup log + kembalikan ringkasan.
+    setStatus(lastSummary)
     log('avatar', `(TTS gagal: ${err?.message || err})`)
     console.error('[TTS error]', err)
   }
