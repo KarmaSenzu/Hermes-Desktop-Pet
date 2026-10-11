@@ -389,6 +389,48 @@ llmAddBtn.addEventListener('click', () => {
   statusEl.textContent = 'Provider disimpan (lokal).'
 })
 
+// --- LLM via RPC (model aktif + switch) ---
+const llmActiveEl = document.getElementById('llm-active')
+const llmRefreshBtn = document.getElementById('llm-refresh-btn')
+const llmSwitchModel = document.getElementById('llm-switch-model')
+const llmSwitchBtn = document.getElementById('llm-switch-btn')
+
+async function refreshLlmActive() {
+  try {
+    const res = await window.hermesAvatar.rpc('config.get', { key: 'provider' })
+    if (!res.ok) throw new Error(res.error)
+    const r = res.result
+    llmActiveEl.innerHTML = `
+      <div class="llm-item">
+        <div class="llm-item-main"><strong>${escapeHtml(r.model || '—')}</strong></div>
+        <div class="llm-item-sub">provider: ${escapeHtml(r.provider || '—')}</div>
+      </div>`
+  } catch (err) {
+    llmActiveEl.innerHTML = `<p class="hint">Tidak dapat memuat (${escapeHtml(err?.message || err)})</p>`
+  }
+}
+
+llmRefreshBtn.addEventListener('click', refreshLlmActive)
+
+llmSwitchBtn.addEventListener('click', async () => {
+  const value = llmSwitchModel.value.trim()
+  if (!value) {
+    statusEl.textContent = '⚠️ Isi model (format: custom:nama-model).'
+    return
+  }
+  llmSwitchBtn.disabled = true
+  try {
+    const res = await window.hermesAvatar.rpc('config.set', { key: 'model', value })
+    if (!res.ok) throw new Error(res.error)
+    statusEl.textContent = 'Model diterapkan.'
+    await refreshLlmActive()
+  } catch (err) {
+    statusEl.textContent = `Gagal switch model: ${err?.message || err}`
+  } finally {
+    llmSwitchBtn.disabled = false
+  }
+})
+
 function init() {
   renderNav()
   refreshServiceStatus()
@@ -396,6 +438,7 @@ function init() {
   renderLlmList()
   renderFormatList()
   renderActiveChar()
+  refreshLlmActive()
 }
 
 init()

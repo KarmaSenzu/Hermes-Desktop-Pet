@@ -1,11 +1,11 @@
 # Hermes 3D Avatar — Roadmap
 
-> **Versi:** 1.1 (Draft)
-> **Status:** Fase 0 SELESAI ✅ — Fase 1 SELESAI ✅ — Fase 2 SELESAI ✅
+> **Versi:** 1.2 (Draft)
+> **Status:** Fase 0–2 SELESAI ✅ — P0 (suara) SELESAI ✅ — P1 (service) SELESAI ✅ — P2 (settings) SEBAGIAN
 > **Terkait:** `GOALS.md`, `ARCHITECTURE.md`, `API_BRIDGE.md`
 
 Roadmap ini memperbarui `GOALS.md` bagian 9 sesuai keputusan final:
-Electron + three.js + MMD drop-in + launcher/settings + cross-platform +
+Electron + three.js + MMD drop-in + settings panel + cross-platform +
 `hermes serve` sebagai bridge + Edge TTS + faster-whisper.
 
 ---
@@ -37,24 +37,24 @@ Electron + three.js + MMD drop-in + launcher/settings + cross-platform +
 
 ## Fase 3 — Suara & Lip Sync
 
-- [ ] TTS: Hermes → Edge TTS (`id-ID-GadisNeural`) → `audio_b64` ke avatar
-- [ ] STT: Hermes → faster-whisper lokal (model `base`, language `id`)
-- [ ] Generate viseme dari audio (Rhubarb Lip Sync, offline)
-- [ ] Lip sync + ekspresi wajah dasar (senang, sedih, netral, thinking)
-- [ ] Mode suara end-to-end: mic → STT → Hermes → TTS → avatar
+- [x] TTS: avatar → Hermes `/api/audio/speak` (Edge TTS `id-ID-GadisNeural`)
+- [x] STT: Hermes → faster-whisper lokal (`voice.record` → `voice.transcript`)
+- [ ] Generate viseme dari audio (Rhubarb Lip Sync, offline) — sementara pakai amplitude-based
+- [x] Lip sync (amplitude-based) + ekspresi wajah dasar (senang, sedih, netral, thinking)
+- [x] Mode suara end-to-end: mic → STT → Hermes → TTS → avatar
 
 ## Fase 4 — Desktop Pet Interaktif
 
-- [ ] Avatar bisa berjalan di layar
-- [ ] Respon klik / drag
-- [ ] Animasi thinking saat Hermes berpikir
-- [ ] Window transparan & always-on-top stabil (multi-monitor, 3 OS)
-- [ ] Settings panel lengkap (model, ukuran, mode, TTS/STT, endpoint)
+- [ ] Avatar bisa berjalan di layar (DVD bounce emote sudah ada, belum full animasi)
+- [x] Respon klik / drag (window drag + auto-motion dijadikan emote)
+- [x] Animasi thinking saat Hermes berpikir (bubble status + ekspresi)
+- [x] Window transparan & always-on-top stabil (multi-monitor, 3 OS)
+- [x] Settings panel (Home, Karakter, Suara, LLM→RPC, Shortcut) — sebagian masih read-only
 
 ## Fase 5 — Polishing & Rilis
 
 - [ ] Optimasi performa (low-poly ≤ 50k tri, 30 FPS aktif / 10–20 FPS idle)
-- [ ] Tray icon / auto-start / hotkey
+- [ ] Tray icon / auto-start / hotkey (globalShortcut belum)
 - [ ] Dokumentasi lengkap (README, cara install & pakai, cara ganti model sendiri)
 - [ ] Packaging cross-platform (Electron-builder → .exe/.app/.AppImage)
 - [ ] Publish ke GitHub (dengan panduan "tinggal jalan" untuk end-user)
@@ -63,9 +63,10 @@ Electron + three.js + MMD drop-in + launcher/settings + cross-platform +
 
 ## Prioritas Saat Ini (Fokus)
 
-1. **Fase 0 sisa** → pilih model default (bebas lisensi) + Git init.
-2. **Fase 1 MVP** → buktikan visual (window transparan + model MMD jalan).
-3. **Fase 2** → sambungkan `hermes serve` (jalur termurah & paling stabil).
+1. **P2 sisa**: shortcut global, skill Hermes, API key via RPC + safeStorage.
+2. **P3**: integrasi OS via suara (allowlist aksi).
+3. **P4**: installer & distribusi (electron-builder).
+4. **Polish**: model default CC0, Rhubarb lip sync, optimasi performa.
 
 ---
 

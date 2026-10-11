@@ -38,6 +38,9 @@ const api = {
   // Status service (9Router & hermes) untuk settings panel.
   getServiceStatus: () => ipcRenderer.invoke('avatar:service-status'),
 
+  // RPC ke Hermes (shared gateway) — untuk config/model di LLM section.
+  rpc: (method, params) => ipcRenderer.invoke('avatar:rpc', method, params),
+
   // TTS: kirim teks → dapatkan audio base64 (diproses di main process).
   synthesizeSpeech: (text, voice) => ipcRenderer.invoke('avatar:tts', text, voice)
 }

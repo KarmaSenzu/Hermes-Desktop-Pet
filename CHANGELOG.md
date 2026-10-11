@@ -12,6 +12,29 @@ dan versioning mengikuti [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### P1 + P2 — Service Manager & Settings Panel — 2026-10-10
+
+#### Added
+- **Service manager** (`service-manager.js`): hermes serve auto-spawn, token
+  persisten (file `~/.hermes-avatar/session-token`), deteksi port via TCP,
+  multi-OS (Windows `hermes.cmd` + `shell: true`).
+- **Shared gateway** (`hermes-gateway.js`): satu koneksi WS di main process
+  (library `ws`) untuk RPC config/model — dipakai settings.
+- **Settings panel sebagai home** (glassmorphism dark, sidebar + panel konten).
+- **Karakter management**: daftar format → detail format → galeri per format
+  (nama/file/foto, gunakan/hapus, karakter aktif di Home).
+- **Suara**: TTS toggle + voice dropdown, STT model/bahasa (localStorage).
+- **LLM → RPC Hermes**: model aktif (`config.get provider`) + switch model
+  (`config.set model`).
+- **9Router checklist** manual di Home (pengingat, bukan auto-detect).
+- **Keamanan**: `docs/CONFIG_EXAMPLE.md` (placeholder, kredensial di home dir).
+
+#### Changed
+- 9Router tidak di-spawn otomatis (user yang aktifkan manual).
+- Window settings diperlebar (720×560, resizable).
+
+---
+
 ### Fase 2 — Integrasi Hermes (WS A) — 2026-10-09
 
 #### Added

@@ -111,10 +111,25 @@
         <!-- LLM -->
         <section id="panel-llm" class="panel">
           <h1>LLM & Provider</h1>
-          <p class="subtitle">Konfigurasi model & koneksi.</p>
+          <p class="subtitle">Konfigurasi model & koneksi (via Hermes).</p>
 
           <div class="card">
-            <h2>Tambah Provider</h2>
+            <h2>Model Aktif</h2>
+            <div id="llm-active" class="llm-active"></div>
+            <button id="llm-refresh-btn" class="browse">Muat ulang</button>
+          </div>
+
+          <div class="card">
+            <h2>Switch Model</h2>
+            <label class="field">
+              <span>Model (format: custom:nama-model)</span>
+              <input id="llm-switch-model" type="text" placeholder="custom:cbcn/deepseek-v4-pro" />
+            </label>
+            <button id="llm-switch-btn" class="primary">Terapkan</button>
+          </div>
+
+          <div class="card">
+            <h2>Tambah Provider (localStorage)</h2>
             <label class="field">
               <span>Nama</span>
               <input id="llm-name" type="text" placeholder="cth. 9Router" />

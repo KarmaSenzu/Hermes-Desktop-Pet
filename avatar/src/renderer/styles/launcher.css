@@ -295,6 +295,10 @@ h1 {
   gap: 8px;
 }
 
+.llm-active {
+  margin-bottom: 10px;
+}
+
 .llm-item {
   padding: 10px 12px;
   border-radius: 10px;

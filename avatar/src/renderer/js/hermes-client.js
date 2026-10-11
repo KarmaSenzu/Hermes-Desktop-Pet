@@ -143,6 +143,27 @@ export class HermesClient {
     return this.request('voice.record', { action, session_id: this.sessionId })
   }
 
+  /**
+   * Ambil config Hermes (mis. provider & model aktif, daftar providers).
+   */
+  async configGet(key) {
+    return this.request('config.get', { key, session_id: this.sessionId })
+  }
+
+  /**
+   * Set config Hermes (mis. switch model via key "model").
+   */
+  async configSet(key, value) {
+    return this.request('config.set', { key, value, session_id: this.sessionId })
+  }
+
+  /**
+   * Daftar model yang tersedia (untuk dropdown).
+   */
+  async modelOptions() {
+    return this.request('model.options', { session_id: this.sessionId })
+  }
+
   _handleMessage(raw) {
     let frame
     try {

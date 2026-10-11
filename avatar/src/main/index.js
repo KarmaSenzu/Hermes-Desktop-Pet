@@ -2,6 +2,7 @@ import { app, BrowserWindow, ipcMain, protocol, dialog, screen } from 'electron'
 import { join, extname } from 'path'
 import { readFile } from 'fs/promises'
 import { startAllServices, stopAllServices, SESSION_TOKEN, isPortOpen, ROUTER_PORT, HERMES_PORT } from './service-manager.js'
+import { connectGateway, disconnectGateway, request as gatewayRequest, isGatewayConnected } from './hermes-gateway.js'
 
 /**
  * Main process — Hermes 3D Avatar
@@ -196,6 +197,19 @@ ipcMain.handle('avatar:service-status', async () => {
   return { router, hermes }
 })
 
+// IPC: RPC config/model ke Hermes (shared gateway) — untuk LLM section.
+ipcMain.handle('avatar:rpc', async (_event, method, params) => {
+  try {
+    if (!isGatewayConnected()) {
+      await connectGateway(SESSION_TOKEN)
+    }
+    const result = await gatewayRequest(method, params || {})
+    return { ok: true, result }
+  } catch (err) {
+    return { ok: false, error: err?.message || String(err) }
+  }
+})
+
 // IPC: TTS — jalur utama memakai endpoint /api/audio/speak milik Hermes
 // (dashboard backend, provider edge-tts Hermes yang terbukti stabil).
 // Endpoint Bing lama yang dipakai msedge-tts sering menolak (HTTP 403),
@@ -342,11 +356,18 @@ app.whenReady().then(() => {
 
   // Jalankan service (9Router + hermes serve) secara otomatis di background.
   startAllServices()
-    .then((res) => {
+    .then(async (res) => {
       console.log('[service-manager]', JSON.stringify({
-        router: res.router.ok ? (res.router.already ? 'already-running' : 'started') : 'failed',
+        router: res.router.running ? 'running' : 'not-running',
         hermes: res.hermes.ok ? (res.hermes.already ? 'already-running' : 'started') : 'failed'
       }))
+      // Hubungkan shared gateway ke hermes serve (untuk RPC config/model).
+      try {
+        await connectGateway(SESSION_TOKEN)
+        console.log('[gateway] connected')
+      } catch (err) {
+        console.error('[gateway] connect failed:', err?.message || err)
+      }
     })
     .catch((err) => {
       console.error('[service-manager] error:', err?.message || err)
@@ -359,6 +380,7 @@ app.whenReady().then(() => {
 
 app.on('window-all-closed', () => {
   stopMotion()
+  disconnectGateway()
   stopAllServices()
   if (process.platform !== 'darwin') app.quit()
 })
