@@ -27,11 +27,18 @@ export class AvatarController {
     this.neckBone = this._getBone('neck')
     this.spineBone = this._getBone('spine')
     this.headBone = this._getBone('head')
+    this.leftArmBone = this._getBone('leftUpperArm')
+    this.rightArmBone = this._getBone('rightUpperArm')
 
     // Simpan rotasi awal bone (untuk animasi relatif, tidak menimpa pose).
     this._neckBase = this.neckBone ? this.neckBone.rotation.clone() : null
     this._spineBase = this.spineBone ? this.spineBone.rotation.clone() : null
     this._headBase = this.headBone ? this.headBone.rotation.clone() : null
+    this._leftArmBase = this.leftArmBone ? this.leftArmBone.rotation.clone() : null
+    this._rightArmBase = this.rightArmBone ? this.rightArmBone.rotation.clone() : null
+
+    // State emote (animasi sementara yang meng-override idle).
+    this.emote = null // { name, startedAt, duration }
 
     // Debug: info bone yang ditemukan (untuk diagnosa T-pose).
     if (typeof console !== 'undefined') {
@@ -118,6 +125,22 @@ export class AvatarController {
     expression.update()
   }
 
+  /**
+   * Set pose default jadi A-pose (tangan turun di samping, ~40° dari badan).
+   * Gantikan T-pose default. Dipanggil sekali setelah model dimuat.
+   */
+  setAPose() {
+    // Rotasi lengan atas turun ke samping (sumbu Z) — nilai umum untuk A-pose.
+    if (this.leftArmBone) {
+      this.leftArmBone.rotation.z = -0.7 // ~40° turun
+      this._leftArmBase = this.leftArmBone.rotation.clone()
+    }
+    if (this.rightArmBone) {
+      this.rightArmBone.rotation.z = 0.7
+      this._rightArmBase = this.rightArmBone.rotation.clone()
+    }
+  }
+
   update(deltaMs) {
     const now = performance.now()
     this.clock += deltaMs
@@ -142,8 +165,78 @@ export class AvatarController {
       this.vrm.scene.position.y = this.baseY + breathe
     }
 
-    // --- Animasi idle: kepala lihat sekitar + goyang badan ---
-    this._updateIdleMotion()
+    // --- Emote aktif (override idle sementara) ---
+    if (this.emote) {
+      this._updateEmote()
+    } else {
+      this._updateIdleMotion()
+    }
+  }
+
+  /**
+   * Mainkan emote procedural (animasi sementara).
+   * name: 'bounce' | 'jump' | 'wave' | 'nod'
+   */
+  playEmote(name) {
+    const durations = { bounce: 1200, jump: 900, wave: 1500, nod: 700 }
+    this.emote = {
+      name,
+      startedAt: performance.now(),
+      duration: durations[name] || 1000
+    }
+  }
+
+  _updateEmote() {
+    if (!this.emote) return
+    const elapsed = performance.now() - this.emote.startedAt
+    const t = elapsed / this.emote.duration // 0..1
+
+    if (t >= 1) {
+      this._resetEmoteBones()
+      this.emote = null
+      return
+    }
+
+    const name = this.emote.name
+
+    if (name === 'bounce') {
+      // Mantul naik-turun.
+      const y = Math.abs(Math.sin(t * Math.PI)) * 0.25
+      if (this.vrm) this.vrm.scene.position.y = this.baseY + y
+    } else if (name === 'jump') {
+      // Lompat (naik lalu turun).
+      const y = Math.sin(t * Math.PI) * 0.4
+      if (this.vrm) this.vrm.scene.position.y = this.baseY + Math.max(0, y)
+    } else if (name === 'wave') {
+      // Lambaikan tangan kanan (rotate upperArm).
+      if (this.rightArmBone && this._rightArmBase) {
+        const wave = Math.sin(t * Math.PI * 4) * 0.6
+        this.rightArmBone.rotation.set(
+          this._rightArmBase.x,
+          this._rightArmBase.y,
+          this._rightArmBase.z - 1.2 + wave * 0.4
+        )
+      }
+    } else if (name === 'nod') {
+      // Mengangguk (neck pitch).
+      if (this.neckBone && this._neckBase) {
+        const nod = Math.sin(t * Math.PI * 3) * 0.3
+        this.neckBone.rotation.set(
+          this._neckBase.x + nod,
+          this._neckBase.y,
+          this._neckBase.z
+        )
+      }
+    }
+  }
+
+  _resetEmoteBones() {
+    if (this.vrm) this.vrm.scene.position.y = this.baseY
+    if (this.neckBone && this._neckBase) this.neckBone.rotation.copy(this._neckBase)
+    if (this.headBone && this._headBase) this.headBone.rotation.copy(this._headBase)
+    if (this.spineBone && this._spineBase) this.spineBone.rotation.copy(this._spineBase)
+    if (this.leftArmBone && this._leftArmBase) this.leftArmBone.rotation.copy(this._leftArmBase)
+    if (this.rightArmBone && this._rightArmBase) this.rightArmBone.rotation.copy(this._rightArmBase)
   }
 
   _updateIdleMotion() {

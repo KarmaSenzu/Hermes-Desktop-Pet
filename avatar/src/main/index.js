@@ -105,8 +105,8 @@ function createLauncherWindow() {
 
 function createAvatarWindow(modelPath) {
   avatarWindow = new BrowserWindow({
-    width: 260,
-    height: 340,
+    width: 320,
+    height: 480,
     transparent: true, // kunci desktop pet
     frame: false, // frameless → kita buat drag manual
     hasShadow: false, // hindari bayangan kotak di sekitar karakter
@@ -357,26 +357,148 @@ ipcMain.handle('avatar:test-connection', async (_event, url, model, apiKey) => {
   }
 })
 
+// Helper: jalankan `hermes` CLI via execFile (dipakai set-model & install-skill).
+function runHermes(args, timeout = 30000) {
+  const hermesCmd = process.platform === 'win32' ? 'hermes.cmd' : 'hermes'
+  return new Promise((resolve, reject) => {
+    execFile(hermesCmd, args, { timeout }, (err, stdout, stderr) => {
+      if (err) reject(new Error(stderr?.trim() || err.message))
+      else resolve(stdout?.trim() || '')
+    })
+  })
+}
+
 // IPC: set model aktif via `hermes config set` (mekanisme resmi, pasti benar).
-// Jalankan: hermes config set model.default "<model>" + model.provider custom.
 ipcMain.handle('avatar:set-model', async (_event, model) => {
   try {
     const modelName = String(model || '').trim()
     if (!modelName) return { ok: false, error: 'Model kosong.' }
 
-    const hermesCmd = process.platform === 'win32' ? 'hermes.cmd' : 'hermes'
-
-    const run = (args) => new Promise((resolve, reject) => {
-      execFile(hermesCmd, args, { timeout: 20000 }, (err, stdout, stderr) => {
-        if (err) reject(new Error(stderr?.trim() || err.message))
-        else resolve(stdout?.trim() || '')
-      })
-    })
-
-    await run(['config', 'set', 'model.default', modelName])
-    await run(['config', 'set', 'model.provider', 'custom'])
+    await runHermes(['config', 'set', 'model.default', modelName])
+    await runHermes(['config', 'set', 'model.provider', 'custom'])
 
     return { ok: true, model: modelName }
+  } catch (err) {
+    return { ok: false, error: err?.message || String(err) }
+  }
+})
+
+// IPC: set TTS config (voice) ke Hermes — tulis config.yaml langsung.
+// Catatan Hermes: `config.set` RPC TIDAK dukung key tts.*, jadi edit file langsung.
+ipcMain.handle('avatar:set-tts-config', async (_event, { voice }) => {
+  try {
+    if (!voice) return { ok: true }
+
+    const cfgPath = join(homedir(), '.hermes', 'config.yaml')
+    let cfg = await readFile(cfgPath, 'utf8')
+
+    // Pastikan blok tts.edge.voice ada (update atau sisipkan).
+    if (/^tts:\s*$/m.test(cfg)) {
+      // Update/replace tts.edge.voice dalam blok tts.
+      cfg = updateYamlNested(cfg, 'tts', 'edge', 'voice', voice)
+    } else {
+      // Tambah blok tts di akhir.
+      cfg += `\ntts:\n  edge:\n    voice: ${voice}\n`
+    }
+
+    await writeFile(cfgPath, cfg, 'utf8')
+    return { ok: true, voice }
+  } catch (err) {
+    return { ok: false, error: err?.message || String(err) }
+  }
+})
+
+// IPC: set STT config (model + bahasa) — tulis config.yaml langsung.
+ipcMain.handle('avatar:set-stt-config', async (_event, { model, language }) => {
+  try {
+    const cfgPath = join(homedir(), '.hermes', 'config.yaml')
+    let cfg = await readFile(cfgPath, 'utf8')
+
+    if (!/^stt:\s*$/m.test(cfg)) {
+      cfg += '\nstt:\n  local:\n    model: base\n    language: ""\n'
+    }
+    if (model) cfg = updateYamlNested(cfg, 'stt', 'local', 'model', model)
+    if (language) cfg = updateYamlNested(cfg, 'stt', 'local', 'language', language)
+
+    await writeFile(cfgPath, cfg, 'utf8')
+    return { ok: true, model, language }
+  } catch (err) {
+    return { ok: false, error: err?.message || String(err) }
+  }
+})
+
+// Helper sederhana: update nested key (section > sub > key) di YAML.
+function updateYamlNested(yaml, section, sub, key, value) {  const lines = yaml.split('\n')
+  let inSection = false
+  let inSub = false
+  let updated = false
+  const out = []
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]
+    const trimmed = line.trim()
+
+    if (trimmed === `${section}:`) {
+      inSection = true
+      inSub = false
+      out.push(line)
+      continue
+    }
+    // Keluar section jika ketemu key top-level baru.
+    if (inSection && /^[a-zA-Z_]/.test(trimmed) && !line.startsWith(' ') && trimmed !== `${section}:`) {
+      inSection = false
+      inSub = false
+    }
+    if (inSection && trimmed === `${sub}:`) {
+      inSub = true
+      out.push(line)
+      continue
+    }
+    // Keluar sub jika ketemu indentasi sama dengan sub (2 spasi) tapi bukan key.
+    if (inSub && line.startsWith('  ') && !line.startsWith('    ') && !line.startsWith(`  ${sub}:`)) {
+      inSub = false
+    }
+    // Update key dalam sub.
+    if (inSub && trimmed.startsWith(`${key}:`)) {
+      out.push(`    ${key}: ${value}`)
+      updated = true
+      continue
+    }
+    out.push(line)
+  }
+
+  // Jika sub/key belum ada, tambahkan ke akhir section.
+  if (!updated) {
+    // Cari posisi section, sisipkan sub+key.
+    const sectionIdx = out.findIndex((l) => l.trim() === `${section}:`)
+    if (sectionIdx >= 0) {
+      out.splice(sectionIdx + 1, 0, `  ${sub}:`, `    ${key}: ${value}`)
+    }
+  }
+
+  return out.join('\n')
+}
+
+// IPC: install skill dari hub → `hermes skills install <skill-id>`.
+ipcMain.handle('avatar:install-skill', async (_event, skillId) => {
+  try {
+    const id = String(skillId || '').trim()
+    if (!id) return { ok: false, error: 'Skill ID kosong.' }
+
+    const out = await runHermes(['skills', 'install', id], 60000)
+    return { ok: true, output: out }
+  } catch (err) {
+    return { ok: false, error: err?.message || String(err) }
+  }
+})
+
+// IPC: browse/search skill di hub → `hermes skills browse --json` (atau search).
+ipcMain.handle('avatar:browse-skills', async (_event, query) => {
+  try {
+    const q = String(query || '').trim()
+    const args = q ? ['skills', 'search', q, '--json'] : ['skills', 'browse', '--json']
+    const out = await runHermes(args, 60000)
+    return { ok: true, output: out }
   } catch (err) {
     return { ok: false, error: err?.message || String(err) }
   }
@@ -411,8 +533,7 @@ ipcMain.handle('avatar:decrypt-secret', (_event, encrypted) => {
 })
 
 // IPC: pilih file aplikasi (native dialog) → path.
-ipcMain.handle('avatar:pick-app', async () => {
-  const filters = process.platform === 'darwin'
+ipcMain.handle('avatar:pick-app', async () => {  const filters = process.platform === 'darwin'
     ? [{ name: 'Aplikasi', extensions: ['app'] }]
     : process.platform === 'win32'
       ? [{ name: 'Aplikasi', extensions: ['exe', 'lnk'] }]
@@ -437,6 +558,20 @@ ipcMain.handle('avatar:app-icon', async (_event, filePath) => {
   } catch (err) {
     return { ok: false, error: err?.message || String(err) }
   }
+})
+
+// IPC: pilih file animasi (native dialog, filter GLB/VMD).
+ipcMain.handle('avatar:pick-animation', async () => {
+  const result = await dialog.showOpenDialog({
+    title: 'Pilih file animasi',
+    properties: ['openFile'],
+    filters: [
+      { name: 'Animasi', extensions: ['glb', 'gltf', 'vmd'] },
+      { name: 'Semua file', extensions: ['*'] }
+    ]
+  })
+  if (result.canceled || result.filePaths.length === 0) return null
+  return result.filePaths[0]
 })
 
 // IPC: TTS — jalur utama memakai endpoint /api/audio/speak milik Hermes
@@ -469,7 +604,7 @@ ipcMain.handle('avatar:tts', async (_event, text, voice) => {
         'Content-Type': 'application/json',
         'X-Hermes-Session-Token': token
       },
-      body: JSON.stringify({ text: String(text) })
+      body: JSON.stringify({ text: String(text), voice: voice || 'id-ID-GadisNeural' })
     })
     if (resp.ok) {
       const data = await resp.json()

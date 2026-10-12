@@ -19,8 +19,16 @@
     <!-- Ikon komentar (trigger buka/tutup bottom sheet) -->
     <button id="comment-toggle" class="comment-toggle" title="Buka chat">💬</button>
 
-    <!-- Tombol animasi/emote (DVD bounce) -->
-    <button id="dvd-btn" class="emote-btn" title="Animasi DVD">📀</button>
+    <!-- Tombol emote (buka menu) -->
+    <button id="emote-toggle" class="emote-btn" title="Emote">😀</button>
+
+    <!-- Panel emote -->
+    <div id="emote-panel" class="emote-panel" hidden>
+      <button class="emote-item" data-emote="bounce" data-icon="arrow-up">Bounce</button>
+      <button class="emote-item" data-emote="jump" data-icon="arrow-up">Jump</button>
+      <button class="emote-item" data-emote="wave" data-icon="hand">Wave</button>
+      <button class="emote-item" data-emote="nod" data-icon="smile">Nod</button>
+    </div>
 
     <!-- Tombol kembali ke pengaturan -->
     <button id="settings-btn" class="emote-btn settings-btn" title="Pengaturan">⚙️</button>

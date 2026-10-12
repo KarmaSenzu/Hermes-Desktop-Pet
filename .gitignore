@@ -22,6 +22,9 @@ docs/MANUAL_TASKS.md
 docs/GIT_SETUP.md
 docs/TEST_CHECKLIST.md
 
+# Q&A internal dengan Hermes (mengandung path lokal & token dev)
+hermes-qa/
+
 # OS / editor junk
 .DS_Store
 Thumbs.db
@@ -31,6 +34,13 @@ Thumbs.db
 
 # Generated audio cache (TTS)
 assets/audio/cache/
+
+# Aset model & animasi pihak ketiga (lisensi masing-masing, ukuran besar)
+avatar/assets/models/
+!avatar/assets/models/NOTICE.md
+
+# Project referensi pihak ketiga (clone dari GitHub)
+references/
 
 # Python (hermes-plugin)
 __pycache__/

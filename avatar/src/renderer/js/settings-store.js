@@ -18,11 +18,17 @@ const KEY = 'hermes-avatar-settings'
 const DEFAULT_SETTINGS = {
   tts: {
     enabled: true,
-    voice: 'id-ID-GadisNeural'
+    voice: 'id-ID-GadisNeural',
+    speed: 1.0,        // kecepatan bicara (0.5 - 2.0)
+    verbosity: 'concise' // 'concise' | 'full' — seberapa ringkas jawaban dibaca
   },
   stt: {
     model: 'base',
     language: 'id'
+  },
+  conversation: {
+    continuous: false, // auto-listen setelah selesai bicara
+    bargeIn: true      // izinkan interupsi saat Hermes bicara
   },
   llm: {
     providers: []
@@ -37,7 +43,9 @@ const DEFAULT_SETTINGS = {
     file_access: true,
     terminal: false
   },
-  actionApps: [] // daftar aplikasi terdaftar: [{ id, name, command }]
+  actionApps: [], // daftar aplikasi terdaftar: [{ id, name, command }]
+  pose: 'a-pose', // pose default avatar: 'a-pose' | 't-pose'
+  animations: [] // daftar animasi: [{ id, name, path, format }]
 }
 
 export function loadSettings() {

@@ -49,6 +49,7 @@ const FORMAT_INFO = [
 const SECTIONS = [
   { id: 'home', icon: 'house', label: 'Home' },
   { id: 'character', icon: 'user-round', label: 'Karakter' },
+  { id: 'animation', icon: 'film', label: 'Animasi' },
   { id: 'voice', icon: 'mic', label: 'Suara' },
   { id: 'llm', icon: 'brain', label: 'LLM & Provider' },
   { id: 'skill', icon: 'puzzle', label: 'Skill' },
@@ -350,28 +351,48 @@ routerCheck.addEventListener('change', () => {
   saveSettings(settings)
 })
 
-// --- Suara (TTS & STT) ---
+// --- Suara (TTS & STT & Percakapan) ---
 const ttsEnabled = document.getElementById('tts-enabled')
 const ttsVoice = document.getElementById('tts-voice')
+const ttsSpeed = document.getElementById('tts-speed')
+const ttsVerbosity = document.getElementById('tts-verbosity')
 const sttModel = document.getElementById('stt-model')
 const sttLanguage = document.getElementById('stt-language')
+const convBargeIn = document.getElementById('conv-barge-in')
+const convContinuous = document.getElementById('conv-continuous')
 
 function loadVoiceUI() {
   ttsEnabled.checked = settings.tts.enabled
   ttsVoice.value = settings.tts.voice
+  ttsSpeed.value = String(settings.tts.speed ?? 1.0)
+  ttsVerbosity.value = settings.tts.verbosity || 'concise'
   sttModel.value = settings.stt.model
   sttLanguage.value = settings.stt.language
+  convBargeIn.checked = settings.conversation?.bargeIn !== false
+  convContinuous.checked = !!settings.conversation?.continuous
 }
 
 function saveVoiceUI() {
   settings.tts.enabled = ttsEnabled.checked
   settings.tts.voice = ttsVoice.value
+  settings.tts.speed = parseFloat(ttsSpeed.value) || 1.0
+  settings.tts.verbosity = ttsVerbosity.value
   settings.stt.model = sttModel.value
   settings.stt.language = sttLanguage.value
+  settings.conversation = settings.conversation || {}
+  settings.conversation.bargeIn = convBargeIn.checked
+  settings.conversation.continuous = convContinuous.checked
   saveSettings(settings)
+
+  // Terapkan ke Hermes (voice + STT model/bahasa) agar benar-benar berlaku.
+  window.hermesAvatar.setTtsConfig({ voice: settings.tts.voice }).catch(() => {})
+  window.hermesAvatar.setSttConfig({
+    model: settings.stt.model,
+    language: settings.stt.language
+  }).catch(() => {})
 }
 
-;['tts-enabled', 'tts-voice', 'stt-model', 'stt-language'].forEach((id) => {
+;['tts-enabled', 'tts-voice', 'tts-speed', 'tts-verbosity', 'stt-model', 'stt-language', 'conv-barge-in', 'conv-continuous'].forEach((id) => {
   document.getElementById(id).addEventListener('change', saveVoiceUI)
 })
 
@@ -887,6 +908,218 @@ skillAddBtn.addEventListener('click', async () => {
   }
 })
 
+// --- Install skill dari hub ---
+const skillInstallId = document.getElementById('skill-install-id')
+const skillInstallBtn = document.getElementById('skill-install-btn')
+
+skillInstallBtn.addEventListener('click', async () => {
+  const id = skillInstallId.value.trim()
+  if (!id) { statusEl.textContent = '⚠️ Isi Skill ID.'; return }
+
+  skillInstallBtn.disabled = true
+  skillInstallBtn.textContent = 'Menginstall…'
+  try {
+    const res = await window.hermesAvatar.installSkill(id)
+    if (!res.ok) throw new Error(res.error)
+    statusEl.textContent = `Skill "${id}" diinstall.`
+    skillInstallId.value = ''
+    reloadAndRefreshSkills()
+  } catch (err) {
+    statusEl.textContent = `Gagal install skill: ${err?.message || err}`
+  } finally {
+    skillInstallBtn.disabled = false
+    skillInstallBtn.textContent = 'Install Skill'
+  }
+})
+
+// --- Animasi (2-level: menu → detail sub-panel) ---
+const animMenuView = document.getElementById('anim-menu-view')
+const animDetailView = document.getElementById('anim-detail-view')
+const animMenu = document.getElementById('anim-menu')
+const animDetail = document.getElementById('anim-detail')
+const animBackBtn = document.getElementById('anim-back-btn')
+
+const BUILTIN_EMOTES = [
+  { id: 'bounce', icon: 'arrow-up', label: 'Bounce' },
+  { id: 'jump', icon: 'arrow-up', label: 'Jump' },
+  { id: 'wave', icon: 'hand', label: 'Wave' },
+  { id: 'nod', icon: 'smile', label: 'Nod' }
+]
+
+const ANIM_MENU = [
+  { id: 'pose-default', icon: 'user', label: 'Pose Default', desc: 'Pilih pose saat idle (A-pose / T-pose)' },
+  { id: 'pose-saved', icon: 'film', label: 'Pose Tersimpan', desc: 'Animasi pose custom yang diupload' },
+  { id: 'emote', icon: 'smile', label: 'Emote', desc: 'Emote bawaan + custom (panel avatar)' },
+  { id: 'add', icon: 'plus', label: 'Tambah Animasi', desc: 'Upload file animasi (GLB / VMD)' }
+]
+
+function customPoses() { return (settings.animations || []).filter((a) => a.type === 'pose') }
+function customEmotes() { return (settings.animations || []).filter((a) => a.type === 'emote') }
+
+function renderAnimMenu() {
+  animMenu.innerHTML = ANIM_MENU.map((m) => {
+    return `<div class="format-item" data-sub="${m.id}">
+      <div class="format-head">
+        <span class="format-badge">${renderIcon(m.icon, { size: 16 })}</span>
+        <span>${escapeHtml(m.label)}</span>
+      </div>
+      <p class="format-desc">${escapeHtml(m.desc)}</p>
+      <div class="format-chevron">›</div>
+    </div>`
+  }).join('')
+
+  animMenu.querySelectorAll('.format-item').forEach((el) => {
+    el.addEventListener('click', () => openAnimDetail(el.dataset.sub))
+  })
+}
+
+function openAnimDetail(sub) {
+  animMenuView.classList.add('hidden')
+  animDetailView.classList.remove('hidden')
+
+  if (sub === 'pose-default') {
+    animDetail.innerHTML = `
+      <div class="card">
+        <h2>Pose Default</h2>
+        <p class="hint">Pose yang dipakai avatar saat diam (idle).</p>
+        <label class="field">
+          <span>Pose</span>
+          <select id="pose-select">
+            <option value="a-pose">A-pose (tangan di samping)</option>
+            <option value="t-pose">T-pose (tangan terentang)</option>
+          </select>
+        </label>
+      </div>`
+    const sel = document.getElementById('pose-select')
+    sel.value = settings.pose || 'a-pose'
+    sel.onchange = () => {
+      settings.pose = sel.value
+      saveSettings(settings)
+      statusEl.textContent = 'Pose default disimpan.'
+    }
+  } else if (sub === 'pose-saved') {
+    animDetail.innerHTML = `<div class="card">
+      <h2>Pose Tersimpan</h2>
+      <p class="hint">Animasi pose custom (.glb/.vmd) yang diupload. Bisa dihapus.</p>
+      <div id="pose-list" class="anim-list">${renderPoseListHtml()}</div>
+    </div>`
+    bindAnimDeleteIn('#pose-list')
+  } else if (sub === 'emote') {
+    animDetail.innerHTML = `<div class="card">
+      <h2>Emote</h2>
+      <p class="hint">Emote bawaan (procedural) + custom (upload).</p>
+      <div id="emote-list" class="anim-list">${renderEmoteListHtml()}</div>
+    </div>`
+    bindAnimDeleteIn('#emote-list')
+  } else if (sub === 'add') {
+    animDetail.innerHTML = `
+      <div class="card">
+        <h2>Tambah Animasi</h2>
+        <p class="hint">Format: <code>.glb</code> (GLB + animation) atau <code>.vmd</code> (MMD motion).</p>
+        <div class="path-row" style="margin-bottom:12px;">
+          <input id="anim-name" type="text" placeholder="Nama animasi" />
+          <button type="button" id="anim-pick-btn" class="browse">Pilih file…</button>
+        </div>
+        <label class="field">
+          <span>Path file</span>
+          <input id="anim-path" type="text" placeholder="otomatis terisi" readonly />
+        </label>
+        <label class="field">
+          <span>Tipe</span>
+          <select id="anim-type">
+            <option value="pose">Pose (default / idle)</option>
+            <option value="emote">Emote (panel emote avatar)</option>
+          </select>
+        </label>
+        <button id="anim-add-btn" class="primary">Simpan Animasi</button>
+      </div>`
+    bindAnimAddForm()
+  }
+}
+
+function renderPoseListHtml() {
+  const poses = customPoses()
+  if (poses.length === 0) return '<p class="hint">Belum ada pose custom.</p>'
+  return poses.map((a) => animItemHtml(a)).join('')
+}
+
+function renderEmoteListHtml() {
+  const builtin = BUILTIN_EMOTES.map((e) => {
+    return `<div class="app-item">
+      <div class="app-item-main">${renderIcon(e.icon, { size: 16 })}<strong>${escapeHtml(e.label)}</strong></div>
+      <span class="muted">bawaan</span>
+    </div>`
+  }).join('')
+  const custom = customEmotes().map((a) => animItemHtml(a)).join('')
+  return builtin + custom || '<p class="hint">Belum ada emote.</p>'
+}
+
+function animItemHtml(a) {
+  return `<div class="app-item" data-id="${escapeHtml(a.id)}">
+    <div class="app-item-main">
+      ${renderIcon('film', { size: 16 })}
+      <strong>${escapeHtml(a.name)}</strong>
+      <span class="muted">.${escapeHtml(a.format)}</span>
+    </div>
+    <button class="mini-btn del anim-del" data-id="${escapeHtml(a.id)}">Hapus</button>
+  </div>`
+}
+
+function bindAnimDeleteIn(selector) {
+  const container = document.querySelector(selector)
+  if (!container) return
+  container.querySelectorAll('.anim-del').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const id = btn.dataset.id
+      const a = (settings.animations || []).find((x) => x.id === id)
+      const ok = await showConfirm(`Hapus animasi "${a?.name || ''}"?`, { title: 'Hapus Animasi' })
+      if (!ok) return
+      settings.animations = (settings.animations || []).filter((x) => x.id !== id)
+      saveSettings(settings)
+      openAnimDetail('pose-saved')
+    })
+  })
+}
+
+function bindAnimAddForm() {
+  document.getElementById('anim-pick-btn').addEventListener('click', async () => {
+    try {
+      const filePath = await window.hermesAvatar.pickAnimation()
+      if (!filePath) return
+      document.getElementById('anim-path').value = filePath
+      const base = filePath.split('/').pop().replace(/\.(glb|gltf|vmd)$/i, '')
+      const nameEl = document.getElementById('anim-name')
+      if (!nameEl.value) nameEl.value = base
+    } catch (err) {
+      statusEl.textContent = `Gagal pilih animasi: ${err?.message || err}`
+    }
+  })
+
+  document.getElementById('anim-add-btn').addEventListener('click', () => {
+    const path = document.getElementById('anim-path').value.trim()
+    if (!path) { statusEl.textContent = '⚠️ Pilih file animasi.'; return }
+    const name = document.getElementById('anim-name').value.trim() || path.split('/').pop() || 'Animasi'
+    const format = path.split('.').pop().toLowerCase()
+    const type = document.getElementById('anim-type').value
+    settings.animations = settings.animations || []
+    settings.animations.push({ id: Date.now().toString(36), name, path, format, type })
+    saveSettings(settings)
+    statusEl.textContent = `Animasi "${name}" disimpan sebagai ${type === 'pose' ? 'Pose' : 'Emote'}.`
+    openAnimDetail(type === 'pose' ? 'pose-saved' : 'emote')
+  })
+}
+
+function renderAnimationSettings() {
+  renderAnimMenu()
+  animMenuView.classList.remove('hidden')
+  animDetailView.classList.add('hidden')
+}
+
+animBackBtn.addEventListener('click', () => {
+  animDetailView.classList.add('hidden')
+  animMenuView.classList.remove('hidden')
+  renderAnimMenu()
+})
 // --- Perintah (allowlist aksi) ---
 const actionList = document.getElementById('action-list')
 
@@ -1111,6 +1344,7 @@ function init() {
   renderActiveChar()
   refreshLlmActive()
   refreshModelOptions()
+  renderAnimationSettings()
   renderActions()
   renderAppList()
   renderShortcuts()

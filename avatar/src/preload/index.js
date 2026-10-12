@@ -53,6 +53,16 @@ const api = {
   // Set model aktif (via hermes config set — mekanisme resmi).
   setModel: (model) => ipcRenderer.invoke('avatar:set-model', model),
 
+  // Set TTS config (voice + speed) ke Hermes.
+  setTtsConfig: (cfg) => ipcRenderer.invoke('avatar:set-tts-config', cfg),
+
+  // Set STT config (model + bahasa) ke Hermes.
+  setSttConfig: (cfg) => ipcRenderer.invoke('avatar:set-stt-config', cfg),
+
+  // Install skill dari hub + browse/search skill.
+  installSkill: (skillId) => ipcRenderer.invoke('avatar:install-skill', skillId),
+  browseSkills: (query) => ipcRenderer.invoke('avatar:browse-skills', query),
+
   // Enkripsi/dekripsi secret (API key) via safeStorage.
   encryptSecret: (text) => ipcRenderer.invoke('avatar:encrypt-secret', text),
   decryptSecret: (encrypted) => ipcRenderer.invoke('avatar:decrypt-secret', encrypted),
@@ -60,6 +70,9 @@ const api = {
   // Pilih file aplikasi (native dialog) + ambil icon.
   pickApp: () => ipcRenderer.invoke('avatar:pick-app'),
   getAppIcon: (filePath) => ipcRenderer.invoke('avatar:app-icon', filePath),
+
+  // Pilih file animasi (GLB/VMD).
+  pickAnimation: () => ipcRenderer.invoke('avatar:pick-animation'),
 
   // Daftar global shortcut (untuk settings).
   getShortcuts: () => ipcRenderer.invoke('avatar:shortcuts'),

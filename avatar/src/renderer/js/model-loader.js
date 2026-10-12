@@ -2,6 +2,7 @@ import * as THREE from 'three'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { VRMLoaderPlugin, VRMUtils } from '@pixiv/three-vrm'
 import { MMDLoader } from 'three/addons/loaders/MMDLoader.js'
+import { MMDAnimationHelper } from 'three/addons/animation/MMDAnimationHelper.js'
 import { FBXLoader } from 'three/addons/loaders/FBXLoader.js'
 
 /**
@@ -50,10 +51,30 @@ export async function loadModelFromBase64(base64, mimeType = 'model/gltf-binary'
 /**
  * Load model MMD (.pmx/.pmd) dari URL `model://`.
  * MMDLoader me-resolve texture relatif ke URL, jadi harus pakai custom protocol.
+ * Menyertakan MMDAnimationHelper untuk playback .vmd.
  */
 export async function loadMMDModel(url) {
   const mesh = await mmdLoader.loadAsync(url)
-  return { scene: mesh, vrm: null, mmd: { mesh, loader: mmdLoader } }
+  const helper = new MMDAnimationHelper()
+  return { scene: mesh, vrm: null, mmd: { mesh, loader: mmdLoader, helper } }
+}
+
+/**
+ * Load motion .vmd dari URL `model://` → AnimationClip (untuk emote).
+ * Memakai loadAnimation yang membangun clip sesuai mesh.
+ */
+export async function loadVmdClip(url, mesh) {
+  return new Promise((resolve, reject) => {
+    mmdLoader.loadAnimation(url, mesh, (clip) => resolve(clip), undefined, (err) => reject(err))
+  })
+}
+
+/**
+ * Load animasi .glb (AnimationClip) dari URL `model://` → clips array.
+ */
+export async function loadGlbClip(url) {
+  const gltf = await gltfLoader.loadAsync(url)
+  return gltf.animations || []
 }
 
 /**

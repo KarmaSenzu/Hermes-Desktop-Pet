@@ -72,6 +72,26 @@
           </div>
         </section>
 
+        <!-- ANIMASI -->
+        <section id="panel-animation" class="panel">
+          <h1>Animasi</h1>
+          <p class="subtitle">Atur pose default, pose tersimpan, & emote.</p>
+
+          <!-- VIEW 1: menu sub-item -->
+          <div id="anim-menu-view">
+            <div class="card">
+              <h2>Menu</h2>
+              <div id="anim-menu" class="anim-menu"></div>
+            </div>
+          </div>
+
+          <!-- VIEW 2: detail sub-item -->
+          <div id="anim-detail-view" class="hidden">
+            <button id="anim-back-btn" class="back-btn">‹ Kembali</button>
+            <div id="anim-detail"></div>
+          </div>
+        </section>
+
         <!-- SUARA -->
         <section id="panel-voice" class="panel">
           <h1>Suara</h1>
@@ -92,6 +112,22 @@
                 <option value="en-US-GuyNeural">Guy (Laki-laki, EN)</option>
               </select>
             </label>
+            <label class="field">
+              <span>Kecepatan bicara</span>
+              <select id="tts-speed">
+                <option value="0.75">Lambat</option>
+                <option value="1.0">Normal</option>
+                <option value="1.25">Cepat</option>
+                <option value="1.5">Sangat cepat</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>Panjang jawaban dibaca</span>
+              <select id="tts-verbosity">
+                <option value="concise">Ringkas (ringkasan)</option>
+                <option value="full">Lengkap</option>
+              </select>
+            </label>
           </div>
 
           <div class="card">
@@ -109,6 +145,18 @@
                 <option value="id">Indonesia</option>
                 <option value="en">English</option>
               </select>
+            </label>
+          </div>
+
+          <div class="card">
+            <h2>Percakapan</h2>
+            <label class="switch-row">
+              <span>Izinkan interupsi (barge-in)</span>
+              <input id="conv-barge-in" type="checkbox" />
+            </label>
+            <label class="switch-row">
+              <span>Mode percakapan berkelanjutan</span>
+              <input id="conv-continuous" type="checkbox" />
             </label>
           </div>
         </section>
@@ -185,6 +233,16 @@
               <span class="hint" id="skill-file-name"></span>
             </div>
             <button id="skill-add-btn" class="primary">Simpan Skill</button>
+          </div>
+
+          <div class="card">
+            <h2>Install dari Hub</h2>
+            <label class="field">
+              <span>Skill ID</span>
+              <input id="skill-install-id" type="text" placeholder="cth. official/research/duckduckgo-search" />
+            </label>
+            <button id="skill-install-btn" class="primary">Install Skill</button>
+            <p class="hint">Contoh: <code>official/research/duckduckgo-search</code>, <code>official/devops/watchers</code>.</p>
           </div>
 
           <div class="card">
