@@ -20,8 +20,28 @@
 
 ---
 
+<div align="center">
+
+### Unduh Hermes Desktop Pet (Rilis Siap Pakai)
+
+| Windows | macOS | Linux |
+| :---: | :---: | :---: |
+| **Windows 10 / 11 (x64)** | **Apple Silicon (M-Series) & Intel** | **Ubuntu / Debian / Fedora** |
+| [**Download Setup .exe**](https://github.com/KarmaSenzu/Hermes-Desktop-Pet/releases/latest) | [**Download .dmg**](https://github.com/KarmaSenzu/Hermes-Desktop-Pet/releases/latest) | [**Download .deb**](https://github.com/KarmaSenzu/Hermes-Desktop-Pet/releases/latest) |
+| *Installer NSIS & Versi Portable* | *Universal Binary (.dmg)* | *AppImage & .deb Package* |
+
+**Pemasangan Cepat via Terminal (Linux & macOS):**
+```bash
+curl -fsSL https://raw.githubusercontent.com/KarmaSenzu/Hermes-Desktop-Pet/main/install.sh | bash
+```
+
+</div>
+
+---
+
 ## Daftar Isi
 
+- [Unduh Installer Multi-Platform](#unduh-hermes-desktop-pet-rilis-siap-pakai)
 - [Tentang Proyek](#tentang-proyek)
 - [Prinsip Arsitektur](#prinsip-arsitektur)
 - [Fitur Utama](#fitur-utama)
@@ -152,30 +172,53 @@ Untuk melindungi sistem dari kerentanan keamanan, gunakan versi runtime Node.js 
 
 ## Panduan Instalasi & Menjalankan
 
-### 1. Kloning Repositori
+Anda dapat menjalankan Hermes Desktop Pet menggunakan salah satu dari dua cara berikut:
+
+### Metode 1: Menggunakan Installer Biner (Pengguna Umum)
+
+Bagi pengguna yang ingin langsung memakai aplikasi tanpa menyentuh kode program atau memasang Node.js:
+1. Buka halaman rilis resmi: [**GitHub Releases — Hermes Desktop Pet**](https://github.com/KarmaSenzu/Hermes-Desktop-Pet/releases/latest).
+2. Unduh paket installer yang cocok dengan sistem operasi Anda:
+   * **Windows 10/11:** Unduh file `Hermes-Desktop-Pet-Setup-x.x.x.exe` (klik 2x untuk memasang otomatis) atau versi Portable `.zip`.
+   * **macOS (Apple Silicon & Intel):** Unduh file `Hermes-Desktop-Pet-x.x.x.dmg`, buka berkas, dan seret ikon Hermes ke folder *Applications*.
+   * **Linux (Ubuntu/Debian/Fedora):** Unduh paket `Hermes-Desktop-Pet-x.x.x.AppImage` (beri izin eksekusi `chmod +x` lalu klik) atau berkas `.deb`.
+3. Buka aplikasi, dan karakter avatar interaktif akan seketika hadir di layar komputer Anda.
+
+> **Tips Pengguna Linux & macOS:** Anda juga dapat memasang otomatis melalui satu baris perintah terminal:
+> ```bash
+> curl -fsSL https://raw.githubusercontent.com/KarmaSenzu/Hermes-Desktop-Pet/main/install.sh | bash
+> ```
+
+---
+
+### Metode 2: Menjalankan dari Kode Sumber (Pengembang / Developer)
+
+Bagi Anda yang ingin memodifikasi kode, menyesuaikan tema, atau berkontribusi pada pengembangan:
+
+#### 1. Kloning Repositori
 ```bash
 git clone https://github.com/KarmaSenzu/Hermes-Desktop-Pet.git
 cd Hermes-Desktop-Pet/avatar
 ```
 
-### 2. Memasang Dependensi
+#### 2. Memasang Dependensi
 Proyek ini mengadopsi prinsip **Zero Native C++ Dependencies**. Seluruh pustaka berbasis JavaScript WebGL murni tanpa memerlukan instalasi Visual Studio C++ Build Tools atau Python node-gyp.
 ```bash
 npm install
 ```
 
-### 3. Jalankan Pemeriksaan Kesehatan Mandiri
+#### 3. Jalankan Pemeriksaan Kesehatan Mandiri
 Sebelum menjalankan aplikasi untuk pertama kali, jalankan skrip diagnosa otomatis:
 ```bash
 npm run doctor
 ```
 
-### 4. Menjalankan Mode Pengembangan
+#### 4. Menjalankan Mode Pengembangan (Hot Reload)
 ```bash
 npm run dev
 ```
 
-### 5. Mengompilasi Rilis Produksi
+#### 5. Mengompilasi Rilis Produksi Sendiri
 ```bash
 npm run build
 ```

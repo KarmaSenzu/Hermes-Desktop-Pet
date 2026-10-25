@@ -1,0 +1,56 @@
+name: Multi-Platform Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-release:
+    strategy:
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install Dependencies
+        working-directory: avatar
+        run: npm ci || npm install
+
+      - name: Run Diagnostic Healthcheck
+        working-directory: avatar
+        run: npm run doctor
+
+      - name: Build Application Bundle
+        working-directory: avatar
+        run: npm run build
+
+      - name: Package Multi-Platform Executable (electron-builder)
+        working-directory: avatar
+        run: npx --yes electron-builder --publish never
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload Release Artifacts
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: |
+            avatar/dist/*.exe
+            avatar/dist/*.dmg
+            avatar/dist/*.AppImage
+            avatar/dist/*.deb
+            avatar/dist/*.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
