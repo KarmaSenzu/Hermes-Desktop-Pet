@@ -11,6 +11,7 @@ permissions:
 jobs:
   build-release:
     strategy:
+      fail-fast: false
       matrix:
         os: [windows-latest, macos-latest, ubuntu-latest]
     runs-on: ${{ matrix.os }}
@@ -24,6 +25,12 @@ jobs:
         with:
           node-version: 24
 
+      - name: Install Linux Build Dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libfuse2t64 || sudo apt-get install -y libfuse2 || true
+
       - name: Install Dependencies
         working-directory: avatar
         run: npm ci || npm install
@@ -36,11 +43,22 @@ jobs:
         working-directory: avatar
         run: npm run build
 
-      - name: Package Multi-Platform Executable (electron-builder)
+      - name: Package Windows Executable
+        if: runner.os == 'Windows'
         working-directory: avatar
-        run: npx --yes electron-builder --publish never
+        run: npx --yes electron-builder --win --publish never
+
+      - name: Package macOS Executable
+        if: runner.os == 'macOS'
+        working-directory: avatar
+        run: npx --yes electron-builder --mac --publish never
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+
+      - name: Package Linux Executable
+        if: runner.os == 'Linux'
+        working-directory: avatar
+        run: npx --yes electron-builder --linux AppImage deb --publish never
 
       - name: Upload Release Artifacts
         uses: softprops/action-gh-release@v2
@@ -48,11 +66,13 @@ jobs:
         with:
           name: Hermes Desktop Pet ${{ github.ref_name }}
           generate_release_notes: true
+          fail_on_unmatched_files: false
           files: |
             avatar/dist/*.exe
             avatar/dist/*.dmg
             avatar/dist/*.AppImage
             avatar/dist/*.deb
+            avatar/dist/*.tar.gz
             avatar/dist/*.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
