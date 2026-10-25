@@ -58,7 +58,7 @@ jobs:
       - name: Package Linux Executable
         if: runner.os == 'Linux'
         working-directory: avatar
-        run: npx --yes electron-builder --linux AppImage deb --publish never
+        run: npx --yes electron-builder --linux --publish never
 
       - name: Upload Release Artifacts
         uses: softprops/action-gh-release@v2
