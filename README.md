@@ -292,6 +292,14 @@ Kami menyambut kontribusi dari komunitas untuk pengembangan Hermes Desktop Pet. 
 
 ---
 
-## Lisensi
+## Lisensi & Atribusi Aset (Split License)
 
-Proyek ini dilisensikan di bawah lisensi terbuka [MIT](LICENSE). Model pihak ketiga, suara vokal, atau aset karakter yang ditambahkan oleh pengguna tunduk pada lisensi pencipta masing-masing.
+Proyek ini menerapkan ketentuan lisensi terpisah (*Split Licensing*) antara kode program dan aset multimedia:
+
+* **Kode Sumber Perangkat Lunak:** Dilisensikan secara terbuka di bawah [Lisensi MIT](LICENSE). Siapa pun diperbolehkan mempelajari, memodifikasi, dan mengembangkan ulang kode program.
+* **Aset Model Karakter & Audio Bawaan ("Mother"):** Disediakan khusus di bawah **Lisensi Non-Komersial (Non-Commercial / Fan Tribute)**.
+  * Bersumber dari dan merupakan bentuk apresiasi terhadap game indie di Steam: **"M For Mother"** (internal executable: `YourMother`).
+  * **Hanya untuk pembelajaran pemrograman, eksperimen riset AI, dan penggunaan harian pribadi.**
+  * **DILARANG KERAS DIKOMERSIALKAN ATAU DIPERJUALBELIKAN DALAM BENTUK APA PUN.**
+  * Kami menyampaikan rasa terima kasih dan apresiasi setinggi-tingginya kepada pengembang game aslinya di Steam. Pengguna sangat diimbau untuk mendukung kreator asli dengan membeli dan memainkan game aslinya langsung di Steam!
+* **Model Kustom Pengguna:** Model 3D (`.vrm`, `.glb`) atau Live2D pihak ketiga yang dimasukkan sendiri oleh pengguna tetap tunduk pada ketentuan lisensi kreator masing-masing.

@@ -1,21 +1,29 @@
-MIT License
+# PANDUAN KETENTUAN LISENSI & HAK CIPTA (SPLIT LICENSE)
 
-Copyright (c) 2026 Hermes 3D Avatar contributors
+Proyek ini menerapkan model pemisahan lisensi (*Split / Dual License*) antara kode sumber aplikasi dan aset karakter multimedia:
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+---
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+## 1. Kode Sumber Perangkat Lunak (Software Source Code) — Lisensi MIT
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+Hak Cipta (c) 2026 Pengembang Hermes Desktop Pet (KarmaSenzu & Kontributor).
+
+Izin dengan ini diberikan, tanpa dipungut biaya, kepada siapa saja yang memperoleh salinan perangkat lunak ini dan file dokumentasi terkait ("Perangkat Lunak"), untuk memperlakukan Perangkat Lunak tanpa batasan, termasuk tanpa batasan hak untuk menggunakan, menyalin, memodifikasi, menggabungkan, mempublikasikan, mendistribusikan, mensublisensikan, dan/atau menjual salinan Perangkat Lunak, dengan syarat tunduk pada ketentuan berikut:
+
+Pemberitahuan hak cipta di atas dan pemberitahuan izin ini harus disertakan dalam semua salinan atau bagian substansial dari Perangkat Lunak.
+
+PERANGKAT LUNAK INI DISEDIAKAN "SEBAGAIMANA ADANYA", TANPA JAMINAN DALAM BENTUK APA PUN, BAIK TERSURAT MAUPUN TERSIRAT, TERMASUK NAMUN TIDAK TERBATAS PADA JAMINAN KELAYAKAN UNTUK DIPERJUALBELIKAN, KESESUAIAN UNTUK TUJUAN TERTENTU, DAN KETIADAAN PELANGGARAN.
+
+---
+
+## 2. Aset Model Karakter & Audio Bawaan ("Mother") — Lisensi Non-Komersial
+
+Seluruh aset model karakter Live2D (`avatar/assets/live2d/mother/`) dan rekaman audio vokal (`avatar/assets/audio/mother/`) bersumber dari dan merupakan bentuk apresiasi karya (*tribute*) terhadap game indie di platform Steam: **"M For Mother"** (internal executable: `YourMother`).
+
+### Ketentuan Lisensi Aset:
+1. **Penggunaan Non-Komersial & Edukatif:**
+   Aset model karakter dan audio ini disediakan semata-mata untuk pembelajaran pemrograman WebGL/Live2D, riset antarmuka interaktif AI, dan penggunaan pribadi sehari-hari (*personal desktop companion*).
+2. **DILARANG KERAS DIKOMERSIALKAN / DIPERJUALBELIKAN:**
+   Model karakter, tekstur, ekspresi, maupun file suaranya **TIDAK** tunduk pada lisensi komersial MIT. Dilarang keras memperjualbelikan, melisensikan ulang secara berbayar, atau memanfaatkannya untuk keuntungan finansial dalam bentuk apa pun.
+3. **Hak Cipta Asli & Dukungan Kreator:**
+   Hak cipta visual, model, dan desain karakter asli sepenuhnya merupakan hak milik dari kreator/pengembang game **"M For Mother"**. Kami sangat menghargai karya pembuat aslinya dan mengimbau seluruh pengguna untuk mendukung developer game dengan membeli dan memainkan game aslinya di Steam.
