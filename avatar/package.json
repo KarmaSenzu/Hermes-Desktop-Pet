@@ -1,7 +1,12 @@
 {
-  "name": "hermes-3d-avatar",
+  "name": "hermes-desktop-pet",
   "version": "0.1.0",
-  "description": "Hermes 3D Avatar — desktop pet 3D (Electron + three.js + three-vrm)",
+  "description": "Hermes Desktop Pet — Interactive AI Companion (Electron, Pixi.js, Live2D & Three.js)",
+  "homepage": "https://github.com/KarmaSenzu/Hermes-Desktop-Pet",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/KarmaSenzu/Hermes-Desktop-Pet.git"
+  },
   "private": true,
   "type": "module",
   "main": "./out/main/index.js",
@@ -11,11 +16,17 @@
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "preview": "electron-vite preview",
-    "start": "electron-vite preview"
+    "start": "electron-vite preview",
+    "doctor": "node scripts/doctor.mjs"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   },
   "dependencies": {
     "@pixiv/three-vrm": "^3.3.0",
     "msedge-tts": "^1.2.0",
+    "pixi-live2d-display": "^0.4.0",
+    "pixi.js": "^6.5.10",
     "three": "^0.170.0",
     "ws": "^8.18.0"
   },

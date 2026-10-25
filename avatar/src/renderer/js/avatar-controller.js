@@ -40,6 +40,12 @@ export class AvatarController {
     // State emote (animasi sementara yang meng-override idle).
     this.emote = null // { name, startedAt, duration }
 
+    // State "ikuti kursor" (look-at pointer).
+    // Saat aktif, gerak idle kepala dilemahkan agar pandangan mengikuti mouse.
+    this._lookAtTarget = null // { x, y } di ruang dunia (untuk VRM lookAt)
+    this._pointerActive = false // true bila kursor di atas canvas
+    this._pointerScreen = { x: 0, y: 0 } // posisi kursor terakhir (client px)
+
     // Debug: info bone yang ditemukan (untuk diagnosa T-pose).
     if (typeof console !== 'undefined') {
       console.log('[avatar bones]', JSON.stringify({
@@ -91,7 +97,9 @@ export class AvatarController {
       sad: ['sad', 'Sad', 'sorrow'],
       angry: ['angry', 'Angry'],
       surprised: ['surprised', 'Surprised', 'shock'],
-      thinking: ['relaxed', 'Relaxed', 'neutral']
+      thinking: ['relaxed', 'Relaxed', 'neutral'],
+      composing: ['relaxed', 'Relaxed', 'neutral'],
+      generating: ['relaxed', 'Relaxed', 'neutral']
     }
     const list = candidates[name] || candidates.neutral
 
@@ -138,6 +146,82 @@ export class AvatarController {
     if (this.rightArmBone) {
       this.rightArmBone.rotation.z = 0.7
       this._rightArmBase = this.rightArmBone.rotation.clone()
+    }
+  }
+
+  /**
+   * Arahkan kepala + mata avatar ke posisi kursor (fitur "ikuti kursor").
+   *
+   * screenX/screenY  : koordinat client (px) di dalam canvas.
+   * viewportW/viewportH : ukuran canvas (px).
+   *
+   * Untuk model VRM, pakai vrm.lookAt.target (bola mata + kepala ikut
+   * secara natural, seperti Live2D). Untuk non-VRM (MMD/FBX/GLB),
+   * fallback: gerakkan bone neck/head (yaw/pitch) relatif ke kursor.
+   */
+  lookAtPointer(screenX, screenY, viewportW, viewportH) {
+    if (!viewportW || !viewportH) return
+
+    // Normalisasi posisi kursor ke -1..1 (x: kiri→kanan, y: bawah→atas).
+    const nx = (screenX / viewportW) * 2 - 1
+    const ny = 1 - (screenY / viewportH) * 2
+
+    this._pointerActive = true
+    this._pointerScreen = { x: screenX, y: screenY }
+
+    if (this.vrm?.lookAt) {
+      // --- VRM: target lookAt di ruang dunia (mata ikut, kepala menoleh) ---
+      this._applyVrmLookAt(nx, ny)
+    } else {
+      // --- Non-VRM: gerak bone neck/head ---
+      this._applyBoneLookAt(nx, ny)
+    }
+  }
+
+  /** Bersihkan target lookAt (kursor keluar canvas → kembali idle). */
+  clearPointerLookAt() {
+    this._pointerActive = false
+    this._lookAtTarget = null
+    if (this.vrm?.lookAt?.target) {
+      // Kembalikan target ke titik lurus ke depan.
+      this.vrm.lookAt.target.set(0, 0, 1)
+    }
+  }
+
+  _applyVrmLookAt(nx, ny) {
+    const vrm = this.vrm
+    // Dapatkan kepala untuk referensi arah.
+    const head = this.headBone || this.neckBone
+    if (!head) return
+
+    // Titik dunia yang "dilihat" oleh mata: proyeksikan kursor dari kamera.
+    // Karena kita tidak pegang kamera di sini, kita arahkan ke titik di depan
+    // kepala (offset horizontal/vertikal). Nilai ini diterjemahkan three-vrm
+    // menjadi rotasi kepala + posisi bola mata secara natural.
+    const look = new THREE.Vector3(nx * 1.5, ny * 1.2, 2)
+    head.localToWorld(look)
+    vrm.lookAt.target.copy(look)
+    this._lookAtTarget = look
+  }
+
+  _applyBoneLookAt(nx, ny) {
+    // Fallback non-VRM: yaw (kiri/kanan) & pitch (atas/bawah) pada bone.
+    const yaw = nx * 0.5 // ± ~28°
+    const pitch = -ny * 0.25 // ± ~14°
+
+    if (this.neckBone && this._neckBase) {
+      this.neckBone.rotation.set(
+        this._neckBase.x + pitch,
+        this._neckBase.y + yaw,
+        this._neckBase.z
+      )
+    }
+    if (this.headBone && this._headBase) {
+      this.headBone.rotation.set(
+        this._headBase.x + pitch * 0.6,
+        this._headBase.y + yaw * 0.6,
+        this._headBase.z
+      )
     }
   }
 
@@ -242,8 +326,13 @@ export class AvatarController {
   _updateIdleMotion() {
     const t = this.clock * 0.001 // detik
 
+    // Saat kursor aktif (look-at pointer), jangan timpa rotasi kepala/leher
+    // dengan gerak idle — biarkan pandangan mengikuti kursor. Badan tetap goyang.
+    // Berlaku untuk VRM (lookAt internal) maupun non-VRM (bone neck/head).
+    const followingPointer = this._pointerActive
+
     // Kepala/leher: lihat kiri-kanan pelan (yaw) + angguk halus (pitch).
-    if (this.neckBone && this._neckBase) {
+    if (!followingPointer && this.neckBone && this._neckBase) {
       const yaw = Math.sin(t * 0.5) * 0.2 // ± ~11°
       const pitch = Math.sin(t * 0.9 + 1.3) * 0.06
       this.neckBone.rotation.set(
@@ -254,7 +343,7 @@ export class AvatarController {
     }
 
     // Kepala (head) ikut gerak halus bila ada bone terpisah.
-    if (this.headBone && this._headBase) {
+    if (!followingPointer && this.headBone && this._headBase) {
       const yaw = Math.sin(t * 0.5 + 0.5) * 0.1
       this.headBone.rotation.set(
         this._headBase.x + Math.sin(t * 0.7) * 0.04,
@@ -263,7 +352,7 @@ export class AvatarController {
       )
     }
 
-    // Badan/spine: goyang halus.
+    // Badan/spine: goyang halus (tetap jalan saat ikuti kursor).
     if (this.spineBone && this._spineBase) {
       const sway = Math.sin(t * 0.4) * 0.06
       this.spineBone.rotation.set(

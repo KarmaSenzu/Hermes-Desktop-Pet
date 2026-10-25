@@ -4,52 +4,468 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Hermes 3D Avatar — Pengaturan</title>
+    <script src="./live2dcubismcore.min.js"></script>
     <link rel="stylesheet" href="./styles/launcher.css" />
   </head>
   <body>
     <div class="settings">
-      <!-- Sidebar (kiri) -->
+      <!-- Sidebar (kiri) ala macOS System Settings -->
       <aside class="sidebar">
-        <div class="brand">
-          <span class="brand-dot"></span>
-          <span>Hermes Avatar</span>
+        <!-- Traffic lights window controls -->
+        <div class="sidebar-topbar">
+          <div class="window-controls">
+            <button type="button" class="traffic-light traffic-close" id="btn-win-close" title="Tutup (Close)"></button>
+            <button type="button" class="traffic-light traffic-minimize" id="btn-win-minimize" title="Kecilkan (Minimize)"></button>
+            <button type="button" class="traffic-light traffic-maximize" id="btn-win-maximize" title="Besarkan (Maximize)"></button>
+          </div>
         </div>
+
+        <!-- Search Bar ala macOS Settings -->
+        <div class="sidebar-search">
+          <span class="search-icon">🔍</span>
+          <input type="text" id="sidebar-search-input" placeholder="Search" autocomplete="off" spellcheck="false" />
+        </div>
+
+        <!-- Profile Card ala macOS Settings -->
+        <div class="sidebar-profile">
+          <div class="profile-avatar">
+            <img src="./companion-avatar.jpg" alt="Companion Profile" class="profile-avatar-img" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';" />
+            <div class="profile-avatar-fallback" style="display:none;">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="8" r="5"></circle>
+                <path d="M20 21a8 8 0 1 0-16 0"></path>
+              </svg>
+            </div>
+          </div>
+          <div class="profile-info">
+            <div class="profile-name">Hermes Avatar</div>
+            <div class="profile-sub">Personal Companion</div>
+          </div>
+          <span class="profile-chevron">›</span>
+        </div>
+
+        <!-- Menu Navigasi -->
         <nav class="nav" id="nav"></nav>
-        <div class="sidebar-footer">v0.1.0</div>
+        <div class="sidebar-footer">Hermes 3D v0.1.0</div>
       </aside>
 
       <!-- Panel konten (kanan) -->
       <main class="content">
+        <!-- macOS Top Header Bar -->
+        <header class="content-header">
+          <div class="header-left">
+            <div class="nav-history-buttons">
+              <button type="button" id="nav-back-btn" class="nav-hist-btn" title="Sebelumnya" disabled>‹</button>
+              <button type="button" id="nav-forward-btn" class="nav-hist-btn" title="Berikutnya" disabled>›</button>
+            </div>
+            <h2 id="current-section-title" class="current-section-title">Home</h2>
+          </div>
+          <div class="header-right">
+            <button type="button" id="theme-toggle-btn" class="theme-toggle-btn" title="Ganti Mode Hitam / Putih">
+              <span id="theme-icon" class="theme-icon">🌙</span>
+              <span id="theme-text" class="theme-text">Mode Gelap</span>
+            </button>
+          </div>
+        </header>
+
         <!-- HOME -->
         <section id="panel-home" class="panel active">
           <h1>Home</h1>
-          <p class="subtitle">Status sistem & mulai.</p>
+          <p class="subtitle">Status sistem & mulai avatar.</p>
 
-          <div class="card">
-            <h2>Persiapan</h2>
-            <label class="switch-row">
-              <span>9Router aktif</span>
-              <input id="router-check" type="checkbox" />
-            </label>
-            <div class="service-row">
-              <span>Hermes (otak)</span>
-              <span id="hermes-status" class="badge">…</span>
+          <!-- ALERT BANNER: Muncul bila ada paket yang belum siap -->
+          <div id="home-setup-alert" class="settings-alert-banner hidden">
+            <div class="format-emblem theme-amber">
+              <svg class="lucide-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
             </div>
-            <p class="hint">Centang sebagai pengingat bahwa kamu sudah menjalankan <code>9router</code> di terminal. Hermes otomatis dijalankan oleh app.</p>
+            <div class="alert-content">
+              <strong>Persiapan Paket Diperlukan</strong>
+              <p>Beberapa paket penting (Hermes, 9Router, atau Kokoro-TTS) belum aktif atau belum terpasang. Buka menu Package Hub untuk melengkapi persiapan.</p>
+            </div>
+            <button type="button" id="alert-open-pkg-btn" class="mini-btn primary">Buka Package Hub</button>
           </div>
 
+          <div class="group-header">Status Sistem & Service</div>
           <div class="card">
-            <h2>Model Aktif</h2>
-            <div id="home-model" class="llm-active"></div>
+            <div class="settings-row">
+              <div class="format-emblem theme-blue">
+                <svg class="lucide-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg>
+              </div>
+              <div class="format-info-col">
+                <div class="format-title-line">
+                  <span class="format-title">9Router Service</span>
+                </div>
+                <p class="format-desc-text">Proxy multi-model LLM di port 20128</p>
+              </div>
+              <div class="row-control">
+                <input id="router-check" type="checkbox" class="mac-switch" />
+              </div>
+            </div>
+            <div class="settings-row">
+              <div class="format-emblem theme-indigo">
+                <svg class="lucide-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z"/><path d="M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z"/><path d="M12 2v2"/><path d="M12 12v2"/><path d="M12 20v2"/></svg>
+              </div>
+              <div class="format-info-col">
+                <div class="format-title-line">
+                  <span class="format-title">Hermes Daemon (Otak AI)</span>
+                </div>
+                <p class="format-desc-text">WebSocket JSON-RPC daemon di port 9119</p>
+              </div>
+              <div class="row-control">
+                <span id="hermes-status" class="badge">…</span>
+              </div>
+            </div>
           </div>
 
+          <div class="group-header">Konfigurasi Aktif Saat Ini</div>
           <div class="card">
-            <h2>Karakter Aktif</h2>
-            <div id="active-char" class="active-char"></div>
+            <div class="settings-row">
+              <div class="format-emblem theme-purple">
+                <svg class="lucide-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/></svg>
+              </div>
+              <div class="format-info-col">
+                <div class="format-title-line">
+                  <span class="format-title">Model LLM Terpilih</span>
+                </div>
+                <p class="format-desc-text">Model kecerdasan yang sedang aktif</p>
+              </div>
+              <div class="row-control">
+                <div id="home-model" class="llm-active"></div>
+              </div>
+            </div>
+            <div class="settings-row">
+              <div class="format-emblem theme-emerald">
+                <svg class="lucide-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="5"/><path d="M20 21a8 8 0 0 0-16 0"/></svg>
+              </div>
+              <div class="format-info-col">
+                <div class="format-title-line">
+                  <span class="format-title">Karakter Avatar</span>
+                </div>
+                <p class="format-desc-text">Model visual 2D / 3D yang dimuat</p>
+              </div>
+              <div class="row-control">
+                <div id="active-char" class="active-char"></div>
+              </div>
+            </div>
           </div>
 
-          <button id="start-btn" class="primary">Mulai</button>
-          <div id="status" class="status"></div>
+          <div style="margin-top: 22px;">
+            <button id="start-btn" class="mac-hero-btn primary">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 3 20 12 6 21 6 3"/></svg>
+              <span>Mulai Desktop Avatar</span>
+            </button>
+            <div id="status" class="status" style="margin-top: 10px;"></div>
+          </div>
+        </section>
+
+        <!-- PACKAGE -->
+        <section id="panel-package" class="panel">
+          <h1>Package Hub</h1>
+          <p class="subtitle">Pusat instalasi, dependensi online, & modul pendukung avatar.</p>
+
+          <!-- Status Ringkasan Sistem -->
+          <div class="card padded" style="margin-bottom: 20px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
+              <div>
+                <span class="row-title" style="font-size:14px;">Status Kelengkapan Sistem</span>
+                <div id="package-overall-status" class="overall-badge" style="margin-top:5px;">Memeriksa kelengkapan…</div>
+              </div>
+              <button type="button" id="pkg-refresh-all-btn" class="mini-btn browse" title="Pindai ulang seluruh port dan dependensi">Periksa Ulang 🔄</button>
+            </div>
+            <p class="hint" style="margin: 8px 0 0;">Klik setiap paket di bawah untuk membuka detail panduan instalasi atau mengontrol service.</p>
+          </div>
+
+          <div class="group-header">Daftar Paket & Service (Buka / Tutup Detail)</div>
+
+          <!-- 1. Hermes Agent -->
+          <div class="pkg-card" data-pkg="hermes">
+            <div class="pkg-header">
+              <div class="pkg-title-area">
+                <div class="pkg-icon-badge theme-indigo">
+                  <svg class="lucide-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z"/><path d="M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z"/><path d="M12 2v2"/><path d="M12 12v2"/><path d="M12 20v2"/></svg>
+                </div>
+                <div class="pkg-title-text">
+                  <span class="pkg-title">Hermes Agent CLI (Otak AI)</span>
+                  <span class="pkg-sub">Daemon AI lokal (port 9119) · Eksekutor LLM, tools & memori</span>
+                </div>
+              </div>
+              <div class="pkg-header-right">
+                <span class="package-badge badge" id="pkg-status-hermes">…</span>
+                <span class="pkg-chevron">▾</span>
+              </div>
+            </div>
+            <div class="pkg-body">
+              <div class="pkg-subtabs">
+                <button type="button" class="pkg-tab-btn active" data-tab="install">📥 Panduan Download & Install</button>
+                <button type="button" class="pkg-tab-btn" data-tab="manage">⚙️ Status & Kelola Service</button>
+              </div>
+
+              <!-- Sub-panel Install -->
+              <div class="pkg-tab-panel active" data-panel="install">
+                <p class="row-desc">Jika Hermes CLI belum terpasang di komputer Anda, buka terminal PowerShell dan jalankan penginstalan:</p>
+                <div style="display:flex; gap:8px; margin: 4px 0 8px;">
+                  <button type="button" class="terminal-action-btn" data-terminal-cmd="npm install -g @nousresearch/hermes">🚀 Buka di Terminal & Install (NPM)</button>
+                </div>
+                <div class="command-box-group">
+                  <span class="command-box-label">Salin Perintah Manual (PowerShell):</span>
+                  <div class="command-box">
+                    <code>npm install -g @nousresearch/hermes</code>
+                    <button type="button" class="copy-cmd-btn mini-btn" data-copy="npm install -g @nousresearch/hermes">Salin 📋</button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Sub-panel Manage -->
+              <div class="pkg-tab-panel" data-panel="manage">
+                <div class="package-meta">
+                  <span>Port Target: <code>9119</code></span> · 
+                  <span>Protokol: <code>WebSocket JSON-RPC</code></span>
+                </div>
+                <p class="row-desc">Hermes otomatis dijalankan oleh aplikasi ini. Jika Anda ingin menjalankannya secara manual di jendela terminal terpisah:</p>
+                <div style="display:flex; gap:8px; margin: 4px 0 8px;">
+                  <button type="button" class="terminal-action-btn secondary-term" data-terminal-cmd="hermes serve">⚡ Buka Terminal & Jalankan (hermes serve)</button>
+                </div>
+                <div class="command-box-group">
+                  <span class="command-box-label">Perintah Terminal:</span>
+                  <div class="command-box">
+                    <code>hermes serve</code>
+                    <button type="button" class="copy-cmd-btn mini-btn" data-copy="hermes serve">Salin 📋</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 2. 9Router -->
+          <div class="pkg-card" data-pkg="9router">
+            <div class="pkg-header">
+              <div class="pkg-title-area">
+                <div class="pkg-icon-badge theme-blue">
+                  <svg class="lucide-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg>
+                </div>
+                <div class="pkg-title-text">
+                  <span class="pkg-title">9Router (LLM Gateway)</span>
+                  <span class="pkg-sub">Proxy multi-model (port 20128) · DeepSeek, OpenAI, Claude, Ollama</span>
+                </div>
+              </div>
+              <div class="pkg-header-right">
+                <span class="package-badge badge" id="pkg-status-router">…</span>
+                <span class="pkg-chevron">▾</span>
+              </div>
+            </div>
+            <div class="pkg-body">
+              <div class="pkg-subtabs">
+                <button type="button" class="pkg-tab-btn active" data-tab="install">📥 Panduan Download & Install</button>
+                <button type="button" class="pkg-tab-btn" data-tab="manage">⚙️ Status & Kelola Service</button>
+              </div>
+
+              <!-- Sub-panel Install -->
+              <div class="pkg-tab-panel active" data-panel="install">
+                <p class="row-desc">9Router adalah gateway cerdas yang mengarahkan prompt ke berbagai provider AI pilihan Anda:</p>
+                <div style="display:flex; gap:8px; margin: 4px 0 8px;">
+                  <button type="button" class="terminal-action-btn" data-terminal-cmd="npm install -g 9router">🚀 Buka di Terminal & Install (NPM)</button>
+                </div>
+                <div class="command-box-group">
+                  <span class="command-box-label">Salin Perintah Manual (PowerShell):</span>
+                  <div class="command-box">
+                    <code>npm install -g 9router</code>
+                    <button type="button" class="copy-cmd-btn mini-btn" data-copy="npm install -g 9router">Salin 📋</button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Sub-panel Manage -->
+              <div class="pkg-tab-panel" data-panel="manage">
+                <div class="package-meta">
+                  <span>Port Target: <code>20128</code></span> · 
+                  <span>Perintah Service: <code>9router</code></span>
+                </div>
+                <p class="row-desc">Jalankan service 9Router di terminal baru sebelum menghubungkan avatar ke LLM:</p>
+                <div style="display:flex; gap:8px; margin: 4px 0 8px;">
+                  <button type="button" class="terminal-action-btn secondary-term" data-terminal-cmd="9router">⚡ Buka Terminal & Jalankan (9router)</button>
+                </div>
+                <div class="command-box-group">
+                  <span class="command-box-label">Perintah Terminal:</span>
+                  <div class="command-box">
+                    <code>9router</code>
+                    <button type="button" class="copy-cmd-btn mini-btn" data-copy="9router">Salin 📋</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 3. Kokoro-TTS Engine -->
+          <div class="pkg-card" data-pkg="kokoro">
+            <div class="pkg-header">
+              <div class="pkg-title-area">
+                <div class="pkg-icon-badge theme-rose">
+                  <svg class="lucide-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>
+                </div>
+                <div class="pkg-title-text">
+                  <span class="pkg-title">Kokoro-TTS Engine (Suara Anime Lokal)</span>
+                  <span class="pkg-sub">Sintesis suara anime lokal bertenaga ONNX port 8880 (Bebas lisensi komersial)</span>
+                </div>
+              </div>
+              <div class="pkg-header-right">
+                <span class="package-badge badge" id="pkg-status-kokoro">…</span>
+                <span class="pkg-chevron">▾</span>
+              </div>
+            </div>
+            <div class="pkg-body">
+              <div class="pkg-subtabs">
+                <button type="button" class="pkg-tab-btn active" data-tab="install">📥 Panduan Download & Install</button>
+                <button type="button" class="pkg-tab-btn" data-tab="manage">⚙️ Status & Kelola Service</button>
+              </div>
+
+              <!-- Sub-panel Install -->
+              <div class="pkg-tab-panel active" data-panel="install">
+                <div class="package-meta" style="margin-bottom:6px;">
+                  <span>Status Dependensi Pip: <code id="pkg-kokoro-pip-status">Pengecekan…</code></span> · 
+                  <span>File Model Suara: <code id="pkg-kokoro-model-status">Pengecekan…</code></span>
+                </div>
+                <p class="row-desc">Kokoro membutuhkan paket python <code>kokoro-onnx</code> dan <code>soundfile</code>. Anda bisa menginstallnya langsung di terminal:</p>
+                <div style="display:flex; gap:8px; margin: 6px 0 10px; flex-wrap:wrap;">
+                  <button type="button" class="terminal-action-btn" data-terminal-cmd="py -m pip install kokoro-onnx soundfile">🚀 Buka di Terminal & Install Pip</button>
+                  <button type="button" id="pkg-install-kokoro-btn" class="mini-btn use">Otomatis Install di Background App</button>
+                </div>
+                <div class="command-box-group">
+                  <span class="command-box-label">Perintah Terminal Manual:</span>
+                  <div class="command-box">
+                    <code>py -m pip install kokoro-onnx soundfile</code>
+                    <button type="button" class="copy-cmd-btn mini-btn" data-copy="py -m pip install kokoro-onnx soundfile">Salin 📋</button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Sub-panel Manage -->
+              <div class="pkg-tab-panel" data-panel="manage">
+                <div class="package-meta">
+                  <span>Port Server: <code>8880</code></span> · 
+                  <span>Lokasi Cache: <code id="pkg-kokoro-location">~/.hermes-avatar/packages/kokoro/</code></span>
+                </div>
+                <p class="row-desc">Jalankan daemon server audio Kokoro agar avatar dapat bersuara anime:</p>
+                <div style="display:flex; gap:8px; margin: 6px 0 10px; flex-wrap:wrap;">
+                  <button type="button" class="terminal-action-btn secondary-term" data-terminal-cmd="py scripts/kokoro_server.py">⚡ Buka Terminal & Jalankan Server</button>
+                  <button type="button" id="pkg-start-kokoro-btn" class="mini-btn primary">Jalankan di Background App</button>
+                </div>
+                <div class="package-actions-row" style="margin-top: 8px;">
+                  <button type="button" id="pkg-open-folder-btn" class="mini-btn edit">Buka Folder Paket 📁</button>
+                  <button type="button" id="pkg-clean-btn" class="mini-btn del">Hapus Model & Cache 🗑️</button>
+                  <button type="button" id="pkg-uninstall-pip-btn" class="mini-btn del">Uninstall Pip ⚠️</button>
+                </div>
+                <div id="pkg-kokoro-log" class="package-log muted" style="margin-top: 8px;"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 4. Python Runtime -->
+          <div class="pkg-card" data-pkg="python">
+            <div class="pkg-header">
+              <div class="pkg-title-area">
+                <div class="pkg-icon-badge theme-amber">
+                  <svg class="lucide-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" x2="20" y1="19" y2="19"/></svg>
+                </div>
+                <div class="pkg-title-text">
+                  <span class="pkg-title">Python 3.10+ Runtime</span>
+                  <span class="pkg-sub">Lingkungan eksekusi Python untuk TTS lokal & skrip pendukung</span>
+                </div>
+              </div>
+              <div class="pkg-header-right">
+                <span class="package-badge badge" id="pkg-status-python">…</span>
+                <span class="pkg-chevron">▾</span>
+              </div>
+            </div>
+            <div class="pkg-body">
+              <div class="pkg-subtabs">
+                <button type="button" class="pkg-tab-btn active" data-tab="install">📥 Panduan Download & Install</button>
+                <button type="button" class="pkg-tab-btn" data-tab="manage">⚙️ Status & Kelola Service</button>
+              </div>
+
+              <!-- Sub-panel Install -->
+              <div class="pkg-tab-panel active" data-panel="install">
+                <p class="row-desc">Jika Python belum terpasang, unduh dari situs resmi Python. <strong>PENTING:</strong> Centang opsi <em>"Add Python to PATH"</em> saat instalasi.</p>
+                <div style="display:flex; gap:8px; margin: 6px 0 8px;">
+                  <button type="button" class="terminal-action-btn" data-terminal-cmd="python --version; py --version">🚀 Buka Terminal & Tes Python</button>
+                </div>
+                <div class="command-box-group">
+                  <span class="command-box-label">Perintah Terminal Cek Versi:</span>
+                  <div class="command-box">
+                    <code>python --version</code>
+                    <button type="button" class="copy-cmd-btn mini-btn" data-copy="python --version">Salin 📋</button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Sub-panel Manage -->
+              <div class="pkg-tab-panel" data-panel="manage">
+                <div class="package-meta">
+                  <span id="pkg-python-version">Memeriksa versi…</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 5. Live2D & Model Assets -->
+          <div class="pkg-card" data-pkg="live2d">
+            <div class="pkg-header">
+              <div class="pkg-title-area">
+                <div class="pkg-icon-badge theme-emerald">
+                  <svg class="lucide-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/></svg>
+                </div>
+                <div class="pkg-title-text">
+                  <span class="pkg-title">Live2D Cubism Core & Karakter</span>
+                  <span class="pkg-sub">Core runtime Cubism 4 untuk rendering karakter, eye-tracking & fisika</span>
+                </div>
+              </div>
+              <div class="pkg-header-right">
+                <span class="package-badge badge on">Tersedia</span>
+                <span class="pkg-chevron">▾</span>
+              </div>
+            </div>
+            <div class="pkg-body">
+              <div class="package-meta">
+                <span>Versi Runtime: <code>Cubism 4 WebGL Core</code></span> · 
+                <span>Folder Model: <code>assets/live2d/</code></span>
+              </div>
+              <p class="row-desc" style="margin-top:6px;">Modul Live2D sudah terbundel langsung di dalam aplikasi dan siap digunakan tanpa download tambahan.</p>
+            </div>
+          </div>
+
+          <!-- 6. Mnemosyne Memory -->
+          <div class="pkg-card" data-pkg="mnemosyne">
+            <div class="pkg-header">
+              <div class="pkg-title-area">
+                <div class="pkg-icon-badge theme-purple">
+                  <svg class="lucide-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="8" x="2" y="2" rx="2" ry="2"/><rect width="20" height="8" x="2" y="14" rx="2" ry="2"/><line x1="6" x2="6.01" y1="6" y2="6"/><line x1="6" x2="6.01" y1="18" y2="18"/></svg>
+                </div>
+                <div class="pkg-title-text">
+                  <span class="pkg-title">Mnemosyne Memory Layer</span>
+                  <span class="pkg-sub">Penyimpanan memori jangka panjang permanen lokal (SQLite + Hybrid Vector)</span>
+                </div>
+              </div>
+              <div class="pkg-header-right">
+                <span class="package-badge badge on" style="background:#8b5cf6; color:#fff;">Aktif ✓</span>
+                <span class="pkg-chevron">▾</span>
+              </div>
+            </div>
+            <div class="pkg-body">
+              <div class="package-meta">
+                <span>Penyedia: <code>Local SQLite WAL Hybrid Vector</code></span>
+              </div>
+              <p class="row-desc" style="margin-top:6px;">Memori percakapan disimpan secara 100% offline dan privat di perangkat Anda.</p>
+              <div style="display:flex; gap:8px; margin: 6px 0 8px;">
+                <button type="button" class="terminal-action-btn secondary-term" data-terminal-cmd="hermes memory status">⚡ Cek Status Memori di Terminal</button>
+              </div>
+              <div class="command-box-group">
+                <span class="command-box-label">Perintah Terminal:</span>
+                <div class="command-box">
+                  <code>hermes memory status</code>
+                  <button type="button" class="copy-cmd-btn mini-btn" data-copy="hermes memory status">Salin 📋</button>
+                </div>
+              </div>
+            </div>
+          </div>
         </section>
 
         <!-- KARAKTER -->
@@ -59,8 +475,8 @@
 
           <!-- VIEW 1: daftar format (bisa diklik) -->
           <div id="format-view">
+            <div class="group-header">Format yang Didukung</div>
             <div class="card">
-              <h2>Format yang Didukung</h2>
               <div id="format-list" class="format-list"></div>
             </div>
           </div>
@@ -75,12 +491,12 @@
         <!-- ANIMASI -->
         <section id="panel-animation" class="panel">
           <h1>Animasi</h1>
-          <p class="subtitle">Atur pose default, pose tersimpan, & emote.</p>
+          <p class="subtitle">Atur gaya avatar saat berpikir, megang jam/timer, memproses, serta kelola animasi kustom.</p>
 
           <!-- VIEW 1: menu sub-item -->
           <div id="anim-menu-view">
+            <div class="group-header">Kategori Animasi & Pose</div>
             <div class="card">
-              <h2>Menu</h2>
               <div id="anim-menu" class="anim-menu"></div>
             </div>
           </div>
@@ -97,202 +513,479 @@
           <h1>Suara</h1>
           <p class="subtitle">Pengaturan Text-to-Speech & Speech-to-Text.</p>
 
+          <div class="group-header">Text-to-Speech (TTS)</div>
           <div class="card">
-            <h2>Text-to-Speech</h2>
-            <label class="switch-row">
-              <span>Aktifkan suara</span>
-              <input id="tts-enabled" type="checkbox" />
-            </label>
-            <label class="field">
-              <span>Voice</span>
-              <select id="tts-voice">
-                <option value="id-ID-GadisNeural">Gadis (Perempuan, ID)</option>
-                <option value="id-ID-ArdiNeural">Ardi (Laki-laki, ID)</option>
-                <option value="en-US-AriaNeural">Aria (Perempuan, EN)</option>
-                <option value="en-US-GuyNeural">Guy (Laki-laki, EN)</option>
-              </select>
-            </label>
-            <label class="field">
-              <span>Kecepatan bicara</span>
-              <select id="tts-speed">
-                <option value="0.75">Lambat</option>
-                <option value="1.0">Normal</option>
-                <option value="1.25">Cepat</option>
-                <option value="1.5">Sangat cepat</option>
-              </select>
-            </label>
-            <label class="field">
-              <span>Panjang jawaban dibaca</span>
-              <select id="tts-verbosity">
-                <option value="concise">Ringkas (ringkasan)</option>
-                <option value="full">Lengkap</option>
-              </select>
-            </label>
+            <div class="settings-row">
+              <div class="format-emblem theme-rose">
+                <svg class="lucide-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>
+              </div>
+              <div class="format-info-col">
+                <div class="format-title-line">
+                  <span class="format-title">Aktifkan Suara</span>
+                </div>
+                <p class="format-desc-text">Narasikan teks respon melalui audio avatar</p>
+              </div>
+              <div class="row-control">
+                <input id="tts-enabled" type="checkbox" class="mac-switch" />
+              </div>
+            </div>
+            <div class="settings-row">
+              <div class="format-emblem theme-blue">
+                <svg class="lucide-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="8" x="2" y="2" rx="2" ry="2"/><rect width="20" height="8" x="2" y="14" rx="2" ry="2"/><line x1="6" x2="6.01" y1="6" y2="6"/><line x1="6" x2="6.01" y1="18" y2="18"/></svg>
+              </div>
+              <div class="format-info-col">
+                <div class="format-title-line">
+                  <span class="format-title">Engine Suara (Provider)</span>
+                </div>
+                <p class="format-desc-text">Modul pemroses sintesis ucapan</p>
+              </div>
+              <div class="row-control">
+                <select id="tts-provider" class="mac-select">
+                  <option value="kokoro">Kokoro-TTS (Lokal AI Anime ⭐)</option>
+                  <option value="edge">Edge-TTS (Microsoft Cloud)</option>
+                </select>
+              </div>
+            </div>
+            <div class="settings-row">
+              <div class="format-emblem theme-emerald">
+                <svg class="lucide-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg>
+              </div>
+              <div class="format-info-col">
+                <div class="format-title-line">
+                  <span class="format-title">Negara & Intonasi Aksen</span>
+                </div>
+                <p class="format-desc-text">Filter karakter vokal berdasarkan rumpun bahasa & negara</p>
+              </div>
+              <div class="row-control">
+                <select id="tts-country-filter" class="mac-select">
+                  <option value="all">🌐 Semua Negara & Aksen (56 Karakter)</option>
+                  <option value="jp">🇯🇵 Jepang (Anime Seiyuu ⭐)</option>
+                  <option value="id">🇮🇩 Indonesia (Edge Natural)</option>
+                  <option value="us">🇺🇸 Amerika Serikat (US English)</option>
+                  <option value="uk">🇬🇧 Inggris (British Accent)</option>
+                  <option value="es">🇪🇸 Spanyol (Español)</option>
+                  <option value="fr">🇫🇷 Prancis (Français)</option>
+                  <option value="it">🇮🇹 Italia (Italiano)</option>
+                  <option value="br">🇧🇷 Brasil (Português)</option>
+                  <option value="in">🇮🇳 India (Hindi Accent)</option>
+                  <option value="cn">🇨🇳 Tiongkok (Mandarin)</option>
+                </select>
+              </div>
+            </div>
+            <div class="settings-row">
+              <div class="format-emblem theme-purple">
+                <svg class="lucide-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+              </div>
+              <div class="format-info-col">
+                <div class="format-title-line">
+                  <span class="format-title">Pilihan Karakter Suara</span>
+                  <span id="tts-voice-badge" class="voice-badge-pill">🇯🇵 Jepang · Perempuan</span>
+                </div>
+                <p class="format-desc-text" id="tts-voice-match-count">Model timbre dan warna vokal aktif</p>
+              </div>
+              <div class="row-control">
+                <select id="tts-voice" class="mac-select"></select>
+              </div>
+            </div>
+            <div class="settings-row" id="tts-intonation-row">
+              <div class="format-emblem theme-amber">
+                <svg class="lucide-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/></svg>
+              </div>
+              <div class="format-info-col">
+                <div class="format-title-line">
+                  <span class="format-title">Gaya Intonasi & Pelafalan</span>
+                </div>
+                <p class="format-desc-text">Metode pengucapan fonem kata (vokal jernih tanpa eja per abjad)</p>
+              </div>
+              <div class="row-control">
+                <select id="tts-intonation" class="mac-select">
+                  <option value="anime">Anime Vokal Jernih (Jepang / ID ⭐)</option>
+                  <option value="international">Standard English (US)</option>
+                  <option value="british">British English (UK)</option>
+                </select>
+              </div>
+            </div>
+            <div class="settings-row" id="tts-test-row">
+              <div class="format-emblem theme-indigo">
+                <svg class="lucide-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="6 3 20 12 6 21 6 3"/></svg>
+              </div>
+              <div class="format-info-col">
+                <div class="format-title-line">
+                  <span class="format-title">Pengujian Suara (Audio Preview)</span>
+                </div>
+                <p class="format-desc-text">Dengarkan sampel ucapan langsung dari karakter vokal yang dipilih</p>
+              </div>
+              <div class="row-control">
+                <div class="mac-input-action-group">
+                  <input id="tts-test-input" type="text" class="mac-input" value="Halo! Saya adalah avatar desktop pintar Anda." placeholder="Ketik kalimat tes..." />
+                  <button type="button" id="tts-test-btn" class="group-action-btn" title="Dengarkan pengujian suara">
+                    <span id="tts-test-icon">🔊</span>
+                    <span id="tts-test-text">Uji</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div class="settings-row" id="kokoro-endpoint-field">
+              <div class="format-emblem theme-teal">
+                <svg class="lucide-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" x2="20" y1="19" y2="19"/></svg>
+              </div>
+              <div class="format-info-col">
+                <div class="format-title-line">
+                  <span class="format-title">Endpoint Server Kokoro</span>
+                </div>
+                <p class="format-desc-text">URL service daemon ONNX lokal</p>
+              </div>
+              <div class="row-control">
+                <input id="tts-kokoro-endpoint" type="text" class="mac-input" placeholder="http://127.0.0.1:8880" />
+              </div>
+            </div>
+            <div class="settings-row">
+              <div class="format-emblem theme-blue">
+                <svg class="lucide-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.48 12H2"/></svg>
+              </div>
+              <div class="format-info-col">
+                <div class="format-title-line">
+                  <span class="format-title">Kecepatan Bicara</span>
+                </div>
+                <p class="format-desc-text">Laju tempo pelafalan kata</p>
+              </div>
+              <div class="row-control">
+                <select id="tts-speed" class="mac-select">
+                  <option value="0.75">Lambat (0.75x)</option>
+                  <option value="1.0">Normal (1.0x)</option>
+                  <option value="1.25">Cepat (1.25x)</option>
+                  <option value="1.5">Sangat cepat (1.5x)</option>
+                </select>
+              </div>
+            </div>
+            <div class="settings-row">
+              <div class="format-emblem theme-slate">
+                <svg class="lucide-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/></svg>
+              </div>
+              <div class="format-info-col">
+                <div class="format-title-line">
+                  <span class="format-title">Panjang Jawaban Dibaca</span>
+                </div>
+                <p class="format-desc-text">Tingkat keringkasan respon yang disuarakan</p>
+              </div>
+              <div class="row-control">
+                <select id="tts-verbosity" class="mac-select">
+                  <option value="concise">Ringkas (ringkasan inti)</option>
+                  <option value="full">Lengkap (seluruh teks)</option>
+                </select>
+              </div>
+            </div>
           </div>
 
+          <div class="group-header">Speech-to-Text (STT)</div>
           <div class="card">
-            <h2>Speech-to-Text</h2>
-            <label class="field">
-              <span>Model Whisper</span>
-              <select id="stt-model">
-                <option value="base">base (ringan)</option>
-                <option value="small">small (lebih akurat)</option>
-              </select>
-            </label>
-            <label class="field">
-              <span>Bahasa</span>
-              <select id="stt-language">
-                <option value="id">Indonesia</option>
-                <option value="en">English</option>
-              </select>
-            </label>
+            <div class="settings-row">
+              <div class="format-emblem theme-amber">
+                <svg class="lucide-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg>
+              </div>
+              <div class="format-info-col">
+                <div class="format-title-line">
+                  <span class="format-title">Model Whisper</span>
+                </div>
+                <p class="format-desc-text">Keseimbangan kecepatan & akurasi transkripsi</p>
+              </div>
+              <div class="row-control">
+                <select id="stt-model" class="mac-select">
+                  <option value="base">base (ringan & cepat)</option>
+                  <option value="small">small (lebih akurat)</option>
+                </select>
+              </div>
+            </div>
+            <div class="settings-row">
+              <div class="format-emblem theme-emerald">
+                <svg class="lucide-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg>
+              </div>
+              <div class="format-info-col">
+                <div class="format-title-line">
+                  <span class="format-title">Bahasa Pengenalan</span>
+                </div>
+                <p class="format-desc-text">Bahasa utama yang dideteksi mikrofon</p>
+              </div>
+              <div class="row-control">
+                <select id="stt-language" class="mac-select">
+                  <option value="id">Bahasa Indonesia</option>
+                  <option value="en">English (US)</option>
+                </select>
+              </div>
+            </div>
           </div>
 
+          <div class="group-header">Interaksi & Percakapan</div>
           <div class="card">
-            <h2>Percakapan</h2>
-            <label class="switch-row">
-              <span>Izinkan interupsi (barge-in)</span>
-              <input id="conv-barge-in" type="checkbox" />
-            </label>
-            <label class="switch-row">
-              <span>Mode percakapan berkelanjutan</span>
-              <input id="conv-continuous" type="checkbox" />
-            </label>
+            <div class="settings-row">
+              <div class="format-emblem theme-blue">
+                <svg class="lucide-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/></svg>
+              </div>
+              <div class="format-info-col">
+                <div class="format-title-line">
+                  <span class="format-title">Izinkan Interupsi (Barge-In)</span>
+                </div>
+                <p class="format-desc-text">Otomatis jeda suara avatar saat Anda mulai berbicara</p>
+              </div>
+              <div class="row-control">
+                <input id="conv-barge-in" type="checkbox" class="mac-switch" />
+              </div>
+            </div>
+            <div class="settings-row">
+              <div class="format-emblem theme-purple">
+                <svg class="lucide-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/></svg>
+              </div>
+              <div class="format-info-col">
+                <div class="format-title-line">
+                  <span class="format-title">Mode Percakapan Berkelanjutan</span>
+                </div>
+                <p class="format-desc-text">Mikrofon otomatis aktif kembali setelah avatar selesai bicara</p>
+              </div>
+              <div class="row-control">
+                <input id="conv-continuous" type="checkbox" class="mac-switch" />
+              </div>
+            </div>
           </div>
         </section>
 
         <!-- LLM -->
         <section id="panel-llm" class="panel">
           <h1>LLM & Provider</h1>
-          <p class="subtitle">Konfigurasi model & koneksi (via Hermes).</p>
+          <p class="subtitle">Konfigurasi model AI & koneksi penyedia (via Hermes).</p>
 
+          <div class="group-header">Model AI Aktif Saat Ini</div>
           <div class="card">
-            <h2>Model Aktif</h2>
-            <div id="llm-active" class="llm-active"></div>
-            <button id="llm-refresh-btn" class="browse">Muat ulang</button>
+            <div class="settings-row">
+              <div class="format-emblem theme-indigo">
+                <svg class="lucide-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z"/><path d="M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z"/><path d="M12 2v2"/><path d="M12 12v2"/><path d="M12 20v2"/></svg>
+              </div>
+              <div class="format-info-col">
+                <div class="format-title-line">
+                  <span class="format-title">Model Terpasang</span>
+                </div>
+                <p class="format-desc-text">Model yang digunakan untuk berpikir dan menjawab</p>
+              </div>
+              <div class="row-control">
+                <div id="llm-active" class="llm-active"></div>
+                <button id="llm-refresh-btn" class="mini-btn browse" style="margin-left: 6px;">Segarkan ↻</button>
+              </div>
+            </div>
+            <div class="settings-row">
+              <div class="format-emblem theme-purple">
+                <svg class="lucide-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/></svg>
+              </div>
+              <div class="format-info-col">
+                <div class="format-title-line">
+                  <span class="format-title">Ganti Model Cepat</span>
+                </div>
+                <p class="format-desc-text">Pilih dari daftar model yang terdeteksi</p>
+              </div>
+              <div class="row-control">
+                <select id="llm-switch-model" class="mac-select"></select>
+                <button id="llm-switch-btn" class="mini-btn primary" style="margin-left: 6px;">Terapkan</button>
+              </div>
+            </div>
           </div>
 
+          <div class="group-header">Tambah Endpoint Provider Baru</div>
           <div class="card">
-            <h2>Switch Model</h2>
-            <label class="field">
-              <span>Pilih model</span>
-              <select id="llm-switch-model"></select>
-            </label>
-            <button id="llm-switch-btn" class="primary">Terapkan</button>
+            <div class="settings-row">
+              <div class="row-label">
+                <span class="row-title">Nama Penyedia</span>
+              </div>
+              <div class="row-control">
+                <input id="llm-name" type="text" class="mac-input" placeholder="cth. 9Router / DeepSeek" />
+              </div>
+            </div>
+            <div class="settings-row">
+              <div class="row-label">
+                <span class="row-title">Base URL (OpenAI-Compatible)</span>
+              </div>
+              <div class="row-control">
+                <input id="llm-base-url" type="text" class="mac-input" placeholder="http://localhost:20128/v1" />
+              </div>
+            </div>
+            <div class="settings-row">
+              <div class="row-label">
+                <span class="row-title">API Key (Opsional / Rahasia)</span>
+              </div>
+              <div class="row-control">
+                <input id="llm-api-key" type="password" class="mac-input" placeholder="sk-..." />
+              </div>
+            </div>
+            <div class="settings-row">
+              <div class="row-label">
+                <span class="row-title">Model Identifier</span>
+              </div>
+              <div class="row-control">
+                <input id="llm-model" type="text" class="mac-input" placeholder="cbcn/deepseek-v4-pro" />
+              </div>
+            </div>
+            <div class="settings-row">
+              <div class="row-label">
+                <span class="row-title">Aksi</span>
+              </div>
+              <div class="row-control">
+                <button id="llm-add-btn" class="mini-btn primary">Simpan Provider</button>
+              </div>
+            </div>
           </div>
 
+          <div class="group-header">Daftar Provider Tersimpan</div>
           <div class="card">
-            <h2>Tambah Provider (localStorage)</h2>
-            <label class="field">
-              <span>Nama</span>
-              <input id="llm-name" type="text" placeholder="cth. 9Router" />
-            </label>
-            <label class="field">
-              <span>Base URL</span>
-              <input id="llm-base-url" type="text" placeholder="http://localhost:20128/v1" />
-            </label>
-            <label class="field">
-              <span>API Key</span>
-              <input id="llm-api-key" type="password" placeholder="sk-..." />
-            </label>
-            <label class="field">
-              <span>Model</span>
-              <input id="llm-model" type="text" placeholder="cbcn/deepseek-v4-pro" />
-            </label>
-            <button id="llm-add-btn" class="primary">Simpan Provider</button>
-          </div>
-
-          <div class="card">
-            <h2>Provider Tersimpan</h2>
             <div id="llm-list" class="llm-list"></div>
           </div>
         </section>
 
         <!-- SKILL -->
         <section id="panel-skill" class="panel">
-          <h1>Skill</h1>
-          <p class="subtitle">Kelola skill Hermes.</p>
+          <h1>Skill & Ekstensi</h1>
+          <p class="subtitle">Kelola kemampuan AI, alat bantu, dan integrasi Hermes.</p>
 
-          <div class="card">
-            <h2>Tambah Skill</h2>
-            <label class="field">
-              <span>Nama skill</span>
-              <input id="skill-name" type="text" placeholder="cth. my-custom-skill" />
-            </label>
-            <label class="field">
-              <span>Kategori (opsional)</span>
-              <input id="skill-category" type="text" placeholder="cth. general" />
-            </label>
-            <label class="field">
-              <span>Isi SKILL.md</span>
-              <textarea id="skill-content" rows="5" placeholder="Tulis instruksi skill di sini..."></textarea>
-            </label>
-            <div class="skill-upload-row">
-              <button type="button" id="skill-upload-btn" class="browse">Unggah file .md</button>
-              <input id="skill-file" type="file" accept=".md,.markdown,text/markdown" hidden />
-              <span class="hint" id="skill-file-name"></span>
-            </div>
-            <button id="skill-add-btn" class="primary">Simpan Skill</button>
-          </div>
-
-          <div class="card">
-            <h2>Install dari Hub</h2>
-            <label class="field">
-              <span>Skill ID</span>
-              <input id="skill-install-id" type="text" placeholder="cth. official/research/duckduckgo-search" />
-            </label>
-            <button id="skill-install-btn" class="primary">Install Skill</button>
-            <p class="hint">Contoh: <code>official/research/duckduckgo-search</code>, <code>official/devops/watchers</code>.</p>
-          </div>
-
-          <div class="card">
-            <h2>Skill Tersedia</h2>
-            <div class="skill-toolbar">
-              <input id="skill-search" type="text" placeholder="Cari skill..." />
-              <button id="skill-refresh-btn" class="browse">Muat ulang</button>
+          <div class="group-header">Pustaka Skill Terpasang</div>
+          <div class="card padded">
+            <div class="skill-toolbar" style="margin-bottom: 12px;">
+              <input id="skill-search" type="text" class="mac-input" placeholder="🔍 Cari skill terpasang..." />
+              <button id="skill-refresh-btn" class="mini-btn browse" title="Muat ulang daftar skill dari disk">Muat Ulang ↻</button>
             </div>
             <div id="skill-list" class="skill-list"></div>
+          </div>
+
+          <div class="group-header">Install Skill dari Hub Resmi</div>
+          <div class="card">
+            <div class="settings-row">
+              <div class="row-label">
+                <span class="row-title">Skill Identifier</span>
+                <span class="row-desc">Contoh: <code>official/research/duckduckgo-search</code>, <code>official/devops/watchers</code></span>
+              </div>
+              <div class="row-control">
+                <input id="skill-install-id" type="text" class="mac-input" style="width: min(260px, 40vw);" placeholder="official/research/..." />
+                <button id="skill-install-btn" class="mini-btn primary" style="margin-left: 6px;">Install Skill</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="group-header">Buat / Unggah Skill Kustom (Opsional)</div>
+          <div class="pkg-card" id="skill-create-card">
+            <div class="pkg-header">
+              <div class="pkg-title-area">
+                <div class="pkg-icon-badge theme-amber">
+                  <svg class="lucide-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+                </div>
+                <div class="pkg-title-text">
+                  <span class="pkg-title">Buat Skill Baru (Tulis SKILL.md / Upload)</span>
+                  <span class="pkg-sub">Tambahkan instruksi AI, prompt kustom, atau file markdown sendiri</span>
+                </div>
+              </div>
+              <div class="pkg-header-right">
+                <span class="pkg-chevron">▾</span>
+              </div>
+            </div>
+            <div class="pkg-body">
+              <div class="settings-row" style="padding-top:0;">
+                <div class="row-label">
+                  <span class="row-title">Nama Skill</span>
+                  <span class="row-desc">Identifier unik (huruf kecil & strip)</span>
+                </div>
+                <div class="row-control">
+                  <input id="skill-name" type="text" class="mac-input" placeholder="cth. my-custom-skill" />
+                </div>
+              </div>
+              <div class="settings-row">
+                <div class="row-label">
+                  <span class="row-title">Kategori (Opsional)</span>
+                  <span class="row-desc">Pengelompokan folder skill</span>
+                </div>
+                <div class="row-control">
+                  <input id="skill-category" type="text" class="mac-input" placeholder="cth. general / productivity" />
+                </div>
+              </div>
+              <div style="margin-top: 12px;">
+                <label style="display:block; font-size:12px; font-weight:600; margin-bottom:6px; color:var(--text);">Isi Instruksi (SKILL.md):</label>
+                <textarea id="skill-content" class="mac-input" style="width:100%; height:110px; font-family:'SF Mono', monospace; font-size:12px; resize:vertical; padding:10px;" placeholder="Tulis instruksi skill dan peran AI di sini..."></textarea>
+              </div>
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-top:12px; gap:8px; flex-wrap:wrap;">
+                <div class="skill-upload-row" style="margin:0;">
+                  <button type="button" id="skill-upload-btn" class="mini-btn browse">📁 Unggah File .md</button>
+                  <input id="skill-file" type="file" accept=".md,.markdown,text/markdown" hidden />
+                  <span class="hint" id="skill-file-name" style="margin-left:8px;"></span>
+                </div>
+                <button id="skill-add-btn" class="mini-btn primary">Simpan Skill ke Disk</button>
+              </div>
+            </div>
           </div>
         </section>
 
         <!-- PERINTAH -->
         <section id="panel-action" class="panel">
-          <h1>Perintah</h1>
-          <p class="subtitle">Atur aksi yang diizinkan untuk avatar (buka aplikasi, kontrol browser, dll).</p>
+          <h1>Perintah & Aplikasi</h1>
+          <p class="subtitle">Atur izin aksi sistem & integrasi peluncuran aplikasi lokal.</p>
 
+          <div class="group-header">Hak Akses & Izin Sistem</div>
           <div class="card">
-            <h2>Aksi yang Diizinkan</h2>
             <div id="action-list"></div>
-            <p class="hint">Aksi berisiko (terminal/shell) sebaiknya tetap mati. Hermes akan meminta konfirmasi untuk tindakan sensitif.</p>
+            <p class="hint" style="padding: 10px 14px; margin: 0; border-top: 1px solid var(--border-soft);">
+              Aksi berisiko tinggi (terminal/shell) otomatis meminta dialog konfirmasi sebelum dijalankan.
+            </p>
           </div>
 
+          <div class="group-header">Aplikasi Lokal Terintegrasi</div>
           <div class="card">
-            <h2>Aplikasi yang Bisa Dibuka</h2>
-            <div class="path-row" style="margin-bottom:12px;">
-              <input id="app-name" type="text" placeholder="Nama aplikasi" />
-              <button type="button" id="app-pick-btn" class="browse">Pilih aplikasi…</button>
+            <div class="settings-row">
+              <div class="format-emblem theme-blue">
+                <svg class="lucide-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+              </div>
+              <div class="format-info-col">
+                <div class="format-title-line">
+                  <span class="format-title">Pindai Aplikasi Otomatis</span>
+                </div>
+                <p class="format-desc-text">Deteksi otomatis seluruh shortcut dari Start Menu Windows</p>
+              </div>
+              <div class="row-control">
+                <button type="button" id="app-scan-btn" class="mini-btn secondary" title="Pindai semua aplikasi di Start Menu Windows secara otomatis">Pindai Windows</button>
+              </div>
             </div>
-            <label class="field">
-              <span>Path / command</span>
-              <input id="app-command" type="text" placeholder="otomatis terisi setelah pilih" />
-            </label>
-            <button id="app-add-btn" class="primary">Tambah Aplikasi</button>
+            <div class="settings-row">
+              <div class="format-emblem theme-emerald">
+                <svg class="lucide-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+              </div>
+              <div class="format-info-col">
+                <div class="format-title-line">
+                  <span class="format-title">Tambah Aplikasi Manual</span>
+                </div>
+                <p class="format-desc-text">Daftarkan file .exe atau shortcut .lnk aplikasi lokal</p>
+              </div>
+              <div class="row-control" style="gap:6px; flex-wrap:wrap; justify-content:flex-end;">
+                <input id="app-name" type="text" class="mac-input" placeholder="Nama aplikasi" style="width:120px;" />
+                <input id="app-command" type="text" class="mac-input" placeholder="Path .exe / .lnk" style="width:150px;" />
+                <button type="button" id="app-pick-btn" class="mini-btn browse">Pilih…</button>
+                <button id="app-add-btn" class="mini-btn primary">Tambah</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="group-header">Daftar Aplikasi Terdaftar</div>
+          <div class="card">
             <div id="app-list" class="app-list"></div>
           </div>
         </section>
 
         <!-- SHORTCUT -->
         <section id="panel-shortcut" class="panel">
-          <h1>Shortcut</h1>
-          <p class="subtitle">Pintasan keyboard global.</p>
+          <h1>Shortcut Global</h1>
+          <p class="subtitle">Kombinasi tombol pintasan yang dapat ditekan di aplikasi manapun.</p>
 
+          <div class="group-header">Daftar Pintasan Keyboard</div>
           <div class="card">
             <div id="shortcut-list"></div>
-            <p class="hint">Shortcut global bekerja di seluruh sistem (macOS/Windows/Linux).</p>
           </div>
+          <p class="hint" style="margin: 8px 10px 16px; font-size: 11.5px; color: var(--text-secondary);">Shortcut global tetap aktif di latar belakang (background) saat Anda sedang membuka aplikasi lain.</p>
         </section>
       </main>
     </div>
+
+    <!-- Floating Toast Notification macOS Style -->
+    <div id="mac-toast-container" class="mac-toast-container"></div>
 
     <!-- Modal konfirmasi (hapus, dll) — sesuai tema -->
     <div id="confirm-modal" class="modal-overlay" hidden>

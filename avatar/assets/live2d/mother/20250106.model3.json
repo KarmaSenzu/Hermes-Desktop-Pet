@@ -1,0 +1,243 @@
+{
+	"Version": 3,
+	"FileReferences": {
+		"Moc": "20250106.moc3",
+		"Textures": [
+			"20250106.8192/texture_00.png",
+			"20250106.8192/texture_01.png",
+			"20250106.8192/texture_02.png",
+			"20250106.8192/texture_03.png",
+			"20250106.8192/texture_04.png",
+			"20250106.8192/texture_05.png",
+			"20250106.8192/texture_06.png",
+			"20250106.8192/texture_07.png",
+			"20250106.8192/texture_08.png",
+			"20250106.8192/texture_09.png",
+			"20250106.8192/texture_10.png",
+			"20250106.8192/texture_11.png",
+			"20250106.8192/texture_12.png",
+			"20250106.8192/texture_13.png",
+			"20250106.8192/texture_14.png",
+			"20250106.8192/texture_15.png"
+		],
+		"Physics": "20250106.physics3.json",
+		"DisplayInfo": "20250106.cdi3.json",
+		"Expressions": [
+			{
+				"Name": "Black person",
+				"File": "Black person.exp3.json"
+			},
+			{
+				"Name": "Charterer",
+				"File": "Charterer.exp3.json"
+			},
+			{
+				"Name": "Christmas fly",
+				"File": "Christmas fly.exp3.json"
+			},
+			{
+				"Name": "Hay",
+				"File": "Hay.exp3.json"
+			},
+			{
+				"Name": "Hill",
+				"File": "Hill.exp3.json"
+			},
+			{
+				"Name": "Italy",
+				"File": "Italy.exp3.json"
+			},
+			{
+				"Name": "Leopard",
+				"File": "Leopard.exp3.json"
+			},
+			{
+				"Name": "Press down",
+				"File": "Press down.exp3.json"
+			},
+			{
+				"Name": "Pumpkin emoticon",
+				"File": "Pumpkin emoticon.exp3.json"
+			},
+			{
+				"Name": "Raising",
+				"File": "Raising.exp3.json"
+			},
+			{
+				"Name": "Screen",
+				"File": "Screen.exp3.json"
+			},
+			{
+				"Name": "Suit",
+				"File": "Suit.exp3.json"
+			},
+			{
+				"Name": "blue",
+				"File": "blue.exp3.json"
+			},
+			{
+				"Name": "chest",
+				"File": "chest.exp3.json"
+			},
+			{
+				"Name": "glasses",
+				"File": "glasses.exp3.json"
+			},
+			{
+				"Name": "hat",
+				"File": "hat.exp3.json"
+			},
+			{
+				"Name": "hat2",
+				"File": "hat2.exp3.json"
+			},
+			{
+				"Name": "heart",
+				"File": "heart.exp3.json"
+			},
+			{
+				"Name": "like",
+				"File": "like.exp3.json"
+			},
+			{
+				"Name": "necklace1",
+				"File": "necklace1.exp3.json"
+			},
+			{
+				"Name": "necklace10",
+				"File": "necklace10.exp3.json"
+			},
+			{
+				"Name": "necklace11",
+				"File": "necklace11.exp3.json"
+			},
+			{
+				"Name": "necklace12",
+				"File": "necklace12.exp3.json"
+			},
+			{
+				"Name": "necklace13",
+				"File": "necklace13.exp3.json"
+			},
+			{
+				"Name": "necklace14",
+				"File": "necklace14.exp3.json"
+			},
+			{
+				"Name": "necklace15",
+				"File": "necklace15.exp3.json"
+			},
+			{
+				"Name": "necklace16",
+				"File": "necklace16.exp3.json"
+			},
+			{
+				"Name": "necklace2",
+				"File": "necklace2.exp3.json"
+			},
+			{
+				"Name": "necklace3",
+				"File": "necklace3.exp3.json"
+			},
+			{
+				"Name": "necklace4",
+				"File": "necklace4.exp3.json"
+			},
+			{
+				"Name": "necklace5",
+				"File": "necklace5.exp3.json"
+			},
+			{
+				"Name": "necklace6",
+				"File": "necklace6.exp3.json"
+			},
+			{
+				"Name": "necklace7",
+				"File": "necklace7.exp3.json"
+			},
+			{
+				"Name": "necklace8",
+				"File": "necklace8.exp3.json"
+			},
+			{
+				"Name": "necklace9",
+				"File": "necklace9.exp3.json"
+			},
+			{
+				"Name": "pumpkin",
+				"File": "pumpkin.exp3.json"
+			},
+			{
+				"Name": "santa hat2",
+				"File": "santa hat2.exp3.json"
+			},
+			{
+				"Name": "skin",
+				"File": "skin.exp3.json"
+			},
+			{
+				"Name": "skin2",
+				"File": "skin2.exp3.json"
+			},
+			{
+				"Name": "skin4",
+				"File": "skin4.exp3.json"
+			},
+			{
+				"Name": "skin5",
+				"File": "skin5.exp3.json"
+			},
+			{
+				"Name": "skin6",
+				"File": "skin6.exp3.json"
+			},
+			{
+				"Name": "star",
+				"File": "star.exp3.json"
+			},
+			{
+				"Name": "watch",
+				"File": "watch.exp3.json"
+			},
+			{
+				"Name": "wave",
+				"File": "wave.exp3.json"
+			}
+		],
+		"Motions": {
+			"Idle": [
+				{
+					"File": "idle.motion3.json"
+				}
+			],
+			"Slap": [
+				{
+					"File": "slap.motion3.json"
+				}
+			],
+			"Touch": [
+				{
+					"File": "touch.motion3.json"
+				}
+			]
+		}
+	},
+	"Groups": [
+		{
+			"Target": "Parameter",
+			"Name": "LipSync",
+			"Ids": [
+				"ParamMouthOpenY"
+			]
+		},
+		{
+			"Target": "Parameter",
+			"Name": "EyeBlink",
+			"Ids": [
+				"ParamEyeLOpen",
+				"ParamEyeROpen"
+			]
+		}
+	],
+	"HitAreas": []
+}

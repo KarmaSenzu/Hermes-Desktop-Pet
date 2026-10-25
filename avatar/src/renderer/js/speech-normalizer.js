@@ -47,10 +47,41 @@ export function toSpeechText(markdown, { maxChars = 500 } = {}) {
   // 8. Numbered list → hapus angka.
   s = s.replace(/^\s*\d+[.)]\s+/gm, '')
 
-  // 9. Rapatkan whitespace & bersihkan sisa tanda.
+  // 9. Bersihkan emoji & simbol grafis agar tidak dieja oleh TTS.
+  s = s.replace(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{1FA00}-\u{1FAFF}\u{FE00}-\u{FE0F}]/gu, ' ')
+
+  // 10. Ekspansi singkatan informal & bahasa percakapan Indonesia agar dibaca natural
+  const ABBREVIATIONS = [
+    [/\byg\b/gi, 'yang'],
+    [/\bdgn\b/gi, 'dengan'],
+    [/\butk\b/gi, 'untuk'],
+    [/\btdk\b/gi, 'tidak'],
+    [/\bsdh\b/gi, 'sudah'],
+    [/\bbgt\b/gi, 'banget'],
+    [/\bdll\.?/gi, 'dan lain-lain'],
+    [/\bdsb\.?/gi, 'dan sebagainya'],
+    [/\bdst\.?/gi, 'dan seterusnya'],
+    [/\btsb\.?/gi, 'tersebut'],
+    [/\bttg\b/gi, 'tentang'],
+    [/\bkrn\b/gi, 'karena'],
+    [/\bkalo\b|\bklo\b/gi, 'kalau'],
+    [/\bgmn\b/gi, 'gimana'],
+    [/\bpd\b/gi, 'pada'],
+    [/\bgk\b|\bga\b|\bgak\b/gi, 'nggak']
+  ]
+  for (const [re, repl] of ABBREVIATIONS) {
+    s = s.replace(re, repl)
+  }
+
+  // 11. Rapikan tanda baca berulang (... -> ., !!! -> !, ??? -> ?)
+  s = s.replace(/\.{2,}/g, '.')
+  s = s.replace(/!{2,}/g, '!')
+  s = s.replace(/\?{2,}/g, '?')
+
+  // 12. Rapatkan whitespace & bersihkan sisa tanda.
   s = s.replace(/\s+/g, ' ').trim()
 
-  // 10. Potong ke batas kalimat (jangan di tengah kata).
+  // 13. Potong ke batas kalimat (jangan di tengah kata).
   s = truncateToSentence(s, maxChars)
 
   return s

@@ -1,49 +1,103 @@
-# Dependencies / build output
+# ==============================================================================
+# HERMES DESKTOP PET — ANTI-LEAKAGE & PRIVACY GITIGNORE
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# 1. DEPENDENCIES & BUILD OUTPUTS
+# ------------------------------------------------------------------------------
 node_modules/
 dist/
 out/
 release/
 build/
+.cache/
+*.tsbuildinfo
 
-# Logs
+# ------------------------------------------------------------------------------
+# 2. LOGS & DEBUG RUNTIMES
+# ------------------------------------------------------------------------------
 *.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+pnpm-debug.log*
 
-# Environment & secrets
+# ------------------------------------------------------------------------------
+# 3. KREDENSIAL, API KEYS, TOKEN, & SECRETS (ANTI-KEBOCORAN)
+# ------------------------------------------------------------------------------
 .env
 .env.*
 !.env.example
+*.key
+*.pem
+*.cert
+*.crt
+*.pfx
+*.p12
+*.token
+*session-token*
+*credential*
+*secret*
+shortcuts.json
+apps_cache.json
 
-# Dokumen pribadi (path lokal, token dev, catatan setup device)
+# ------------------------------------------------------------------------------
+# 4. PERCAKAPAN PRIBADI, RIWAYAT CHAT, & DATABASE MEMORI
+# ------------------------------------------------------------------------------
+*.jsonl
+*.db
+*.sqlite
+*.sqlite3
+memory/
+sessions/
+conversations/
+chat_history/
+
+# ------------------------------------------------------------------------------
+# 5. DOKUMEN PRIBADI, PATH LOKAL, & CATATAN DEV
+# ------------------------------------------------------------------------------
 docs/private/
 docs/MANUAL_TASKS.md
 docs/GIT_SETUP.md
 docs/TEST_CHECKLIST.md
-
-# Q&A internal dengan Hermes (mengandung path lokal & token dev)
 hermes-qa/
+ANALISIS_*.md
+PANDUAN_*.md
 
-# OS / editor junk
+# ------------------------------------------------------------------------------
+# 6. FILE TEMPORER, AUDIO TESTING CACHE, & DUMP SCRIPTS
+# ------------------------------------------------------------------------------
+assets/audio/cache/
+avatar/assets/audio/cache/
+kokoro_test.wav
+dump_*.py
+scratch/
+*.tmp
+*.bak
+
+# ------------------------------------------------------------------------------
+# 7. PYTHON RUNTIME & ENVIRONMENT
+# ------------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+ENV/
+
+# ------------------------------------------------------------------------------
+# 8. SISTEM OPERASI & EDITOR JUNK
+# ------------------------------------------------------------------------------
 .DS_Store
 Thumbs.db
+desktop.ini
 .idea/
 .vscode/
 *.swp
+*.swo
 
-# Generated audio cache (TTS)
-assets/audio/cache/
-
-# Aset model & animasi pihak ketiga (lisensi masing-masing, ukuran besar)
-avatar/assets/models/
-!avatar/assets/models/NOTICE.md
-
-# Project referensi pihak ketiga (clone dari GitHub)
+# ------------------------------------------------------------------------------
+# 9. REFERENSI PIHAK KETIGA / THIRD-PARTY CLONE
+# ------------------------------------------------------------------------------
 references/
-
-# Python (hermes-plugin)
-__pycache__/
-*.py[cod]
-.venv/
-venv/

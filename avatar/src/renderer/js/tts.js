@@ -13,8 +13,8 @@ const VOICE_DEFAULT = 'id-ID-GadisNeural'
  * Generate audio untuk teks → kembalikan { buffer, mimeType }.
  * buffer adalah ArrayBuffer berisi audio (mp3).
  */
-export async function synthesize(text, voice = VOICE_DEFAULT) {
-  const result = await window.hermesAvatar.synthesizeSpeech(text, voice)
+export async function synthesize(text, voice = VOICE_DEFAULT, options = {}) {
+  const result = await window.hermesAvatar.synthesizeSpeech(text, voice, options)
   if (!result.ok) throw new Error(result.error || 'TTS gagal')
 
   let base64 = result.base64 || ''

@@ -16,77 +16,586 @@ let settings = loadSettings()
 // --- Info format (lengkap: deskripsi, kemampuan, kelebihan, kekurangan) ---
 const FORMAT_INFO = [
   {
-    ext: 'vrm', label: 'VRM', desc: 'Standar avatar anime (VRoid / three-vrm).',
+    ext: 'vrm', label: 'VRM', title: 'VRM Anime 3D', icon: 'user-round', theme: 'vrm',
+    desc: 'Standar avatar anime humanoid 3D (VRoid / three-vrm)',
     full: 'Format VRM dirancang khusus untuk avatar humanoid. Mendukung blendshape ekspresi wajah, bone rig standar, dan spring bone (rambut/rok bergerak).',
     features: ['Ekspresi wajah (blink, happy, sad, angry)', 'Lip sync blendshape (aa/ih/ou/ee/oh)', 'Bone rig humanoid standar', 'Spring bone (rambut/rok)'],
     pros: 'Ekspresi & lip sync paling lengkap',
     cons: 'Butuh model VRM (banyak yang berlisensi)'
   },
   {
-    ext: 'glb', label: 'GLB / glTF', desc: 'Format 3D modern & ringan (WebGL).',
+    ext: 'glb', label: 'GLB / glTF', title: 'GLB / glTF 3D', icon: 'package', theme: 'glb',
+    desc: 'Format 3D modern, cepat dimuat & sangat ringan (WebGL)',
     full: 'glTF/GLB adalah format 3D standar web. Ringan, cepat dimuat, didukung luas. Bisa berisi bone & morph, tapi ekspresi wajah tergantung modelnya.',
     features: ['Ringan & cepat dimuat', 'Didukung luas (three.js native)', 'Bone rig + morph target', 'Cocok untuk low-poly'],
     pros: 'Paling ringan & cepat',
     cons: 'Ekspresi wajah tergantung model'
   },
   {
-    ext: 'pmx', label: 'PMX / PMD (MMD)', desc: 'Format MikuMikuDance (MMD.js).',
+    ext: 'pmx', label: 'PMX / PMD', title: 'MMD (PMX / PMD)', icon: 'activity', theme: 'pmx',
+    desc: 'Model anime MikuMikuDance dengan physics & motion .vmd',
     full: 'PMX/PMD adalah format MMD (MikuMikuDance). Punya morph ekspresi (あいうえお untuk lip sync) & physics. Texture sering .tga dan butuh folder utuh.',
     features: ['Morph ekspresi & lip sync (あいうえお)', 'Physics rambut/rok (MMD.js)', 'Banyak model gratis', 'Motion .vmd'],
     pros: 'Banyak model gratis + morph ekspresi',
     cons: 'Texture .tga, butuh folder utuh'
   },
   {
-    ext: 'fbx', label: 'FBX', desc: 'Format 3D umum (Blender / Maya).',
+    ext: 'fbx', label: 'FBX', title: 'FBX 3D Rigged', icon: 'folder', theme: 'fbx',
+    desc: 'Format aset 3D industri umum dari Blender atau Maya',
     full: 'FBX adalah format pertukaran 3D yang luas dipakai. Punya bone rig + animasi, tapi umumnya TANPA blendshape wajah, sehingga ekspresi & lip sync minim.',
     features: ['Bone rig + animasi', 'Umum & banyak aset', 'Ekspor dari Blender/Maya'],
     pros: 'Sangat umum, banyak rig',
     cons: 'Tanpa blendshape → ekspresi/lip sync minim'
+  },
+  {
+    ext: 'model3.json', label: 'Live2D', title: 'Live2D Cubism 4', icon: 'sparkles', theme: 'live2d',
+    desc: 'Avatar 2D interaktif hidup dengan physics & sentuhan dinamis',
+    full: 'Format Live2D Cubism 4 (.model3.json). Mendukung ekspresi kaya, physics dinamis (rambut, pakaian), motion reaksi sentuhan, dan lip sync halus.',
+    features: ['Ekspresi wajah & emosi kaya', 'Physics dinamis (rambut & baju)', 'Reaksi sentuhan & motion', 'Lip sync ParamMouthOpenY'],
+    pros: 'Visual anime 2D hidup & ekspresif',
+    cons: 'Membutuhkan file Cubism 4 lengkap (.moc3, textures, json)'
   }
 ]
 
-// --- Definisi sidebar (terpusat; icon = nama Lucide outline) ---
+// --- Definisi sidebar (terpusat; icon = nama Lucide outline + color badge macOS) ---
 const SECTIONS = [
-  { id: 'home', icon: 'house', label: 'Home' },
-  { id: 'character', icon: 'user-round', label: 'Karakter' },
-  { id: 'animation', icon: 'film', label: 'Animasi' },
-  { id: 'voice', icon: 'mic', label: 'Suara' },
-  { id: 'llm', icon: 'brain', label: 'LLM & Provider' },
-  { id: 'skill', icon: 'puzzle', label: 'Skill' },
-  { id: 'action', icon: 'terminal', label: 'Perintah' },
-  { id: 'shortcut', icon: 'keyboard', label: 'Shortcut' }
+  { id: 'home', icon: 'house', label: 'Home', color: 'blue' },
+  { id: 'package', icon: 'package', label: 'Package Hub', color: 'orange' },
+  { id: 'character', icon: 'user-round', label: 'Karakter & Model', color: 'green' },
+  { id: 'animation', icon: 'film', label: 'Animasi & Emote', color: 'purple' },
+  { id: 'voice', icon: 'mic', label: 'Suara & TTS', color: 'red' },
+  { id: 'llm', icon: 'brain', label: 'LLM & Provider', color: 'indigo' },
+  { id: 'skill', icon: 'puzzle', label: 'Skill & Ekstensi', color: 'teal' },
+  { id: 'action', icon: 'terminal', label: 'Perintah & App', color: 'slate' },
+  { id: 'shortcut', icon: 'keyboard', label: 'Shortcut Global', color: 'amber' }
 ]
 
-// --- Navigasi sidebar ---
+// --- Navigasi sidebar & history ala macOS ---
 const nav = document.getElementById('nav')
 const panels = document.querySelectorAll('.panel')
+let navHistory = ['home']
+let navHistoryIndex = 0
+
+function updateNavHistoryUI() {
+  const backBtn = document.getElementById('nav-back-btn')
+  const fwdBtn = document.getElementById('nav-forward-btn')
+  if (backBtn) backBtn.disabled = navHistoryIndex <= 0
+  if (fwdBtn) fwdBtn.disabled = navHistoryIndex >= navHistory.length - 1
+}
 
 function renderNav() {
   nav.innerHTML = SECTIONS.map((s, i) => {
     const active = i === 0 ? 'active' : ''
     return `<button class="nav-item ${active}" data-section="${s.id}">
-      <span class="nav-icon">${renderIcon(s.icon, { size: 20 })}</span> ${escapeHtml(s.label)}
+      <span class="nav-icon-badge badge-${s.color}">
+        <span class="nav-icon">${renderIcon(s.icon, { size: 14 })}</span>
+      </span>
+      <span class="nav-label">${escapeHtml(s.label)}</span>
+      <span class="nav-chevron">›</span>
     </button>`
   }).join('')
 
   nav.querySelectorAll('.nav-item').forEach((item) => {
     item.addEventListener('click', () => {
-      nav.querySelectorAll('.nav-item').forEach((n) => n.classList.remove('active'))
-      item.classList.add('active')
-      const section = item.dataset.section
-      panels.forEach((p) => p.classList.remove('active'))
-      document.getElementById(`panel-${section}`).classList.add('active')
+      navigateToSection(item.dataset.section)
     })
   })
 }
 
-// --- Status service (hanya Hermes; 9Router = checklist manual) ---
+function navigateToSection(sectionId, pushHistory = true) {
+  const sec = SECTIONS.find((s) => s.id === sectionId) || SECTIONS[0]
+
+  if (pushHistory) {
+    if (navHistory[navHistoryIndex] !== sectionId) {
+      navHistory = navHistory.slice(0, navHistoryIndex + 1)
+      navHistory.push(sectionId)
+      navHistoryIndex = navHistory.length - 1
+    }
+  }
+  updateNavHistoryUI()
+
+  nav.querySelectorAll('.nav-item').forEach((n) => {
+    n.classList.toggle('active', n.dataset.section === sectionId)
+  })
+  panels.forEach((p) => p.classList.remove('active'))
+  document.getElementById(`panel-${sectionId}`)?.classList.add('active')
+
+  const titleEl = document.getElementById('current-section-title')
+  if (titleEl) {
+    titleEl.textContent = sec.label
+  }
+}
+
+// Kontrol Window ala macOS (traffic lights: close, minimize, maximize)
+function initWindowControls() {
+  document.getElementById('btn-win-close')?.addEventListener('click', () => {
+    window.hermesAvatar?.windowClose?.()
+  })
+
+  document.getElementById('btn-win-minimize')?.addEventListener('click', () => {
+    window.hermesAvatar?.windowMinimize?.()
+  })
+
+  document.getElementById('btn-win-maximize')?.addEventListener('click', () => {
+    window.hermesAvatar?.windowMaximize?.()
+  })
+}
+
+// Navigasi History (< dan > di Header macOS)
+function initHistoryControls() {
+  document.getElementById('nav-back-btn')?.addEventListener('click', () => {
+    if (navHistoryIndex > 0) {
+      navHistoryIndex--
+      navigateToSection(navHistory[navHistoryIndex], false)
+    }
+  })
+
+  document.getElementById('nav-forward-btn')?.addEventListener('click', () => {
+    if (navHistoryIndex < navHistory.length - 1) {
+      navHistoryIndex++
+      navigateToSection(navHistory[navHistoryIndex], false)
+    }
+  })
+}
+
+// Filter Pencarian di Sidebar
+function initSidebarSearch() {
+  const searchInput = document.getElementById('sidebar-search-input')
+  if (!searchInput) return
+  searchInput.addEventListener('input', (e) => {
+    const query = e.target.value.toLowerCase().trim()
+    nav.querySelectorAll('.nav-item').forEach((item) => {
+      const text = item.textContent.toLowerCase()
+      if (!query || text.includes(query)) {
+        item.style.display = 'flex'
+      } else {
+        item.style.display = 'none'
+      }
+    })
+  })
+}
+
+// Switcher Mode Hitam / Putih (Dark & Light Mode)
+const THEME_KEY = 'hermes-settings-theme'
+
+function applyTheme(theme) {
+  document.documentElement.setAttribute('data-theme', theme)
+  localStorage.setItem(THEME_KEY, theme)
+
+  const iconEl = document.getElementById('theme-icon')
+  const textEl = document.getElementById('theme-text')
+  if (theme === 'light') {
+    if (iconEl) iconEl.textContent = '☀️'
+    if (textEl) textEl.textContent = 'Mode Terang'
+  } else {
+    if (iconEl) iconEl.textContent = '🌙'
+    if (textEl) textEl.textContent = 'Mode Gelap'
+  }
+}
+
+function initThemeSwitcher() {
+  const saved = localStorage.getItem(THEME_KEY) || 'dark'
+  applyTheme(saved)
+
+  const toggleBtn = document.getElementById('theme-toggle-btn')
+  if (toggleBtn) {
+    toggleBtn.addEventListener('click', () => {
+      const current = document.documentElement.getAttribute('data-theme') || 'dark'
+      const next = current === 'dark' ? 'light' : 'dark'
+      applyTheme(next)
+    })
+  }
+}
+
+// --- Status service & Package Hub ---
+const homeSetupAlert = document.getElementById('home-setup-alert')
+const alertOpenPkgBtn = document.getElementById('alert-open-pkg-btn')
+const pkgStatusHermes = document.getElementById('pkg-status-hermes')
+const pkgStatusRouter = document.getElementById('pkg-status-router')
+const pkgStatusKokoro = document.getElementById('pkg-status-kokoro')
+const pkgStatusPython = document.getElementById('pkg-status-python')
+const pkgPythonVersion = document.getElementById('pkg-python-version')
+const packageOverallStatus = document.getElementById('package-overall-status')
+const pkgStartKokoroBtn = document.getElementById('pkg-start-kokoro-btn')
+const pkgInstallKokoroBtn = document.getElementById('pkg-install-kokoro-btn')
+const pkgOpenFolderBtn = document.getElementById('pkg-open-folder-btn')
+const pkgCleanBtn = document.getElementById('pkg-clean-btn')
+const pkgUninstallPipBtn = document.getElementById('pkg-uninstall-pip-btn')
+const pkgKokoroPipStatus = document.getElementById('pkg-kokoro-pip-status')
+const pkgKokoroModelStatus = document.getElementById('pkg-kokoro-model-status')
+const pkgKokoroLocation = document.getElementById('pkg-kokoro-location')
+const pkgKokoroLog = document.getElementById('pkg-kokoro-log')
+
+// --- Floating Toast Alert macOS Style ---
+export function showToast(title, message = '', type = 'info', icon = null, duration = 3200) {
+  const container = document.getElementById('mac-toast-container')
+  if (!container) return
+
+  const toast = document.createElement('div')
+  toast.className = `mac-toast ${type}`
+
+  let iconText = icon
+  if (!iconText) {
+    if (type === 'success') iconText = '✅'
+    else if (type === 'error') iconText = '❌'
+    else if (type === 'running') iconText = '🚀'
+    else iconText = 'ℹ️'
+  }
+
+  toast.innerHTML = `
+    <div class="mac-toast-icon">${iconText}</div>
+    <div class="mac-toast-content">
+      <div class="mac-toast-title">${escapeHtml(title)}</div>
+      ${message ? `<div class="mac-toast-desc">${escapeHtml(message)}</div>` : ''}
+    </div>
+  `
+
+  container.appendChild(toast)
+
+  const dismiss = () => {
+    toast.classList.add('hide')
+    setTimeout(() => toast.remove(), 240)
+  }
+
+  const timer = setTimeout(dismiss, duration)
+  toast.addEventListener('click', () => {
+    clearTimeout(timer)
+    dismiss()
+  })
+}
+
+// Dialog konfirmasi tema macOS / Dark
+function confirmDialog(title, message) {
+  return new Promise((resolve) => {
+    const modal = document.getElementById('confirm-modal')
+    const titleEl = document.getElementById('confirm-title')
+    const msgEl = document.getElementById('confirm-message')
+    const cancelBtn = document.getElementById('confirm-cancel')
+    const okBtn = document.getElementById('confirm-ok')
+
+    if (!modal) {
+      resolve(window.confirm(`${title}\n\n${message}`))
+      return
+    }
+
+    if (titleEl) titleEl.textContent = title
+    if (msgEl) msgEl.textContent = message
+    modal.hidden = false
+
+    const cleanup = () => {
+      modal.hidden = true
+      cancelBtn?.removeEventListener('click', onCancel)
+      okBtn?.removeEventListener('click', onOk)
+    }
+
+    const onCancel = () => {
+      cleanup()
+      resolve(false)
+    }
+    const onOk = () => {
+      cleanup()
+      resolve(true)
+    }
+
+    cancelBtn?.addEventListener('click', onCancel)
+    okBtn?.addEventListener('click', onOk)
+  })
+}
+
+alertOpenPkgBtn?.addEventListener('click', () => {
+  navigateToSection('package')
+})
+
 async function refreshServiceStatus() {
   try {
     const s = await window.hermesAvatar.getServiceStatus()
     setBadge(hermesStatus, s.hermes, 'Aktif', 'Mati')
+
+    if (pkgStatusHermes) setBadge(pkgStatusHermes, s.hermes, 'Aktif (Port 9119)', 'Belum Aktif')
+    if (pkgStatusRouter) setBadge(pkgStatusRouter, s.router, 'Aktif (Port 20128)', 'Belum Aktif')
+    if (pkgStatusKokoro) setBadge(pkgStatusKokoro, s.kokoro, 'Aktif (Port 8880)', 'Belum Aktif')
+    if (pkgStatusPython) setBadge(pkgStatusPython, s.pythonOk, 'Terpasang', 'Belum Terpasang')
+    if (pkgPythonVersion) pkgPythonVersion.textContent = s.pythonOk ? `Versi: ${s.pythonVersion}` : 'Python 3.10+ belum terdeteksi di PATH'
+
+    if (pkgKokoroPipStatus) {
+      if (s.kokoroInstalled) {
+        pkgKokoroPipStatus.textContent = 'Terpasang ✅'
+        pkgKokoroPipStatus.style.color = '#7ee787'
+      } else {
+        pkgKokoroPipStatus.textContent = 'Belum Terpasang'
+        pkgKokoroPipStatus.style.color = '#ff7b72'
+      }
+    }
+
+    if (pkgKokoroModelStatus) {
+      if (s.kokoroModelReady) {
+        pkgKokoroModelStatus.textContent = s.modelSizeMb ? `Siap di Disk (${s.modelSizeMb} MB) ✅` : 'Siap di Disk ✅'
+        pkgKokoroModelStatus.style.color = '#7ee787'
+      } else {
+        pkgKokoroModelStatus.textContent = 'Belum Diunduh (Otomatis saat start)'
+        pkgKokoroModelStatus.style.color = '#8b949e'
+      }
+    }
+
+    if (pkgKokoroLocation && s.packagePath) {
+      pkgKokoroLocation.textContent = s.packagePath
+    }
+
+    // Tampilkan alert banner di Home bila ada service inti yang belum jalan
+    const allReady = s.hermes && s.router && (s.kokoro || settings.tts?.provider === 'edge')
+    if (homeSetupAlert) {
+      homeSetupAlert.classList.toggle('hidden', allReady)
+    }
+
+    if (packageOverallStatus) {
+      if (allReady) {
+        packageOverallStatus.textContent = '✅ Semua Paket Siap Digunakan'
+        packageOverallStatus.className = 'overall-badge ready'
+      } else {
+        packageOverallStatus.textContent = '⚠️ Persiapan Diperlukan (Ada modul belum aktif)'
+        packageOverallStatus.className = 'overall-badge attention'
+      }
+    }
   } catch {
-    hermesStatus.textContent = '?'
+    if (hermesStatus) hermesStatus.textContent = '?'
+  }
+}
+
+function bindPackageActions() {
+  // 1. Accordion Toggle (Buka / Tutup Card)
+  document.querySelectorAll('.pkg-header').forEach((header) => {
+    header.addEventListener('click', (e) => {
+      if (e.target.closest('button') || e.target.closest('.badge')) return
+      const card = header.closest('.pkg-card')
+      if (card) {
+        card.classList.toggle('active')
+      }
+    })
+  })
+
+  // 2. Subtab Switcher: Download & Install vs Kelola Service
+  document.querySelectorAll('.pkg-tab-btn').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation()
+      const card = btn.closest('.pkg-card')
+      if (!card) return
+      const targetTab = btn.dataset.tab
+
+      card.querySelectorAll('.pkg-tab-btn').forEach((b) => b.classList.remove('active'))
+      btn.classList.add('active')
+
+      card.querySelectorAll('.pkg-tab-panel').forEach((panel) => {
+        if (panel.dataset.panel === targetTab) {
+          panel.classList.add('active')
+        } else {
+          panel.classList.remove('active')
+        }
+      })
+    })
+  })
+
+  // 3. Tombol Eksekusi Langsung di Terminal PowerShell
+  document.querySelectorAll('[data-terminal-cmd]').forEach((btn) => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation()
+      const cmd = btn.dataset.terminalCmd
+      if (!cmd) return
+
+      const actionTitle = btn.dataset.actionTitle || 'Membuka Terminal PowerShell...'
+      showToast(actionTitle, `Jendela terminal dibuka untuk menjalankan perintah`, 'info', '⚡', 4000)
+
+      try {
+        if (typeof window.hermesAvatar?.runInTerminal === 'function') {
+          const res = await window.hermesAvatar.runInTerminal(cmd)
+          if (!res?.ok) {
+            showToast('Gagal Membuka Terminal ❌', res?.error || 'Unknown error', 'error', '❌')
+            return
+          }
+        } else {
+          await navigator.clipboard.writeText(cmd)
+          showToast('Perintah Tersalin! 📋', 'Tempel di PowerShell: ' + cmd, 'success', '📋')
+        }
+
+        // Jika perintah menjalankan server Kokoro, auto-polling sampai port 8880 aktif
+        if (cmd.includes('kokoro') || cmd.includes('8880')) {
+          let attempts = 0
+          const pollTimer = setInterval(async () => {
+            attempts++
+            const check = await window.hermesAvatar.checkSystemPackages?.()
+            if (check?.kokoro?.running) {
+              clearInterval(pollTimer)
+              refreshServiceStatus()
+              showToast('Server Kokoro Terdeteksi Aktif! 🟢', 'Port 8880 berhasil terhubung dari terminal', 'success', '🎉', 4500)
+            } else if (attempts >= 10) {
+              clearInterval(pollTimer)
+              refreshServiceStatus()
+            }
+          }, 1500)
+        }
+      } catch (err) {
+        showToast('Error Eksekusi Terminal', err.message, 'error', '❌')
+      }
+    })
+  })
+
+  // 4. Bind tombol salin perintah terminal (copy to clipboard)
+  document.querySelectorAll('.copy-cmd-btn').forEach((btn) => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation()
+      const cmd = btn.dataset.copy
+      if (!cmd) return
+      try {
+        await navigator.clipboard.writeText(cmd)
+        showToast('Perintah Tersalin! 📋', cmd, 'success', '✅')
+        const origText = btn.textContent
+        btn.textContent = 'Tersalin! ✅'
+        btn.classList.add('primary')
+        setTimeout(() => {
+          btn.textContent = origText
+          btn.classList.remove('primary')
+        }, 1800)
+      } catch {
+        btn.textContent = 'Gagal salin'
+      }
+    })
+  })
+
+  // 5. Tombol Periksa Ulang Paket
+  document.getElementById('pkg-refresh-all-btn')?.addEventListener('click', () => {
+    showToast('Memindai Sistem...', 'Memeriksa status semua port & dependensi', 'info', '🔄')
+    refreshServiceStatus()
+  })
+
+  // 6. Kokoro Server Actions
+  if (pkgStartKokoroBtn) {
+    pkgStartKokoroBtn.addEventListener('click', async () => {
+      pkgStartKokoroBtn.disabled = true
+      showToast('Menjalankan Server Kokoro...', 'Sedang menginisialisasi server ONNX (port 8880)...', 'running', '🎙️', 9000)
+      if (pkgKokoroLog) pkgKokoroLog.innerHTML = '⏳ Memulai server Kokoro (<code>scripts/kokoro_server.py</code>)... Menunggu port 8880 aktif...'
+      try {
+        const res = await window.hermesAvatar.startKokoroServer()
+        // Periksa status aktual secara teliti
+        await refreshServiceStatus()
+        const check = await window.hermesAvatar.checkSystemPackages?.()
+        const isPortActive = !!(check?.kokoro?.running || res?.ok)
+
+        if (res?.ok && isPortActive) {
+          if (pkgKokoroLog) pkgKokoroLog.innerHTML = '✅ Server Kokoro berhasil aktif di port <code>8880</code> (<code>http://127.0.0.1:8880</code>).'
+          showToast('Server Kokoro Aktif! 🟢', 'Port 8880 berhasil terhubung dan siap digunakan', 'success', '🎙️', 4500)
+        } else {
+          const errMsg = res?.error || 'Port 8880 belum aktif setelah dimulai. Periksa apakah dependensi python kokoro-onnx sudah terpasang.'
+          if (pkgKokoroLog) pkgKokoroLog.innerHTML = `❌ Gagal: ${escapeHtml(errMsg)}.<br>👉 Anda juga dapat menggunakan tombol: <strong>"⚡ Buka Terminal & Jalankan Server"</strong>.`
+          showToast('Server Belum Aktif ❌', errMsg, 'error', '❌', 6000)
+        }
+      } catch (err) {
+        if (pkgKokoroLog) pkgKokoroLog.innerHTML = `❌ Error: ${escapeHtml(err.message)}`
+        showToast('Error Server', err.message, 'error', '❌')
+      } finally {
+        pkgStartKokoroBtn.disabled = false
+      }
+    })
+  }
+
+  if (pkgInstallKokoroBtn) {
+    pkgInstallKokoroBtn.addEventListener('click', async () => {
+      pkgInstallKokoroBtn.disabled = true
+      showToast('Memasang Dependensi Kokoro...', 'Menjalankan pip install kokoro-onnx soundfile', 'info', '📦')
+      if (pkgKokoroLog) {
+        pkgKokoroLog.innerHTML = '⏳ Menjalankan: <code>py -m pip install kokoro-onnx soundfile</code>... (Mohon tunggu 30–60 detik)'
+      }
+      try {
+        const res = await window.hermesAvatar.installKokoroDeps()
+        if (res.ok) {
+          if (pkgKokoroLog) {
+            pkgKokoroLog.innerHTML = '✅ Sukses terpasang! Sekarang Anda bisa klik <strong>"Jalankan Server Kokoro"</strong>.'
+          }
+          showToast('Dependensi Berhasil Terpasang! ✅', 'kokoro-onnx & soundfile siap', 'success', '🎉')
+          refreshServiceStatus()
+        } else {
+          if (pkgKokoroLog) {
+            pkgKokoroLog.innerHTML = `⚠️ Otomatisasi belum berhasil: ${escapeHtml(res.error)}.<br>👉 Silakan <strong>Salin</strong> perintah terminal di atas dan jalankan di PowerShell.`
+          }
+          showToast('Instalasi Otomatis Gagal', 'Gunakan opsi terminal PowerShell', 'error', '⚠️')
+        }
+      } catch (err) {
+        if (pkgKokoroLog) {
+          pkgKokoroLog.innerHTML = `⚠️ Gagal otomatis: ${escapeHtml(err.message)}.<br>👉 Silakan <strong>Salin</strong> perintah terminal di atas dan jalankan di PowerShell.`
+        }
+        showToast('Gagal Instalasi', err.message, 'error', '❌')
+      } finally {
+        pkgInstallKokoroBtn.disabled = false
+      }
+    })
+  }
+
+  if (pkgOpenFolderBtn) {
+    pkgOpenFolderBtn.addEventListener('click', async () => {
+      try {
+        if (typeof window.hermesAvatar?.openPackageFolder !== 'function') {
+          showToast('Perlu Restart Dev', 'Restart terminal npm run dev untuk menerapkan fitur', 'info', '⚠️')
+          return
+        }
+        const res = await window.hermesAvatar.openPackageFolder('kokoro')
+        if (res.ok) {
+          showToast('Membuka Folder Paket 📁', res.path, 'info', '📂')
+          if (pkgKokoroLog) pkgKokoroLog.innerHTML = `📂 Folder paket dibuka: <code>${escapeHtml(res.path)}</code>`
+        }
+      } catch (err) {
+        showToast('Gagal Buka Folder', err.message, 'error', '❌')
+      }
+    })
+  }
+
+  if (pkgCleanBtn) {
+    pkgCleanBtn.addEventListener('click', async () => {
+      const ok = await confirmDialog(
+        'Hapus Model & Cache Kokoro?',
+        'Tindakan ini akan menghapus file model ONNX (~300MB) dari ~/.hermes-avatar/packages/kokoro/ untuk menghemat ruang disk. Anda bisa mengunduhnya kembali kapan saja saat server Kokoro dijalankan.'
+      )
+      if (!ok) return
+      pkgCleanBtn.disabled = true
+      showToast('Membersihkan Cache...', 'Menghapus model ONNX dari disk', 'info', '🗑️')
+      try {
+        const res = await window.hermesAvatar.cleanPackage('kokoro')
+        if (res.ok) {
+          showToast('Cache Berhasil Dibersihkan! 🗑️', 'Ruang disk berhasil dihemat', 'success', '✅')
+          if (pkgKokoroLog) pkgKokoroLog.innerHTML = '🗑️ File model dan cache berhasil dibersihkan dari disk.'
+          refreshServiceStatus()
+        } else {
+          showToast('Gagal Bersihkan Cache', res.error, 'error', '❌')
+        }
+      } catch (err) {
+        showToast('Error Bersihkan Cache', err.message, 'error', '❌')
+      } finally {
+        pkgCleanBtn.disabled = false
+      }
+    })
+  }
+
+  if (pkgUninstallPipBtn) {
+    pkgUninstallPipBtn.addEventListener('click', async () => {
+      const ok = await confirmDialog(
+        'Uninstall Dependensi Pip?',
+        'Tindakan ini akan mencopot modul Python "kokoro-onnx" dan "soundfile" dari sistem.'
+      )
+      if (!ok) return
+      pkgUninstallPipBtn.disabled = true
+      showToast('Mencopot Dependensi...', 'Menjalankan pip uninstall kokoro-onnx soundfile', 'info', '⚠️')
+      try {
+        const res = await window.hermesAvatar.uninstallKokoroDeps()
+        if (res.ok) {
+          showToast('Dependensi Dicopot! ✅', 'Modul python telah dihapus', 'success', '✅')
+          if (pkgKokoroLog) pkgKokoroLog.innerHTML = '✅ Modul Python berhasil dicopot.'
+          refreshServiceStatus()
+        } else {
+          showToast('Gagal Uninstall', res.error, 'error', '❌')
+        }
+      } catch (err) {
+        showToast('Error Uninstall', err.message, 'error', '❌')
+      } finally {
+        pkgUninstallPipBtn.disabled = false
+      }
+    })
   }
 }
 
@@ -102,19 +611,17 @@ const activeCharEl = document.getElementById('active-char')
 function renderActiveChar() {
   const active = (settings.characters || []).find((c) => c.active)
   if (!active) {
-    activeCharEl.innerHTML = '<p class="hint">Belum ada karakter aktif. Pilih di sidebar Karakter.</p>'
+    activeCharEl.innerHTML = '<span class="muted" style="font-size:12px;">Pilih di menu Karakter</span>'
     return
   }
   const thumb = active.image
-    ? `<img class="char-thumb" src="${active.image}" alt="" />`
-    : `<div class="char-thumb placeholder">${renderIcon('user-round', { size: 24 })}</div>`
+    ? `<img src="${active.image}" alt="" style="width:24px; height:24px; border-radius:50%; object-fit:cover;" />`
+    : renderIcon('user-round', { size: 14 })
   activeCharEl.innerHTML = `
-    <div class="active-char-row">
+    <div class="active-char-pill" style="display:inline-flex; align-items:center; gap:8px; padding:4px 10px; border-radius:14px; background:rgba(16,185,129,0.12); border:1px solid rgba(16,185,129,0.28);">
       ${thumb}
-      <div class="active-char-info">
-        <strong>${escapeHtml(active.name)}</strong>
-        <span class="muted">.${escapeHtml(active.format)}</span>
-      </div>
+      <span style="font-size:12.5px; font-weight:600; color:var(--text);">${escapeHtml(active.name)}</span>
+      <span class="format-pill-tag">.${escapeHtml(active.format)}</span>
     </div>`
 }
 
@@ -133,17 +640,28 @@ function extOf(path) {
   return (path || '').split('.').pop().toLowerCase()
 }
 
-// VIEW 1: daftar format (card klik-able)
+// VIEW 1: daftar format (card klik-able ala macOS)
 function renderFormatList() {
   formatList.innerHTML = FORMAT_INFO.map((f) => {
     const count = (settings.characters || []).filter((c) => c.format === f.ext).length
     return `<div class="format-item" data-ext="${f.ext}">
-      <div class="format-head">
-        <span class="format-badge">${escapeHtml(f.label)}</span>
-        <span class="muted">.${f.ext} · ${count} karakter</span>
+      <div class="format-emblem theme-${f.theme}">
+        ${renderIcon(f.icon, { size: 18 })}
       </div>
-      <p class="format-desc">${escapeHtml(f.desc)}</p>
-      <div class="format-chevron">›</div>
+      <div class="format-info-col">
+        <div class="format-title-line">
+          <span class="format-title">${escapeHtml(f.title || f.label)}</span>
+          <span class="format-pill-tag">.${f.ext}</span>
+        </div>
+        <p class="format-desc-text">${escapeHtml(f.desc)}</p>
+      </div>
+      <div class="format-status-col">
+        ${count > 0 
+          ? `<span class="format-count-pill on">🟢 ${count} Karakter</span>`
+          : `<span class="format-count-pill off">0 Karakter</span>`
+        }
+        <span class="format-arrow">${renderIcon('chevron-right', { size: 16 })}</span>
+      </div>
     </div>`
   }).join('')
 
@@ -161,40 +679,61 @@ function openFormatDetail(ext) {
   const chars = (settings.characters || []).filter((c) => c.format === ext)
 
   formatDetail.innerHTML = `
-    <div class="card">
-      <h2>${escapeHtml(f.label)} <span class="muted">(.${f.ext})</span></h2>
-      <p class="format-full">${escapeHtml(f.full)}</p>
-      <div class="feature-list">
-        ${f.features.map((feat) => `<div class="feature">• ${escapeHtml(feat)}</div>`).join('')}
+    <div class="group-header">Informasi Format & Spesifikasi</div>
+    <div class="card padded">
+      <h2 style="margin-top:0; font-size:16px;">${escapeHtml(f.label)} <span class="muted" style="font-size:12px; font-weight:normal;">(.${f.ext})</span></h2>
+      <p class="format-full" style="font-size:13px; line-height:1.5; color:var(--text);">${escapeHtml(f.full)}</p>
+      <div class="feature-list" style="margin: 10px 0;">
+        ${f.features.map((feat) => `<div class="feature" style="font-size:12px;">• ${escapeHtml(feat)}</div>`).join('')}
       </div>
-      <div class="format-pros"><span class="tag plus">+ ${escapeHtml(f.pros)}</span></div>
-      <div class="format-cons"><span class="tag minus">− ${escapeHtml(f.cons)}</span></div>
+      <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:8px;">
+        <span class="tag plus" style="padding:4px 10px; border-radius:6px; font-size:12px;">+ ${escapeHtml(f.pros)}</span>
+        <span class="tag minus" style="padding:4px 10px; border-radius:6px; font-size:12px;">− ${escapeHtml(f.cons)}</span>
+      </div>
     </div>
 
+    <div class="group-header">Tambah / Edit Karakter ${escapeHtml(f.label)}</div>
     <div class="card">
-      <h2>Tambah Karakter ${escapeHtml(f.label)}</h2>
-      <label class="field">
-        <span>Nama</span>
-        <input id="char-name" type="text" placeholder="cth. Ryo, Fushu" />
-      </label>
-      <label class="field">
-        <span>File model (.${f.ext})</span>
-        <div class="path-row">
-          <input id="char-path" type="text" placeholder="path/ke/model.${f.ext}" />
-          <button type="button" id="char-browse-btn" class="browse">Pilih…</button>
+      <div class="settings-row">
+        <div class="row-label">
+          <span class="row-title">Nama Karakter</span>
+          <span class="row-desc">Nama panggilan avatar</span>
         </div>
-      </label>
-      <label class="field">
-        <span>Foto (JPG/PNG, opsional)</span>
-        <div class="path-row">
-          <input id="char-image" type="file" accept="image/*" />
+        <div class="row-control">
+          <input id="char-name" type="text" class="mac-input" placeholder="cth. Ryo / Fushu" />
         </div>
-      </label>
-      <button id="char-add-btn" class="primary">Simpan Karakter</button>
+      </div>
+      <div class="settings-row">
+        <div class="row-label">
+          <span class="row-title">File Model (.${f.ext})</span>
+          <span class="row-desc">Path file model 3D / 2D pada hard disk</span>
+        </div>
+        <div class="row-control" style="gap:6px;">
+          <input id="char-path" type="text" class="mac-input" style="width: min(220px, 35vw);" placeholder="path/ke/model.${f.ext}" />
+          <button type="button" id="char-browse-btn" class="mini-btn browse">Pilih File…</button>
+        </div>
+      </div>
+      <div class="settings-row">
+        <div class="row-label">
+          <span class="row-title">Foto Profil (Thumbnail)</span>
+          <span class="row-desc">Gambar JPG/PNG (opsional)</span>
+        </div>
+        <div class="row-control">
+          <input id="char-image" type="file" accept="image/*" class="mac-input" style="padding:4px;" />
+        </div>
+      </div>
+      <div class="settings-row">
+        <div class="row-label">
+          <span class="row-title">Aksi</span>
+        </div>
+        <div class="row-control">
+          <button id="char-add-btn" class="mini-btn primary">Simpan Karakter</button>
+        </div>
+      </div>
     </div>
 
-    <div class="card">
-      <h2>Karakter ${escapeHtml(f.label)}</h2>
+    <div class="group-header">Daftar Karakter ${escapeHtml(f.label)} Tersimpan</div>
+    <div class="card padded">
       <div id="char-gallery" class="char-gallery">
         ${renderGallery(chars)}
       </div>
@@ -211,6 +750,7 @@ function openFormatDetail(ext) {
       if (filePath) document.getElementById('char-path').value = filePath
     } catch (err) {
       statusEl.textContent = `Gagal buka dialog: ${err.message}`
+      showToast('Gagal Memilih File', err.message, 'error', '❌')
     }
   })
 
@@ -234,6 +774,7 @@ function openFormatDetail(ext) {
         if (pendingImage) c.image = pendingImage
         saveSettings(settings)
         statusEl.textContent = 'Karakter diperbarui.'
+        showToast('Karakter Diperbarui! ✅', `Perubahan avatar ${name} disimpan`, 'success', '💾')
       }
       editingCharId = null
       pendingImage = null
@@ -242,11 +783,17 @@ function openFormatDetail(ext) {
     }
 
     // Mode tambah.
-    if (!path) { statusEl.textContent = '⚠️ Pilih file model.'; return }
-    const finalName = name || path.split('/').pop() || 'Karakter'
+    if (!path) {
+      statusEl.textContent = '⚠️ Pilih file model.'
+      showToast('File Model Belum Dipilih', 'Pilih file model 3D/2D terlebih dahulu', 'error', '⚠️')
+      return
+    }
+    const baseName = path.split(/[/\\]/).pop().replace(/\.(vrm|glb|gltf|pmx|pmd|fbx|model3\.json|json)$/i, '')
+    const finalName = name || baseName || 'Karakter'
     const id = Date.now().toString(36)
     settings.characters.push({ id, name: finalName, path, format: ext, image: pendingImage || '', active: false })
     saveSettings(settings)
+    showToast('Karakter Ditambahkan! 🎉', `${finalName} berhasil didaftarkan`, 'success', '✨')
     pendingImage = null
     openFormatDetail(ext) // refresh detail (galeri + reset form)
     statusEl.textContent = 'Karakter disimpan.'
@@ -258,10 +805,12 @@ function openFormatDetail(ext) {
     const id = btn.dataset.id
     const action = btn.dataset.action
     if (action === 'use') {
+      const selectedChar = settings.characters.find((c) => c.id === id)
       settings.characters.forEach((c) => { c.active = c.id === id })
       saveSettings(settings)
       renderActiveChar()
       openFormatDetail(ext)
+      showToast('Karakter Aktif Diubah! ✨', `${selectedChar?.name || 'Karakter'} sekarang aktif sebagai avatar desktop`, 'success', '✨')
     } else if (action === 'edit') {
       const c = settings.characters.find((x) => x.id === id)
       if (!c) return
@@ -287,6 +836,7 @@ function openFormatDetail(ext) {
       saveSettings(settings)
       renderActiveChar()
       openFormatDetail(ext)
+      showToast('Karakter Dihapus 🗑️', `Avatar ${c?.name} telah dihapus`, 'info', '🗑️')
     }
   })
 }
@@ -321,19 +871,23 @@ startBtn.addEventListener('click', async () => {
   const active = (settings.characters || []).find((c) => c.active)
   if (!active) {
     statusEl.textContent = '⚠️ Pilih karakter aktif dulu (sidebar Karakter).'
+    showToast('Karakter Belum Dipilih', 'Pilih karakter aktif di menu Karakter & Model', 'error', '⚠️')
     return
   }
 
   startBtn.disabled = true
   statusEl.textContent = 'Memulai…'
+  showToast('Memulai Avatar... 🚀', `Menyiapkan model ${active.name}`, 'running', '🚀')
 
   try {
     await window.hermesAvatar.startAvatar(active.path)
     startBtn.disabled = false
     statusEl.textContent = ''
+    showToast('Avatar Aktif! ✨', `${active.name} siap berinteraksi di desktop`, 'success', '✨')
   } catch (err) {
     statusEl.textContent = `Gagal: ${err.message}`
     startBtn.disabled = false
+    showToast('Gagal Memulai Avatar', err.message, 'error', '❌')
   }
 })
 
@@ -353,7 +907,14 @@ routerCheck.addEventListener('change', () => {
 
 // --- Suara (TTS & STT & Percakapan) ---
 const ttsEnabled = document.getElementById('tts-enabled')
+const ttsProvider = document.getElementById('tts-provider')
+const ttsCountryFilter = document.getElementById('tts-country-filter')
 const ttsVoice = document.getElementById('tts-voice')
+const ttsVoiceMatchCount = document.getElementById('tts-voice-match-count')
+const ttsVoiceBadge = document.getElementById('tts-voice-badge')
+const ttsIntonation = document.getElementById('tts-intonation')
+const ttsKokoroEndpoint = document.getElementById('tts-kokoro-endpoint')
+const kokoroEndpointField = document.getElementById('kokoro-endpoint-field')
 const ttsSpeed = document.getElementById('tts-speed')
 const ttsVerbosity = document.getElementById('tts-verbosity')
 const sttModel = document.getElementById('stt-model')
@@ -361,20 +922,233 @@ const sttLanguage = document.getElementById('stt-language')
 const convBargeIn = document.getElementById('conv-barge-in')
 const convContinuous = document.getElementById('conv-continuous')
 
+export const VOICE_CATALOG = [
+  // 🇯🇵 Jepang (Anime Seiyuu)
+  { id: 'jf_alpha', name: 'Alpha', gender: 'Perempuan', country: 'jp', countryName: 'Jepang', trait: 'Anime Ceria & Heroine ⭐', provider: 'kokoro' },
+  { id: 'jf_gongitsune', name: 'Gongitsune', gender: 'Perempuan', country: 'jp', countryName: 'Jepang', trait: 'Anime Imut & Nada Tinggi (Mascot/Tsundere)', provider: 'kokoro' },
+  { id: 'jf_nezumi', name: 'Nezumi', gender: 'Perempuan', country: 'jp', countryName: 'Jepang', trait: 'Anime Lembut & Manis (Kuudere)', provider: 'kokoro' },
+  { id: 'jf_tebukuro', name: 'Tebukuro', gender: 'Perempuan', country: 'jp', countryName: 'Jepang', trait: 'Anime Kasual & Natural', provider: 'kokoro' },
+  { id: 'jm_kumo', name: 'Kumo', gender: 'Laki-laki', country: 'jp', countryName: 'Jepang', trait: 'Anime Keren & Tenang (Ikemen)', provider: 'kokoro' },
+
+  // 🇮🇩 Indonesia (Edge Natural)
+  { id: 'id-ID-GadisNeural', name: 'Gadis', gender: 'Perempuan', country: 'id', countryName: 'Indonesia', trait: 'Bahasa Indonesia Alami & Ramah ⭐', provider: 'edge' },
+  { id: 'id-ID-ArdiNeural', name: 'Ardi', gender: 'Laki-laki', country: 'id', countryName: 'Indonesia', trait: 'Bahasa Indonesia Formal & Jelas', provider: 'edge' },
+
+  // 🇺🇸 Amerika Serikat (US English)
+  { id: 'af_heart', name: 'Heart', gender: 'Perempuan', country: 'us', countryName: 'Amerika Serikat', trait: 'Ekspresif & Paling Populer ⭐', provider: 'kokoro' },
+  { id: 'af_bella', name: 'Bella', gender: 'Perempuan', country: 'us', countryName: 'Amerika Serikat', trait: 'Hangat, Ramah & Keibuan', provider: 'kokoro' },
+  { id: 'af_nicole', name: 'Nicole', gender: 'Perempuan', country: 'us', countryName: 'Amerika Serikat', trait: 'Ceria & Berenergi Tinggi', provider: 'kokoro' },
+  { id: 'af_sky', name: 'Sky', gender: 'Perempuan', country: 'us', countryName: 'Amerika Serikat', trait: 'Halus, Ringan & Merdu', provider: 'kokoro' },
+  { id: 'af_sarah', name: 'Sarah', gender: 'Perempuan', country: 'us', countryName: 'Amerika Serikat', trait: 'Dewasa, Jelas & Naratif', provider: 'kokoro' },
+  { id: 'af_nova', name: 'Nova', gender: 'Perempuan', country: 'us', countryName: 'Amerika Serikat', trait: 'Percaya Diri & Tajam', provider: 'kokoro' },
+  { id: 'af_river', name: 'River', gender: 'Perempuan', country: 'us', countryName: 'Amerika Serikat', trait: 'Santai & Lembut', provider: 'kokoro' },
+  { id: 'af_jessica', name: 'Jessica', gender: 'Perempuan', country: 'us', countryName: 'Amerika Serikat', trait: 'Artikulatif & Cerdas', provider: 'kokoro' },
+  { id: 'am_adam', name: 'Adam', gender: 'Laki-laki', country: 'us', countryName: 'Amerika Serikat', trait: 'Berat, Tenang & Narator ⭐', provider: 'kokoro' },
+  { id: 'am_michael', name: 'Michael', gender: 'Laki-laki', country: 'us', countryName: 'Amerika Serikat', trait: 'Tegas, Tegap & Percaya Diri', provider: 'kokoro' },
+  { id: 'am_echo', name: 'Echo', gender: 'Laki-laki', country: 'us', countryName: 'Amerika Serikat', trait: 'Resonan & Dalam', provider: 'kokoro' },
+  { id: 'am_eric', name: 'Eric', gender: 'Laki-laki', country: 'us', countryName: 'Amerika Serikat', trait: 'Santai & Percakapan Harian', provider: 'kokoro' },
+  { id: 'am_fenrir', name: 'Fenrir', gender: 'Laki-laki', country: 'us', countryName: 'Amerika Serikat', trait: 'Kuat, Berat & Berkarakter', provider: 'kokoro' },
+  { id: 'am_liam', name: 'Liam', gender: 'Laki-laki', country: 'us', countryName: 'Amerika Serikat', trait: 'Muda & Ceria', provider: 'kokoro' },
+  { id: 'am_onyx', name: 'Onyx', gender: 'Laki-laki', country: 'us', countryName: 'Amerika Serikat', trait: 'Dingin & Berwibawa', provider: 'kokoro' },
+
+  // 🇬🇧 Inggris / British
+  { id: 'bf_alice', name: 'Alice', gender: 'Perempuan', country: 'uk', countryName: 'Inggris (UK)', trait: 'Aksen British Anggun & Royal', provider: 'kokoro' },
+  { id: 'bf_emma', name: 'Emma', gender: 'Perempuan', country: 'uk', countryName: 'Inggris (UK)', trait: 'Aksen British Elegan', provider: 'kokoro' },
+  { id: 'bf_isabella', name: 'Isabella', gender: 'Perempuan', country: 'uk', countryName: 'Inggris (UK)', trait: 'Aksen British Formal & Lembut', provider: 'kokoro' },
+  { id: 'bf_lily', name: 'Lily', gender: 'Perempuan', country: 'uk', countryName: 'Inggris (UK)', trait: 'Aksen British Manis', provider: 'kokoro' },
+  { id: 'bm_daniel', name: 'Daniel', gender: 'Laki-laki', country: 'uk', countryName: 'Inggris (UK)', trait: 'Aksen British Lembut & Bersahabat', provider: 'kokoro' },
+  { id: 'bm_george', name: 'George', gender: 'Laki-laki', country: 'uk', countryName: 'Inggris (UK)', trait: 'Aksen British Sopan & Berwibawa', provider: 'kokoro' },
+  { id: 'bm_lewis', name: 'Lewis', gender: 'Laki-laki', country: 'uk', countryName: 'Inggris (UK)', trait: 'Aksen British Dinamis', provider: 'kokoro' },
+
+  // 🇪🇸 Spanyol
+  { id: 'ef_dora', name: 'Dora', gender: 'Perempuan', country: 'es', countryName: 'Spanyol', trait: 'Aksen Spanyol Cerah & Ekspresif', provider: 'kokoro' },
+  { id: 'em_alex', name: 'Alex', gender: 'Laki-laki', country: 'es', countryName: 'Spanyol', trait: 'Aksen Spanyol Santai', provider: 'kokoro' },
+  { id: 'em_santa', name: 'Santa', gender: 'Laki-laki', country: 'es', countryName: 'Spanyol', trait: 'Aksen Spanyol Hangat', provider: 'kokoro' },
+
+  // 🇫🇷 Prancis
+  { id: 'ff_siwis', name: 'Siwis', gender: 'Perempuan', country: 'fr', countryName: 'Prancis', trait: 'Aksen Prancis Lembut & Romantis', provider: 'kokoro' },
+
+  // 🇮🇹 Italia
+  { id: 'if_sara', name: 'Sara', gender: 'Perempuan', country: 'it', countryName: 'Italia', trait: 'Aksen Italia Melodis & Ekspresif', provider: 'kokoro' },
+  { id: 'im_nicola', name: 'Nicola', gender: 'Laki-laki', country: 'it', countryName: 'Italia', trait: 'Aksen Italia Bersemangat', provider: 'kokoro' },
+
+  // 🇧🇷 Brasil / Portugis
+  { id: 'pf_dora', name: 'Dora (BR)', gender: 'Perempuan', country: 'br', countryName: 'Brasil', trait: 'Aksen Portugis Brasil Ceria', provider: 'kokoro' },
+  { id: 'pm_alex', name: 'Alex (BR)', gender: 'Laki-laki', country: 'br', countryName: 'Brasil', trait: 'Aksen Portugis Brasil Hangat', provider: 'kokoro' },
+
+  // 🇮🇳 India / Hindi
+  { id: 'hf_alpha', name: 'Alpha (IN)', gender: 'Perempuan', country: 'in', countryName: 'India', trait: 'Aksen Hindi Hangat & Berirama', provider: 'kokoro' },
+  { id: 'hf_beta', name: 'Beta (IN)', gender: 'Perempuan', country: 'in', countryName: 'India', trait: 'Aksen Hindi Jelas & Cepat', provider: 'kokoro' },
+  { id: 'hm_omega', name: 'Omega (IN)', gender: 'Laki-laki', country: 'in', countryName: 'India', trait: 'Aksen Hindi Berwibawa', provider: 'kokoro' },
+  { id: 'hm_psi', name: 'Psi (IN)', gender: 'Laki-laki', country: 'in', countryName: 'India', trait: 'Aksen Hindi Santai', provider: 'kokoro' },
+
+  // 🇨🇳 Tiongkok / Mandarin
+  { id: 'zf_xiaobei', name: 'Xiaobei', gender: 'Perempuan', country: 'cn', countryName: 'Tiongkok', trait: 'Aksen Mandarin Manis & Imut', provider: 'kokoro' },
+  { id: 'zf_xiaoni', name: 'Xiaoni', gender: 'Perempuan', country: 'cn', countryName: 'Tiongkok', trait: 'Aksen Mandarin Ramah', provider: 'kokoro' },
+  { id: 'zf_xiaoxiao', name: 'Xiaoxiao', gender: 'Perempuan', country: 'cn', countryName: 'Tiongkok', trait: 'Aksen Mandarin Ceria', provider: 'kokoro' },
+  { id: 'zm_yunjian', name: 'Yunjian', gender: 'Laki-laki', country: 'cn', countryName: 'Tiongkok', trait: 'Aksen Mandarin Dewasa & Tenang', provider: 'kokoro' },
+  { id: 'zm_yunxi', name: 'Yunxi', gender: 'Laki-laki', country: 'cn', countryName: 'Tiongkok', trait: 'Aksen Mandarin Santai', provider: 'kokoro' }
+]
+
+function updateVoiceBadge(voiceId) {
+  const item = VOICE_CATALOG.find((v) => v.id === voiceId)
+  if (item) {
+    const provName = item.provider === 'kokoro' ? 'Kokoro-TTS' : 'Edge-TTS'
+    const flagMap = { jp: '🇯🇵', id: '🇮🇩', us: '🇺🇸', uk: '🇬🇧', es: '🇪🇸', fr: '🇫🇷', it: '🇮🇹', br: '🇧🇷', in: '🇮🇳', cn: '🇨🇳' }
+    const flag = flagMap[item.country] || '🌐'
+    if (ttsVoiceBadge) {
+      ttsVoiceBadge.textContent = `${flag} ${item.countryName} · ${item.gender}`
+    }
+    if (ttsVoiceMatchCount) {
+      ttsVoiceMatchCount.textContent = `${item.name}: ${item.trait} (${provName})`
+    }
+  } else {
+    if (ttsVoiceBadge) ttsVoiceBadge.textContent = `Karakter: ${voiceId}`
+  }
+}
+
+function renderVoiceOptions(activeVoiceId) {
+  if (!ttsVoice) return
+  const targetVoice = activeVoiceId || ttsVoice.value || settings.tts.voice || 'af_heart'
+  const country = ttsCountryFilter?.value || 'all'
+
+  const filtered = VOICE_CATALOG.filter((v) => {
+    if (country !== 'all' && v.country !== country) return false
+    return true
+  })
+
+  // Kelompokkan berdasarkan negara
+  const groups = {}
+  filtered.forEach((v) => {
+    if (!groups[v.countryName]) groups[v.countryName] = []
+    groups[v.countryName].push(v)
+  })
+
+  ttsVoice.innerHTML = ''
+  if (filtered.length === 0) {
+    const opt = document.createElement('option')
+    opt.value = ''
+    opt.textContent = 'Tidak ada karakter cocok'
+    opt.disabled = true
+    ttsVoice.appendChild(opt)
+    return
+  }
+
+  const flagMap = {
+    'Jepang': '🇯🇵 Jepang (Anime Seiyuu)',
+    'Indonesia': '🇮🇩 Indonesia (Edge Natural)',
+    'Amerika Serikat': '🇺🇸 Amerika Serikat',
+    'Inggris (UK)': '🇬🇧 Inggris / British',
+    'Spanyol': '🇪🇸 Spanyol',
+    'Prancis': '🇫🇷 Prancis',
+    'Italia': '🇮🇹 Italia',
+    'Brasil': '🇧🇷 Brasil / Portugis',
+    'India': '🇮🇳 India / Hindi',
+    'Tiongkok': '🇨🇳 Tiongkok / Mandarin'
+  }
+
+  let foundTarget = false
+  for (const [cName, list] of Object.entries(groups)) {
+    const optgroup = document.createElement('optgroup')
+    optgroup.label = flagMap[cName] || cName
+    list.forEach((v) => {
+      const opt = document.createElement('option')
+      opt.value = v.id
+      opt.textContent = `${v.name} (${v.gender})`
+      if (v.id === targetVoice) {
+        opt.selected = true
+        foundTarget = true
+      }
+      optgroup.appendChild(opt)
+    })
+    ttsVoice.appendChild(optgroup)
+  }
+
+  if (!foundTarget && filtered.length > 0) {
+    ttsVoice.value = filtered[0].id
+  }
+
+  updateVoiceBadge(ttsVoice.value)
+}
+
+function updateTtsProviderVisibility() {
+  if (kokoroEndpointField && ttsProvider) {
+    kokoroEndpointField.style.display = ttsProvider.value === 'kokoro' ? 'flex' : 'none'
+  }
+}
+
 function loadVoiceUI() {
   ttsEnabled.checked = settings.tts.enabled
-  ttsVoice.value = settings.tts.voice
+  const provider = settings.tts.provider || 'kokoro'
+  if (ttsProvider) ttsProvider.value = provider
+  
+  let curVoice = settings.tts.voice || (provider === 'kokoro' ? 'af_heart' : 'id-ID-GadisNeural')
+  if (provider === 'kokoro' && !/^[a-z]{2}_/i.test(curVoice)) {
+    curVoice = 'af_heart'
+    settings.tts.voice = curVoice
+    saveSettings(settings)
+  }
+
+  // Pilih negara filter yang cocok dengan suara yang sedang aktif
+  const item = VOICE_CATALOG.find((v) => v.id === curVoice)
+  if (item && ttsCountryFilter) {
+    ttsCountryFilter.value = item.country
+  }
+
+  renderVoiceOptions(curVoice)
+  if (ttsVoice) ttsVoice.value = curVoice
+  updateVoiceBadge(curVoice)
+
+  if (ttsIntonation) ttsIntonation.value = settings.tts?.intonation || 'anime'
+  if (ttsKokoroEndpoint) ttsKokoroEndpoint.value = settings.tts.kokoroEndpoint || 'http://127.0.0.1:8880'
   ttsSpeed.value = String(settings.tts.speed ?? 1.0)
   ttsVerbosity.value = settings.tts.verbosity || 'concise'
   sttModel.value = settings.stt.model
   sttLanguage.value = settings.stt.language
   convBargeIn.checked = settings.conversation?.bargeIn !== false
   convContinuous.checked = !!settings.conversation?.continuous
+  updateTtsProviderVisibility()
 }
+
+ttsCountryFilter?.addEventListener('change', () => {
+  renderVoiceOptions()
+  saveVoiceUI()
+})
+
+ttsVoice?.addEventListener('change', () => {
+  const chosen = ttsVoice.value
+  const item = VOICE_CATALOG.find((v) => v.id === chosen)
+  if (item && item.provider && ttsProvider) {
+    ttsProvider.value = item.provider
+  }
+  updateVoiceBadge(chosen)
+  saveVoiceUI()
+})
+
+ttsProvider?.addEventListener('change', () => {
+  if (ttsProvider.value === 'kokoro' && !/^[a-z]{2}_/i.test(ttsVoice.value)) {
+    ttsVoice.value = 'af_heart'
+  } else if (ttsProvider.value === 'edge' && /^[a-z]{2}_/i.test(ttsVoice.value)) {
+    ttsVoice.value = 'id-ID-GadisNeural'
+  }
+  updateVoiceBadge(ttsVoice.value)
+  saveVoiceUI()
+})
 
 function saveVoiceUI() {
   settings.tts.enabled = ttsEnabled.checked
-  settings.tts.voice = ttsVoice.value
+  if (ttsVoice && ttsVoice.value) {
+    settings.tts.voice = ttsVoice.value
+    const item = VOICE_CATALOG.find((v) => v.id === ttsVoice.value)
+    if (item && item.provider) {
+      settings.tts.provider = item.provider
+      if (ttsProvider) ttsProvider.value = item.provider
+    }
+  } else if (ttsProvider) {
+    settings.tts.provider = ttsProvider.value
+  }
+  if (ttsIntonation) settings.tts.intonation = ttsIntonation.value
+  if (ttsKokoroEndpoint) settings.tts.kokoroEndpoint = ttsKokoroEndpoint.value.trim() || 'http://127.0.0.1:8880'
   settings.tts.speed = parseFloat(ttsSpeed.value) || 1.0
   settings.tts.verbosity = ttsVerbosity.value
   settings.stt.model = sttModel.value
@@ -383,6 +1157,7 @@ function saveVoiceUI() {
   settings.conversation.bargeIn = convBargeIn.checked
   settings.conversation.continuous = convContinuous.checked
   saveSettings(settings)
+  updateTtsProviderVisibility()
 
   // Terapkan ke Hermes (voice + STT model/bahasa) agar benar-benar berlaku.
   window.hermesAvatar.setTtsConfig({ voice: settings.tts.voice }).catch(() => {})
@@ -392,8 +1167,89 @@ function saveVoiceUI() {
   }).catch(() => {})
 }
 
-;['tts-enabled', 'tts-voice', 'tts-speed', 'tts-verbosity', 'stt-model', 'stt-language', 'conv-barge-in', 'conv-continuous'].forEach((id) => {
-  document.getElementById(id).addEventListener('change', saveVoiceUI)
+;['tts-enabled', 'tts-provider', 'tts-intonation', 'tts-kokoro-endpoint', 'tts-speed', 'tts-verbosity', 'stt-model', 'stt-language', 'conv-barge-in', 'conv-continuous'].forEach((id) => {
+  document.getElementById(id)?.addEventListener('change', saveVoiceUI)
+})
+
+// --- Pengujian Suara / Audio Preview ---
+const ttsTestBtn = document.getElementById('tts-test-btn')
+const ttsTestInput = document.getElementById('tts-test-input')
+const ttsTestIcon = document.getElementById('tts-test-icon')
+const ttsTestText = document.getElementById('tts-test-text')
+let currentTestAudio = null
+
+ttsTestBtn?.addEventListener('click', async () => {
+  // Jika sedang memutar suara, hentikan pemutaran
+  if (currentTestAudio && !currentTestAudio.paused) {
+    currentTestAudio.pause()
+    currentTestAudio.currentTime = 0
+    currentTestAudio = null
+    ttsTestBtn.disabled = false
+    if (ttsTestIcon) ttsTestIcon.textContent = '🔊'
+    if (ttsTestText) ttsTestText.textContent = 'Uji'
+    showToast('Pemutaran Dihentikan ⏹️', 'Sampel audio tes dihentikan', 'info', '⏹️')
+    return
+  }
+
+  const text = (ttsTestInput?.value || '').trim() || 'Halo! Saya adalah avatar desktop pintar Anda.'
+  const voice = ttsVoice?.value || 'af_heart'
+  const provider = ttsProvider?.value || 'kokoro'
+  const intonation = ttsIntonation?.value || 'anime'
+  const speed = parseFloat(ttsSpeed?.value) || 1.0
+  const kokoroEndpoint = ttsKokoroEndpoint?.value.trim() || 'http://127.0.0.1:8880'
+
+  ttsTestBtn.disabled = true
+  if (ttsTestIcon) ttsTestIcon.textContent = '⏳'
+  if (ttsTestText) ttsTestText.textContent = '...'
+
+  showToast('Memproses Audio... 🎙️', `Sintesis ucapan [${voice}] via ${provider}`, 'running', '🎙️', 3500)
+
+  try {
+    const res = await window.hermesAvatar.synthesizeSpeech(text, voice, {
+      provider,
+      speed,
+      intonation,
+      kokoroEndpoint,
+      noFallback: true
+    })
+
+    if (!res || !res.ok) {
+      throw new Error(res?.error || 'Gagal memproses audio TTS')
+    }
+
+    const audioSrc = res.dataUrl || (res.base64 ? `data:${res.mimeType || 'audio/mpeg'};base64,${res.base64}` : null)
+    if (!audioSrc) {
+      throw new Error('Respons audio kosong')
+    }
+
+    currentTestAudio = new Audio(audioSrc)
+    ttsTestBtn.disabled = false
+    if (ttsTestIcon) ttsTestIcon.textContent = '⏹️'
+    if (ttsTestText) ttsTestText.textContent = 'Stop'
+
+    const engineLabel = res.isKokoro ? 'Kokoro-TTS (Lokal AI)' : (provider === 'kokoro' ? 'Kokoro' : 'Edge-TTS')
+    showToast('Memutar Sampel Suara 🔊', `Model: ${voice} [${engineLabel}] (${speed}x)`, 'success', '🔊', 4500)
+
+    currentTestAudio.onended = () => {
+      currentTestAudio = null
+      if (ttsTestIcon) ttsTestIcon.textContent = '🔊'
+      if (ttsTestText) ttsTestText.textContent = 'Uji'
+    }
+
+    currentTestAudio.onerror = () => {
+      currentTestAudio = null
+      if (ttsTestIcon) ttsTestIcon.textContent = '🔊'
+      if (ttsTestText) ttsTestText.textContent = 'Uji'
+      showToast('Error Pemutaran Audio', 'Format audio tidak dapat diputar', 'error', '❌')
+    }
+
+    await currentTestAudio.play()
+  } catch (err) {
+    ttsTestBtn.disabled = false
+    if (ttsTestIcon) ttsTestIcon.textContent = '🔊'
+    if (ttsTestText) ttsTestText.textContent = 'Uji'
+    showToast('Gagal Uji Suara', err.message || err, 'error', '❌')
+  }
 })
 
 // --- LLM & Provider ---
@@ -414,21 +1270,28 @@ let editingProviderId = null // null = mode tambah; id = mode edit
 function renderLlmList() {
   const providers = settings.llm.providers || []
   if (providers.length === 0) {
-    llmList.innerHTML = '<p class="hint">Belum ada provider.</p>'
+    llmList.innerHTML = '<p class="hint" style="padding:16px;">Belum ada provider yang tersimpan.</p>'
     return
   }
   llmList.innerHTML = providers
     .map((p) => {
-      return `<div class="llm-item" data-id="${escapeHtml(p.id)}">
-        <div class="llm-item-main">
-          <strong>${escapeHtml(p.name)}</strong>
-          <span class="muted">${escapeHtml(p.model || '')}</span>
-          <button class="mini-btn activate llm-activate" data-id="${escapeHtml(p.id)}">Aktifkan</button>
-          <button class="mini-btn test llm-test" data-id="${escapeHtml(p.id)}">Tes</button>
-          <button class="mini-btn edit llm-edit" data-id="${escapeHtml(p.id)}">Edit</button>
-          <button class="mini-btn del llm-del" data-id="${escapeHtml(p.id)}">Hapus</button>
+      return `<div class="format-item llm-row" data-id="${escapeHtml(p.id)}">
+        <div class="format-emblem theme-indigo">
+          ${renderIcon('brain', { size: 18 })}
         </div>
-        <div class="llm-item-sub">${escapeHtml(p.baseUrl || '')} · ${maskKey(p.apiKey)}</div>
+        <div class="format-info-col">
+          <div class="format-title-line">
+            <span class="format-title">${escapeHtml(p.name)}</span>
+            ${p.model ? `<span class="format-pill-tag">${escapeHtml(p.model)}</span>` : ''}
+          </div>
+          <p class="format-desc-text">${escapeHtml(p.baseUrl || '')} · <span class="muted">${maskKey(p.apiKey)}</span></p>
+        </div>
+        <div class="format-status-col" style="gap:6px;">
+          <button class="mini-btn primary llm-activate" data-id="${escapeHtml(p.id)}" title="Aktifkan sebagai model utama">Aktifkan</button>
+          <button class="mini-btn secondary llm-test" data-id="${escapeHtml(p.id)}" title="Tes koneksi ke endpoint">Tes</button>
+          <button class="mini-btn browse llm-edit" data-id="${escapeHtml(p.id)}" title="Edit konfigurasi provider">Edit</button>
+          <button class="mini-btn del llm-del" data-id="${escapeHtml(p.id)}" title="Hapus provider ini">${renderIcon('trash-2', { size: 13 })}</button>
+        </div>
       </div>`
     })
     .join('')
@@ -609,6 +1472,7 @@ llmAddBtn.addEventListener('click', async () => {
   const name = llmName.value.trim()
   if (!name) {
     statusEl.textContent = '⚠️ Isi nama provider.'
+    showToast('Nama Provider Kosong', 'Harap masukkan nama provider LLM', 'error', '⚠️')
     return
   }
 
@@ -627,6 +1491,7 @@ llmAddBtn.addEventListener('click', async () => {
       p.model = llmModel.value.trim()
       saveSettings(settings)
       statusEl.textContent = 'Provider diperbarui.'
+      showToast('Provider Diperbarui! ✅', `Konfigurasi ${name} telah diupdate`, 'success', '💾')
     }
     resetProviderForm()
   } else {
@@ -640,6 +1505,7 @@ llmAddBtn.addEventListener('click', async () => {
     })
     saveSettings(settings)
     statusEl.textContent = 'Provider disimpan (lokal).'
+    showToast('Provider Disimpan! ✅', `Provider ${name} berhasil ditambahkan`, 'success', '💾')
     llmName.value = ''
     llmBaseUrl.value = ''
     llmApiKey.value = ''
@@ -656,9 +1522,12 @@ const llmSwitchModel = document.getElementById('llm-switch-model')
 const llmSwitchBtn = document.getElementById('llm-switch-btn')
 
 function modelItemHtml(r) {
-  return `<div class="llm-item">
-    <div class="llm-item-main"><strong>${escapeHtml(r.model || '—')}</strong></div>
-    <div class="llm-item-sub">provider: ${escapeHtml(r.provider || '—')}</div>
+  const modelName = r.model || '—'
+  const providerName = r.provider || 'default'
+  return `<div class="llm-pill-badge" style="display:inline-flex; align-items:center; gap:8px; padding:4px 10px; border-radius:14px; background:rgba(59,130,246,0.12); border:1px solid rgba(59,130,246,0.28);">
+    <span style="display:inline-block; width:6px; height:6px; border-radius:50%; background:#34d399; box-shadow:0 0 6px #34d399;"></span>
+    <span style="font-size:12.5px; font-weight:600; color:var(--text);">${escapeHtml(modelName)}</span>
+    <span style="font-size:11px; color:var(--text-secondary); opacity:0.8;">(${escapeHtml(providerName)})</span>
   </div>`
 }
 
@@ -784,16 +1653,25 @@ function renderSkills() {
   skillList.innerHTML = cats.map((cat) => {
     const names = grouped[cat]
     const items = names.map((n) => {
-      return `<span class="skill-chip">
+      const isCore = n.toLowerCase().includes('mnemosyne')
+      const coreBadge = isCore ? '<span class="skill-core-badge" style="background:#8b5cf6;color:#fff;font-size:10px;padding:2px 6px;border-radius:4px;margin-left:6px;font-weight:600;">WAJIB</span>' : ''
+      const actionBtn = isCore
+        ? `<span class="skill-chip-lock" title="Skill bawaan sistem (wajib) — tidak dapat dihapus" style="opacity:0.7;font-size:11px;margin-left:4px;cursor:default;">🔒</span>`
+        : `<button class="skill-chip-del" data-name="${escapeHtml(n)}" data-cat="${escapeHtml(cat)}" title="Hapus skill">×</button>`
+      return `<span class="skill-chip ${isCore ? 'core-skill' : ''}" style="${isCore ? 'border-color:#8b5cf6;' : ''}">
         <span class="skill-chip-name">${escapeHtml(n)}</span>
-        <button class="skill-chip-del" data-name="${escapeHtml(n)}" data-cat="${escapeHtml(cat)}" title="Hapus skill">×</button>
+        ${coreBadge}
+        ${actionBtn}
       </span>`
     }).join('')
     return `<div class="skill-acc">
       <button class="skill-acc-head" type="button">
+        <span class="format-emblem theme-teal" style="width:26px; height:26px; border-radius:6px; margin-right:8px; display:inline-flex; align-items:center; justify-content:center;">
+          ${renderIcon('folder', { size: 14 })}
+        </span>
         <span class="skill-acc-cat">${escapeHtml(cat)}</span>
-        <span class="skill-acc-count">${names.length}</span>
-        <span class="skill-acc-arrow">▾</span>
+        <span class="format-count-pill off" style="margin-left:auto; margin-right:10px;">${names.length} Skill</span>
+        <span class="skill-acc-arrow">${renderIcon('chevron-down', { size: 14 })}</span>
       </button>
       <div class="skill-acc-body">
         <div class="skill-chips">${items}</div>
@@ -884,9 +1762,11 @@ skillAddBtn.addEventListener('click', async () => {
   const content = skillContent.value.trim()
   if (!name || !content) {
     statusEl.textContent = '⚠️ Isi nama & isi skill (atau unggah file .md).'
+    showToast('Form Belum Lengkap', 'Isi nama & isi instruksi skill (.md)', 'error', '⚠️')
     return
   }
   skillAddBtn.disabled = true
+  showToast('Menyimpan Skill...', `Menulis ${name} ke ~/.hermes/skills/`, 'running', '🧩')
   try {
     const res = await window.hermesAvatar.addSkill({
       name,
@@ -895,6 +1775,7 @@ skillAddBtn.addEventListener('click', async () => {
     })
     if (!res.ok) throw new Error(res.error)
     statusEl.textContent = 'Skill disimpan.'
+    showToast('Skill Disimpan! ✅', `Skill ${name} berhasil dibuat`, 'success', '🧩')
     skillName.value = ''
     skillCategory.value = ''
     skillContent.value = ''
@@ -903,6 +1784,7 @@ skillAddBtn.addEventListener('click', async () => {
     reloadAndRefreshSkills()
   } catch (err) {
     statusEl.textContent = `Gagal simpan skill: ${err?.message || err}`
+    showToast('Gagal Simpan Skill', err?.message || err, 'error', '❌')
   } finally {
     skillAddBtn.disabled = false
   }
@@ -914,18 +1796,25 @@ const skillInstallBtn = document.getElementById('skill-install-btn')
 
 skillInstallBtn.addEventListener('click', async () => {
   const id = skillInstallId.value.trim()
-  if (!id) { statusEl.textContent = '⚠️ Isi Skill ID.'; return }
+  if (!id) {
+    statusEl.textContent = '⚠️ Isi Skill ID.'
+    showToast('Skill ID Kosong', 'Masukkan ID skill dari Hub', 'error', '⚠️')
+    return
+  }
 
   skillInstallBtn.disabled = true
   skillInstallBtn.textContent = 'Menginstall…'
+  showToast('Mengunduh Skill...', `Mengambil "${id}" dari repository`, 'running', '📥')
   try {
     const res = await window.hermesAvatar.installSkill(id)
     if (!res.ok) throw new Error(res.error)
     statusEl.textContent = `Skill "${id}" diinstall.`
+    showToast('Skill Terpasang! ✅', `Skill "${id}" siap digunakan`, 'success', '🎉')
     skillInstallId.value = ''
     reloadAndRefreshSkills()
   } catch (err) {
     statusEl.textContent = `Gagal install skill: ${err?.message || err}`
+    showToast('Gagal Install Skill', err?.message || err, 'error', '❌')
   } finally {
     skillInstallBtn.disabled = false
     skillInstallBtn.textContent = 'Install Skill'
@@ -946,25 +1835,163 @@ const BUILTIN_EMOTES = [
   { id: 'nod', icon: 'smile', label: 'Nod' }
 ]
 
-const ANIM_MENU = [
-  { id: 'pose-default', icon: 'user', label: 'Pose Default', desc: 'Pilih pose saat idle (A-pose / T-pose)' },
-  { id: 'pose-saved', icon: 'film', label: 'Pose Tersimpan', desc: 'Animasi pose custom yang diupload' },
-  { id: 'emote', icon: 'smile', label: 'Emote', desc: 'Emote bawaan + custom (panel avatar)' },
-  { id: 'add', icon: 'plus', label: 'Tambah Animasi', desc: 'Upload file animasi (GLB / VMD)' }
+const AVATAR_STATES = [
+  {
+    key: 'thinking',
+    icon: 'brain',
+    theme: 'indigo',
+    label: 'Gaya Saat Berpikir',
+    desc: 'Gestur dan ekspresi saat avatar menganalisis atau bernalar',
+    defaultOption: 'glasses',
+    builtins: [
+      { id: 'glasses', label: '👓 Kacamata Fokus (Default Bawaan)' },
+      { id: 'ponder', label: '🤔 Merenung Serius & Tenang' },
+      { id: 'curious', label: '🧐 Menatap Penasaran' },
+      { id: 'neutral', label: '😐 Netral Tanpa Kacamata' }
+    ]
+  },
+  {
+    key: 'watch',
+    icon: 'clock',
+    theme: 'blue',
+    label: 'Gaya Megang Jam (Timer & Fokus)',
+    desc: 'Aksesoris dan gestur avatar saat jam kerja atau timer berjalan',
+    defaultOption: 'watch_suit',
+    builtins: [
+      { id: 'watch_suit', label: '⌚ Jas & Jam Tangan Disiplin (Default)' },
+      { id: 'watch_only', label: '⏱️ Cek Jam Tangan Saja (Kasual)' },
+      { id: 'glasses_only', label: '👓 Kacamata Belajar Tanpa Jam' },
+      { id: 'casual', label: '🌸 Pakaian Santai Bebas' }
+    ]
+  },
+  {
+    key: 'processing',
+    icon: 'cpu',
+    theme: 'teal',
+    label: 'Gaya Memproses (Menyusun Respon)',
+    desc: 'Visual saat meracik kalimat jawaban dan menjalankan tool AI',
+    defaultOption: 'charterer',
+    builtins: [
+      { id: 'charterer', label: '🧻 Roll Rambut Cepat (Default Bawaan)' },
+      { id: 'focus', label: '💻 Fokus Konsentrasi Tinggi' },
+      { id: 'relaxed', label: '☕ Santai Menunggu' }
+    ]
+  },
+  {
+    key: 'greeting',
+    icon: 'heart',
+    theme: 'rose',
+    label: 'Gaya Menyapa & Reaksi Sentuhan',
+    desc: 'Reaksi avatar saat pertama menyapa atau ketika diklik/disentuh',
+    defaultOption: 'sarangheo',
+    builtins: [
+      { id: 'sarangheo', label: '💖 Tangan Sarangheo (Love & Blush - Default)' },
+      { id: 'bounce', label: '✨ Melompat Ringan (Bounce)' },
+      { id: 'wave', label: '👋 Melambaikan Tangan (Wave)' }
+    ]
+  },
+  {
+    key: 'idle',
+    icon: 'user',
+    theme: 'purple',
+    label: 'Postur Diam (Idle Standby)',
+    desc: 'Pose dan postur tubuh avatar ketika tidak sedang bergerak',
+    defaultOption: 'a-pose',
+    builtins: [
+      { id: 'a-pose', label: '🧍 A-Pose (Tangan di Samping Natural - Default)' },
+      { id: 't-pose', label: '✝️ T-Pose (Tangan Terentang)' }
+    ]
+  }
 ]
 
-function customPoses() { return (settings.animations || []).filter((a) => a.type === 'pose') }
-function customEmotes() { return (settings.animations || []).filter((a) => a.type === 'emote') }
+const ANIM_MENU = [
+  { id: 'state-mapping', icon: 'sliders', theme: 'indigo', label: 'Pemetaan Gaya Status Avatar', desc: 'Atur gaya avatar saat berpikir, megang jam, memproses, menyapa, dan diam' },
+  { id: 'add', icon: 'upload-cloud', theme: 'emerald', label: 'Unggah Animasi Baru', desc: 'Unggah file animasi gerakan 3D (.glb, .vmd, .motion3.json, .bvh, .fbx)' },
+  { id: 'pose-saved', icon: 'film', theme: 'purple', label: 'Animasi & Pose Tersimpan', desc: 'Kelola dan uji file animasi custom yang telah diunggah' },
+  { id: 'emote', icon: 'smile', theme: 'amber', label: 'Emote & Ekspresi Bawaan', desc: 'Daftar emote bawaan & ekspresi interaktif avatar' },
+  { id: 'pose-default', icon: 'user', theme: 'blue', label: 'Pose Default (Idle)', desc: 'Atur postur istirahat saat avatar diam (A-pose / T-pose)' }
+]
+
+function customAnimations() { return settings.animations || [] }
+function customPoses() { return (settings.animations || []).filter((a) => a.type === 'pose' || a.targetState === 'idle') }
+function customEmotes() { return (settings.animations || []).filter((a) => a.type === 'emote' || a.targetState !== 'idle') }
+
+function getStateAnimActive(key, fallback) {
+  return settings.stateAnimations?.[key] || fallback
+}
+
+function getStateLabel(def, activeVal) {
+  const builtin = def.builtins.find((b) => b.id === activeVal)
+  if (builtin) return builtin.label.split('(')[0].trim()
+  if (activeVal && activeVal.startsWith('custom:')) {
+    const id = activeVal.replace('custom:', '')
+    const anim = (settings.animations || []).find((a) => a.id === id)
+    return anim ? `🎬 ${anim.name}` : 'Kustom'
+  }
+  return 'Aktif'
+}
+
+function customOptionsForState(targetState, activeVal) {
+  const list = (settings.animations || []).filter((a) => !a.targetState || a.targetState === targetState || a.targetState === 'custom')
+  if (!list.length) return ''
+  const opts = list.map((a) => {
+    const isSelected = activeVal === `custom:${a.id}` ? 'selected' : ''
+    return `<option value="custom:${escapeHtml(a.id)}" ${isSelected}>🎬 ${escapeHtml(a.name)} (.${escapeHtml(a.format)})</option>`
+  }).join('')
+  return `<optgroup label="Animasi Kustom Terpasang">${opts}</optgroup>`
+}
+
+async function previewStateAnimation(stateKey, value) {
+  try {
+    if (value && value.startsWith('custom:')) {
+      const id = value.replace('custom:', '')
+      const anim = (settings.animations || []).find((a) => a.id === id)
+      if (anim) {
+        await window.hermesAvatar?.previewAnimation?.({ anim, state: stateKey })
+        return
+      }
+    }
+    await window.hermesAvatar?.previewAnimation?.({ state: stateKey, style: value })
+  } catch (err) {
+    console.warn('[Settings] Gagal kirim preview animasi:', err)
+  }
+}
 
 function renderAnimMenu() {
+  const animCount = customAnimations().length
+  const defaultPose = settings.stateAnimations?.idle === 't-pose' || settings.pose === 't-pose' ? 'T-Pose' : 'A-Pose'
+
   animMenu.innerHTML = ANIM_MENU.map((m) => {
+    let countBadge = ''
+    if (m.id === 'state-mapping') {
+      countBadge = `<span class="format-count-pill on">⚡ 5 Status Aktif</span>`
+    } else if (m.id === 'add') {
+      countBadge = `<span class="format-count-pill off">+ Unggah</span>`
+    } else if (m.id === 'pose-saved') {
+      countBadge = animCount > 0
+        ? `<span class="format-count-pill on">🟢 ${animCount} File</span>`
+        : `<span class="format-count-pill off">0 File</span>`
+    } else if (m.id === 'emote') {
+      const total = BUILTIN_EMOTES.length + customEmotes().length
+      countBadge = `<span class="format-count-pill on">${total} Emote</span>`
+    } else if (m.id === 'pose-default') {
+      countBadge = `<span class="format-count-pill on">⚡ ${defaultPose}</span>`
+    }
+
     return `<div class="format-item" data-sub="${m.id}">
-      <div class="format-head">
-        <span class="format-badge">${renderIcon(m.icon, { size: 16 })}</span>
-        <span>${escapeHtml(m.label)}</span>
+      <div class="format-emblem theme-${m.theme}">
+        ${renderIcon(m.icon, { size: 18 })}
       </div>
-      <p class="format-desc">${escapeHtml(m.desc)}</p>
-      <div class="format-chevron">›</div>
+      <div class="format-info-col">
+        <div class="format-title-line">
+          <span class="format-title">${escapeHtml(m.label)}</span>
+        </div>
+        <p class="format-desc-text">${escapeHtml(m.desc)}</p>
+      </div>
+      <div class="format-status-col">
+        ${countBadge}
+        <span class="format-arrow">${renderIcon('chevron-right', { size: 16 })}</span>
+      </div>
     </div>`
   }).join('')
 
@@ -977,135 +2004,367 @@ function openAnimDetail(sub) {
   animMenuView.classList.add('hidden')
   animDetailView.classList.remove('hidden')
 
-  if (sub === 'pose-default') {
+  if (sub === 'state-mapping') {
     animDetail.innerHTML = `
+      <div class="group-header">Pemetaan Gaya Status & Perilaku Avatar</div>
       <div class="card">
-        <h2>Pose Default</h2>
-        <p class="hint">Pose yang dipakai avatar saat diam (idle).</p>
-        <label class="field">
-          <span>Pose</span>
-          <select id="pose-select">
-            <option value="a-pose">A-pose (tangan di samping)</option>
-            <option value="t-pose">T-pose (tangan terentang)</option>
-          </select>
-        </label>
+        ${AVATAR_STATES.map((def) => {
+          const activeVal = getStateAnimActive(def.key, def.defaultOption)
+          const badgeText = getStateLabel(def, activeVal)
+          return `
+          <div class="settings-row">
+            <div class="format-emblem theme-${def.theme}">
+              ${renderIcon(def.icon, { size: 18 })}
+            </div>
+            <div class="format-info-col">
+              <div class="format-title-line">
+                <span class="format-title">${escapeHtml(def.label)}</span>
+                <span class="voice-badge-pill" id="badge-state-${def.key}">${escapeHtml(badgeText)}</span>
+              </div>
+              <p class="format-desc-text">${escapeHtml(def.desc)}</p>
+            </div>
+            <div class="row-control" style="gap:8px;">
+              <select id="state-sel-${def.key}" class="mac-select" data-state="${def.key}">
+                <optgroup label="Pilihan Bawaan Prosedural">
+                  ${def.builtins.map((b) => `<option value="${b.id}" ${b.id === activeVal ? 'selected' : ''}>${b.label}</option>`).join('')}
+                </optgroup>
+                ${customOptionsForState(def.key, activeVal)}
+              </select>
+              <button type="button" class="mini-btn use btn-test-state" data-state="${def.key}" title="Uji coba gaya ini langsung di avatar">⚡ Uji</button>
+            </div>
+          </div>`
+        }).join('')}
       </div>`
-    const sel = document.getElementById('pose-select')
-    sel.value = settings.pose || 'a-pose'
-    sel.onchange = () => {
-      settings.pose = sel.value
-      saveSettings(settings)
-      statusEl.textContent = 'Pose default disimpan.'
-    }
-  } else if (sub === 'pose-saved') {
-    animDetail.innerHTML = `<div class="card">
-      <h2>Pose Tersimpan</h2>
-      <p class="hint">Animasi pose custom (.glb/.vmd) yang diupload. Bisa dihapus.</p>
-      <div id="pose-list" class="anim-list">${renderPoseListHtml()}</div>
-    </div>`
-    bindAnimDeleteIn('#pose-list')
-  } else if (sub === 'emote') {
-    animDetail.innerHTML = `<div class="card">
-      <h2>Emote</h2>
-      <p class="hint">Emote bawaan (procedural) + custom (upload).</p>
-      <div id="emote-list" class="anim-list">${renderEmoteListHtml()}</div>
-    </div>`
-    bindAnimDeleteIn('#emote-list')
+
+    // Bind event change & test per state
+    AVATAR_STATES.forEach((def) => {
+      const sel = document.getElementById(`state-sel-${def.key}`)
+      const badge = document.getElementById(`badge-state-${def.key}`)
+      if (sel) {
+        sel.onchange = () => {
+          const val = sel.value
+          settings.stateAnimations = settings.stateAnimations || {}
+          settings.stateAnimations[def.key] = val
+          if (def.key === 'idle') {
+            settings.pose = val
+          }
+          saveSettings(settings)
+          if (badge) badge.textContent = getStateLabel(def, val)
+          previewStateAnimation(def.key, val)
+          showToast('Gaya Avatar Diperbarui! ✨', `${def.label}: ${sel.options[sel.selectedIndex].text}`, 'success', '✨')
+        }
+      }
+    })
+
+    animDetail.querySelectorAll('.btn-test-state').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const stateKey = btn.dataset.state
+        const sel = document.getElementById(`state-sel-${stateKey}`)
+        const val = sel?.value
+        const def = AVATAR_STATES.find((s) => s.key === stateKey)
+        previewStateAnimation(stateKey, val)
+        showToast('Menguji Gerakan Avatar ⚡', `Memainkan sampel ${def?.label || stateKey}`, 'info', '⚡', 2500)
+      })
+    })
+
   } else if (sub === 'add') {
     animDetail.innerHTML = `
+      <div class="group-header">Unggah Animasi Kustom Baru</div>
       <div class="card">
-        <h2>Tambah Animasi</h2>
-        <p class="hint">Format: <code>.glb</code> (GLB + animation) atau <code>.vmd</code> (MMD motion).</p>
-        <div class="path-row" style="margin-bottom:12px;">
-          <input id="anim-name" type="text" placeholder="Nama animasi" />
-          <button type="button" id="anim-pick-btn" class="browse">Pilih file…</button>
+        <div class="settings-row">
+          <div class="format-emblem theme-emerald">
+            ${renderIcon('film', { size: 18 })}
+          </div>
+          <div class="format-info-col">
+            <div class="format-title-line">
+              <span class="format-title">Nama Gaya Animasi</span>
+            </div>
+            <p class="format-desc-text">Beri label unik untuk pose atau gerakan ini</p>
+          </div>
+          <div class="row-control">
+            <input id="anim-name" type="text" class="mac-input" placeholder="cth. Pose Berpikir Detektif" />
+          </div>
         </div>
-        <label class="field">
-          <span>Path file</span>
-          <input id="anim-path" type="text" placeholder="otomatis terisi" readonly />
-        </label>
-        <label class="field">
-          <span>Tipe</span>
-          <select id="anim-type">
-            <option value="pose">Pose (default / idle)</option>
-            <option value="emote">Emote (panel emote avatar)</option>
-          </select>
-        </label>
-        <button id="anim-add-btn" class="primary">Simpan Animasi</button>
+        <div class="settings-row">
+          <div class="format-emblem theme-blue">
+            ${renderIcon('folder', { size: 18 })}
+          </div>
+          <div class="format-info-col">
+            <div class="format-title-line">
+              <span class="format-title">File Gerakan Animasi</span>
+            </div>
+            <p class="format-desc-text">Format: .glb, .gltf, .vmd, .motion3.json, .bvh, .fbx</p>
+          </div>
+          <div class="row-control" style="gap:6px;">
+            <input id="anim-path" type="text" class="mac-input" style="width:160px; min-width:160px;" placeholder="Pilih file..." readonly />
+            <button type="button" id="anim-pick-btn" class="mini-btn browse">Pilih File…</button>
+          </div>
+        </div>
+        <div class="settings-row">
+          <div class="format-emblem theme-purple">
+            ${renderIcon('sliders', { size: 18 })}
+          </div>
+          <div class="format-info-col">
+            <div class="format-title-line">
+              <span class="format-title">Target Status Avatar</span>
+            </div>
+            <p class="format-desc-text">Status di mana animasi ini akan dimainkan</p>
+          </div>
+          <div class="row-control">
+            <select id="anim-target-state" class="mac-select">
+              <option value="thinking">🧠 Berpikir (Thinking / Reasoning)</option>
+              <option value="watch">⌚ Megang Jam (Timer & Fokus)</option>
+              <option value="processing">⚡ Memproses (Menyusun Respon)</option>
+              <option value="greeting">💖 Menyapa & Sentuhan (Greeting / Love)</option>
+              <option value="idle">🧍 Postur Diam (Idle Standby)</option>
+              <option value="custom">🎬 Animasi Kustom Umum</option>
+            </select>
+          </div>
+        </div>
+        <div class="settings-row">
+          <div class="format-emblem theme-amber">
+            ${renderIcon('sparkles', { size: 18 })}
+          </div>
+          <div class="format-info-col">
+            <div class="format-title-line">
+              <span class="format-title">Langsung Jadikan Gaya Aktif</span>
+            </div>
+            <p class="format-desc-text">Otomatis pasang sebagai animasi aktif untuk status yang dipilih</p>
+          </div>
+          <div class="row-control">
+            <input id="anim-auto-apply" type="checkbox" class="mac-switch" checked />
+          </div>
+        </div>
+        <div class="settings-row">
+          <div class="format-info-col">
+            <p class="format-desc-text" style="color:var(--text-secondary);">File yang diunggah dapat diuji di avatar atau diganti kapan saja dari menu Pemetaan.</p>
+          </div>
+          <div class="row-control">
+            <button id="anim-add-btn" class="mini-btn primary" style="height:32px; padding:0 16px;">Simpan & Terapkan Animasi</button>
+          </div>
+        </div>
       </div>`
     bindAnimAddForm()
+
+  } else if (sub === 'pose-saved') {
+    animDetail.innerHTML = `
+      <div class="group-header">Daftar Animasi & Pose Tersimpan</div>
+      <div class="card padded">
+        <p class="hint" style="margin-top:0; margin-bottom:12px;">File animasi custom (.glb, .vmd, .motion3.json) yang telah diunggah ke avatar.</p>
+        <div id="pose-list" class="anim-list">${renderPoseListHtml()}</div>
+      </div>`
+    bindPoseListEvents()
+
+  } else if (sub === 'emote') {
+    animDetail.innerHTML = `
+      <div class="group-header">Daftar Emote & Ekspresi Bawaan</div>
+      <div class="card padded">
+        <p class="hint" style="margin-top:0; margin-bottom:12px;">Emote bawaan prosedural & reaksi interaktif avatar yang bisa diuji langsung.</p>
+        <div id="emote-list" class="anim-list">${renderEmoteListHtml()}</div>
+      </div>`
+    bindEmoteTestEvents()
+
+  } else if (sub === 'pose-default') {
+    const curPose = settings.stateAnimations?.idle || settings.pose || 'a-pose'
+    animDetail.innerHTML = `
+      <div class="group-header">Konfigurasi Pose Diam (Idle)</div>
+      <div class="card">
+        <div class="settings-row">
+          <div class="format-emblem theme-blue">
+            ${renderIcon('user', { size: 18 })}
+          </div>
+          <div class="format-info-col">
+            <div class="format-title-line">
+              <span class="format-title">Postur Standby</span>
+            </div>
+            <p class="format-desc-text">Postur tubuh avatar ketika tidak sedang bergerak</p>
+          </div>
+          <div class="row-control" style="gap:8px;">
+            <select id="pose-select" class="mac-select">
+              <option value="a-pose" ${curPose === 'a-pose' ? 'selected' : ''}>A-pose (tangan di samping natural)</option>
+              <option value="t-pose" ${curPose === 't-pose' ? 'selected' : ''}>T-pose (tangan terentang)</option>
+            </select>
+            <button type="button" class="mini-btn use" id="pose-test-btn" title="Uji coba pose ini">⚡ Uji</button>
+          </div>
+        </div>
+      </div>`
+    const sel = document.getElementById('pose-select')
+    const testBtn = document.getElementById('pose-test-btn')
+    sel.onchange = () => {
+      settings.pose = sel.value
+      settings.stateAnimations = settings.stateAnimations || {}
+      settings.stateAnimations.idle = sel.value
+      saveSettings(settings)
+      previewStateAnimation('idle', sel.value)
+      showToast('Pose Default Disimpan! 🎬', `Pose aktif: ${sel.options[sel.selectedIndex].text}`, 'success', '🎬')
+    }
+    testBtn.onclick = () => {
+      previewStateAnimation('idle', sel.value)
+      showToast('Menguji Postur Diam ⚡', `Pose: ${sel.options[sel.selectedIndex].text}`, 'info', '⚡')
+    }
   }
 }
 
 function renderPoseListHtml() {
-  const poses = customPoses()
-  if (poses.length === 0) return '<p class="hint">Belum ada pose custom.</p>'
-  return poses.map((a) => animItemHtml(a)).join('')
-}
-
-function renderEmoteListHtml() {
-  const builtin = BUILTIN_EMOTES.map((e) => {
-    return `<div class="app-item">
-      <div class="app-item-main">${renderIcon(e.icon, { size: 16 })}<strong>${escapeHtml(e.label)}</strong></div>
-      <span class="muted">bawaan</span>
+  const anims = customAnimations()
+  if (anims.length === 0) {
+    return `<div style="text-align:center; padding:24px 12px;">
+      <p class="hint" style="margin-bottom:12px;">Belum ada animasi custom yang diunggah.</p>
+      <button type="button" class="mini-btn use" onclick="document.querySelector('[data-sub=\\'add\\']')?.click()">+ Unggah Animasi Baru</button>
+    </div>`
+  }
+  return anims.map((a) => {
+    const isStateActive = Object.entries(settings.stateAnimations || {}).some(([k, v]) => v === `custom:${a.id}`)
+    const targetLabel = a.targetState ? a.targetState.toUpperCase() : 'CUSTOM'
+    return `<div class="app-item" data-id="${escapeHtml(a.id)}">
+      <div class="app-item-main">
+        ${renderIcon('film', { size: 16 })}
+        <strong>${escapeHtml(a.name)}</strong>
+        <span class="format-pill-tag">.${escapeHtml(a.format)}</span>
+        <span class="format-count-pill off">${escapeHtml(targetLabel)}</span>
+        ${isStateActive ? '<span class="voice-badge-pill">🟢 Aktif</span>' : ''}
+      </div>
+      <div style="display:flex; gap:6px; align-items:center;">
+        <button class="mini-btn use anim-test-btn" data-id="${escapeHtml(a.id)}" title="Uji animasi langsung di avatar">⚡ Uji</button>
+        ${!isStateActive && a.targetState ? `<button class="mini-btn edit anim-activate-btn" data-id="${escapeHtml(a.id)}" data-state="${escapeHtml(a.targetState)}">Pasang Aktif</button>` : ''}
+        <button class="mini-btn del anim-del-btn" data-id="${escapeHtml(a.id)}">Hapus</button>
+      </div>
     </div>`
   }).join('')
-  const custom = customEmotes().map((a) => animItemHtml(a)).join('')
-  return builtin + custom || '<p class="hint">Belum ada emote.</p>'
 }
 
-function animItemHtml(a) {
-  return `<div class="app-item" data-id="${escapeHtml(a.id)}">
-    <div class="app-item-main">
-      ${renderIcon('film', { size: 16 })}
-      <strong>${escapeHtml(a.name)}</strong>
-      <span class="muted">.${escapeHtml(a.format)}</span>
-    </div>
-    <button class="mini-btn del anim-del" data-id="${escapeHtml(a.id)}">Hapus</button>
-  </div>`
-}
-
-function bindAnimDeleteIn(selector) {
-  const container = document.querySelector(selector)
+function bindPoseListEvents() {
+  const container = document.getElementById('pose-list')
   if (!container) return
-  container.querySelectorAll('.anim-del').forEach((btn) => {
+
+  // Uji animasi
+  container.querySelectorAll('.anim-test-btn').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const a = (settings.animations || []).find((x) => x.id === btn.dataset.id)
+      if (a) {
+        await window.hermesAvatar?.previewAnimation?.({ anim: a, state: a.targetState || 'custom' })
+        showToast('Menguji Animasi ⚡', `Memainkan: ${a.name}`, 'info', '⚡', 2500)
+      }
+    })
+  })
+
+  // Pasang aktif
+  container.querySelectorAll('.anim-activate-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const { id, state } = btn.dataset
+      settings.stateAnimations = settings.stateAnimations || {}
+      settings.stateAnimations[state] = `custom:${id}`
+      saveSettings(settings)
+      openAnimDetail('pose-saved')
+      showToast('Gaya Animasi Terpasang! ✨', `Animasi aktif untuk status ${state}`, 'success', '✨')
+    })
+  })
+
+  // Hapus animasi
+  container.querySelectorAll('.anim-del-btn').forEach((btn) => {
     btn.addEventListener('click', async () => {
       const id = btn.dataset.id
       const a = (settings.animations || []).find((x) => x.id === id)
       const ok = await showConfirm(`Hapus animasi "${a?.name || ''}"?`, { title: 'Hapus Animasi' })
       if (!ok) return
       settings.animations = (settings.animations || []).filter((x) => x.id !== id)
+      // Bersihkan jika terpasang di stateAnimations
+      if (settings.stateAnimations) {
+        for (const [k, v] of Object.entries(settings.stateAnimations)) {
+          if (v === `custom:${id}`) {
+            const def = AVATAR_STATES.find((s) => s.key === k)
+            settings.stateAnimations[k] = def?.defaultOption || 'glasses'
+          }
+        }
+      }
       saveSettings(settings)
       openAnimDetail('pose-saved')
+      showToast('Animasi Dihapus', `"${a?.name || ''}" telah dihapus`, 'info', '🗑️')
+    })
+  })
+}
+
+function renderEmoteListHtml() {
+  return BUILTIN_EMOTES.map((e) => {
+    return `<div class="app-item" data-emote="${escapeHtml(e.id)}">
+      <div class="app-item-main">
+        ${renderIcon(e.icon, { size: 16 })}
+        <strong>${escapeHtml(e.label)}</strong>
+        <span class="muted">bawaan</span>
+      </div>
+      <button class="mini-btn use emote-test-btn" data-emote="${escapeHtml(e.id)}">⚡ Uji</button>
+    </div>`
+  }).join('')
+}
+
+function bindEmoteTestEvents() {
+  document.querySelectorAll('.emote-test-btn').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const emote = btn.dataset.emote
+      await window.hermesAvatar?.previewAnimation?.({ state: 'greeting', style: emote })
+      showToast('Menguji Emote ⚡', `Memainkan emote: ${emote}`, 'info', '⚡', 2500)
     })
   })
 }
 
 function bindAnimAddForm() {
-  document.getElementById('anim-pick-btn').addEventListener('click', async () => {
+  const pickBtn = document.getElementById('anim-pick-btn')
+  const pathInput = document.getElementById('anim-path')
+  const nameInput = document.getElementById('anim-name')
+  const targetStateSel = document.getElementById('anim-target-state')
+  const autoApplyCheck = document.getElementById('anim-auto-apply')
+  const addBtn = document.getElementById('anim-add-btn')
+
+  pickBtn?.addEventListener('click', async () => {
     try {
       const filePath = await window.hermesAvatar.pickAnimation()
       if (!filePath) return
-      document.getElementById('anim-path').value = filePath
-      const base = filePath.split('/').pop().replace(/\.(glb|gltf|vmd)$/i, '')
-      const nameEl = document.getElementById('anim-name')
-      if (!nameEl.value) nameEl.value = base
+      if (pathInput) pathInput.value = filePath
+      const base = filePath.split(/[/\\]/).pop().replace(/\.(glb|gltf|vmd|motion3\.json|bvh|fbx|json)$/i, '')
+      if (nameInput && !nameInput.value) {
+        nameInput.value = base
+      }
     } catch (err) {
-      statusEl.textContent = `Gagal pilih animasi: ${err?.message || err}`
+      showToast('Gagal Memilih File', err?.message || err, 'error', '❌')
     }
   })
 
-  document.getElementById('anim-add-btn').addEventListener('click', () => {
-    const path = document.getElementById('anim-path').value.trim()
-    if (!path) { statusEl.textContent = '⚠️ Pilih file animasi.'; return }
-    const name = document.getElementById('anim-name').value.trim() || path.split('/').pop() || 'Animasi'
+  addBtn?.addEventListener('click', async () => {
+    const path = pathInput?.value.trim()
+    if (!path) {
+      showToast('Pilih File Terlebih Dahulu ⚠️', 'Klik tombol Pilih File untuk mencari animasi gerakan', 'error', '⚠️')
+      return
+    }
+    const name = nameInput?.value.trim() || path.split(/[/\\]/).pop() || 'Animasi'
     const format = path.split('.').pop().toLowerCase()
-    const type = document.getElementById('anim-type').value
+    const targetState = targetStateSel?.value || 'thinking'
+    const autoApply = autoApplyCheck?.checked !== false
+
+    const newAnim = {
+      id: Date.now().toString(36),
+      name,
+      path,
+      format,
+      targetState,
+      type: targetState === 'idle' ? 'pose' : 'emote',
+      createdAt: Date.now()
+    }
+
     settings.animations = settings.animations || []
-    settings.animations.push({ id: Date.now().toString(36), name, path, format, type })
+    settings.animations.push(newAnim)
+
+    if (autoApply && targetState !== 'custom') {
+      settings.stateAnimations = settings.stateAnimations || {}
+      settings.stateAnimations[targetState] = `custom:${newAnim.id}`
+      if (targetState === 'idle') {
+        settings.pose = `custom:${newAnim.id}`
+      }
+    }
+
     saveSettings(settings)
-    statusEl.textContent = `Animasi "${name}" disimpan sebagai ${type === 'pose' ? 'Pose' : 'Emote'}.`
-    openAnimDetail(type === 'pose' ? 'pose-saved' : 'emote')
+    await window.hermesAvatar?.previewAnimation?.({ anim: newAnim, state: targetState })
+    showToast('Animasi Disimpan! 🎉', `"${name}" berhasil diunggah${autoApply ? ' dan dijadikan gaya aktif' : ''}`, 'success', '🎉')
+    openAnimDetail('state-mapping')
   })
 }
 
@@ -1124,33 +2383,42 @@ animBackBtn.addEventListener('click', () => {
 const actionList = document.getElementById('action-list')
 
 const ACTION_DEFS = [
-  { id: 'open_app', icon: 'play', label: 'Buka aplikasi', desc: 'Buka / jalankan aplikasi (Activity Monitor, browser, dll)' },
-  { id: 'open_website', icon: 'globe', label: 'Buka website', desc: 'Buka URL / cari di web' },
-  { id: 'browser_control', icon: 'monitor', label: 'Kontrol browser', desc: 'Kelola tab, navigasi, interaksi halaman' },
-  { id: 'system_monitor', icon: 'activity', label: 'Aktivitas sistem', desc: 'Lihat proses / monitor yang berjalan' },
-  { id: 'file_access', icon: 'folder', label: 'Akses file', desc: 'Baca / tulis file' },
-  { id: 'terminal', icon: 'terminal', label: 'Terminal / shell', desc: 'Jalankan perintah shell (berisiko)' }
+  { id: 'open_app', icon: 'play', theme: 'blue', label: 'Buka Aplikasi', desc: 'Buka / jalankan executable lokal (Spotify, VS Code, Browser)' },
+  { id: 'open_website', icon: 'globe', theme: 'emerald', label: 'Buka Website & URL', desc: 'Akses link website atau lakukan pencarian di web browser' },
+  { id: 'browser_control', icon: 'monitor', theme: 'purple', label: 'Kontrol Browser Otomatis', desc: 'Kelola tab aktif, navigasi URL, dan interaksi halaman' },
+  { id: 'system_monitor', icon: 'activity', theme: 'amber', label: 'Monitor Aktivitas Sistem', desc: 'Pantau penggunaan CPU, memori, dan status proses berjalan' },
+  { id: 'file_access', icon: 'folder', theme: 'indigo', label: 'Akses File & Folder', desc: 'Membaca dan menulis file lokal avatar di disk pengguna' },
+  { id: 'terminal', icon: 'terminal', theme: 'rose', label: 'Terminal & Shell Command', desc: 'Jalankan perintah baris shell (dilindungi dialog konfirmasi)' }
 ]
 
 function renderActions() {
   const actions = settings.actions || {}
   actionList.innerHTML = ACTION_DEFS.map((a) => {
     const checked = actions[a.id] ? 'checked' : ''
-    return `<label class="switch-row">
-      <span class="action-label">
-        <span class="action-name">${renderIcon(a.icon, { size: 18 })} ${escapeHtml(a.label)}</span>
-        <span class="action-desc">${escapeHtml(a.desc)}</span>
-      </span>
-      <input type="checkbox" data-action="${a.id}" ${checked} />
-    </label>`
+    return `<div class="settings-row" style="padding: 10px 16px;">
+      <div class="format-emblem theme-${a.theme}">
+        ${renderIcon(a.icon, { size: 18 })}
+      </div>
+      <div class="format-info-col">
+        <div class="format-title-line">
+          <span class="format-title">${escapeHtml(a.label)}</span>
+        </div>
+        <p class="format-desc-text">${escapeHtml(a.desc)}</p>
+      </div>
+      <div class="row-control">
+        <input type="checkbox" class="mac-switch" data-action="${a.id}" ${checked} />
+      </div>
+    </div>`
   }).join('')
 
-  actionList.querySelectorAll('input[type="checkbox"]').forEach((cb) => {
+  actionList.querySelectorAll('.mac-switch').forEach((cb) => {
     cb.addEventListener('change', () => {
       settings.actions = settings.actions || {}
       settings.actions[cb.dataset.action] = cb.checked
       saveSettings(settings)
       statusEl.textContent = 'Preferensi aksi disimpan.'
+      const def = ACTION_DEFS.find((x) => x.id === cb.dataset.action)
+      showToast('Izin Sistem Diperbarui 🛡️', `${def?.label || cb.dataset.action}: ${cb.checked ? 'Diizinkan' : 'Dinonaktifkan'}`, 'info', '🛡️')
     })
   })
 }
@@ -1160,6 +2428,7 @@ const appName = document.getElementById('app-name')
 const appCommand = document.getElementById('app-command')
 const appAddBtn = document.getElementById('app-add-btn')
 const appPickBtn = document.getElementById('app-pick-btn')
+const appScanBtn = document.getElementById('app-scan-btn')
 const appList = document.getElementById('app-list')
 
 let pendingAppIcon = '' // icon (data URL) untuk aplikasi yang akan ditambah
@@ -1167,20 +2436,26 @@ let pendingAppIcon = '' // icon (data URL) untuk aplikasi yang akan ditambah
 function renderAppList() {
   const apps = settings.actionApps || []
   if (apps.length === 0) {
-    appList.innerHTML = '<p class="hint">Belum ada aplikasi terdaftar.</p>'
+    appList.innerHTML = '<p class="hint" style="padding:16px;">Belum ada aplikasi yang terdaftar.</p>'
     return
   }
   appList.innerHTML = apps.map((a) => {
-    const icon = a.icon
+    const iconHtml = a.icon
       ? `<img class="app-icon" src="${a.icon}" alt="" />`
-      : `<span class="app-icon placeholder">${renderIcon('play', { size: 16 })}</span>`
-    return `<div class="app-item" data-id="${escapeHtml(a.id)}">
-      <div class="app-item-main">
-        ${icon}
-        <strong>${escapeHtml(a.name)}</strong>
-        ${a.command ? `<code class="app-cmd">${escapeHtml(a.command)}</code>` : ''}
+      : renderIcon('play', { size: 17 })
+    return `<div class="format-item app-row" data-id="${escapeHtml(a.id)}">
+      <div class="format-emblem theme-blue">
+        ${iconHtml}
       </div>
-      <button class="mini-btn del app-del" data-id="${escapeHtml(a.id)}">Hapus</button>
+      <div class="format-info-col">
+        <div class="format-title-line">
+          <span class="format-title">${escapeHtml(a.name)}</span>
+        </div>
+        <p class="format-desc-text" style="font-family:'SF Mono', monospace; font-size:11px;">${escapeHtml(a.command || 'Executable path')}</p>
+      </div>
+      <div class="format-status-col">
+        <button class="mini-btn del app-del" data-id="${escapeHtml(a.id)}" title="Hapus aplikasi">${renderIcon('trash-2', { size: 13 })} Hapus</button>
+      </div>
     </div>`
   }).join('')
 
@@ -1205,7 +2480,7 @@ appPickBtn.addEventListener('click', async () => {
     if (!filePath) return
     appCommand.value = filePath
     // Auto nama dari path (basename tanpa ekstensi).
-    const base = filePath.split('/').pop().replace(/\.(app|exe|desktop|lnk)$/i, '')
+    const base = filePath.split(/[/\\]/).pop().replace(/\.(app|exe|desktop|lnk)$/i, '')
     if (!appName.value) appName.value = base
     // Ambil icon asli.
     const iconRes = await window.hermesAvatar.getAppIcon(filePath)
@@ -1215,10 +2490,52 @@ appPickBtn.addEventListener('click', async () => {
   }
 })
 
+// Pindai otomatis semua aplikasi Windows (Start Menu)
+appScanBtn?.addEventListener('click', async () => {
+  try {
+    appScanBtn.disabled = true
+    appScanBtn.textContent = '⏳ Memindai Windows…'
+    statusEl.textContent = 'Memindai semua shortcut aplikasi Windows...'
+    showToast('Memindai Aplikasi Windows... 🔍', 'Mendeteksi executable di Start Menu & Registry', 'running', '🔍')
+    const res = await window.hermesAvatar.scanInstalledApps()
+    if (res?.ok && Array.isArray(res.apps)) {
+      settings.actionApps = settings.actionApps || []
+      const existingNames = new Set(settings.actionApps.map((a) => a.name.toLowerCase()))
+      let added = 0
+      for (const item of res.apps) {
+        if (!existingNames.has(item.name.toLowerCase())) {
+          existingNames.add(item.name.toLowerCase())
+          settings.actionApps.push({
+            id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+            name: item.name,
+            command: item.command,
+            icon: ''
+          })
+          added++
+        }
+      }
+      saveSettings(settings)
+      renderAppList()
+      statusEl.textContent = `✅ Berhasil memindai! ${added} aplikasi baru ditambahkan (${res.apps.length} total terdeteksi).`
+      showToast('Pemindaian Selesai! 🎉', `${added} aplikasi baru berhasil didaftarkan`, 'success', '⚡')
+    } else {
+      statusEl.textContent = `⚠️ Gagal memindai: ${res?.error || 'Tidak ada aplikasi ditemukan'}`
+      showToast('Pemindaian Gagal', res?.error || 'Aplikasi tidak terdeteksi', 'error', '⚠️')
+    }
+  } catch (err) {
+    statusEl.textContent = `⚠️ Error pemindaian: ${err?.message || err}`
+    showToast('Error Pemindaian', err?.message || err, 'error', '❌')
+  } finally {
+    appScanBtn.disabled = false
+    appScanBtn.textContent = '🔍 Pindai Otomatis (Scan Windows)'
+  }
+})
+
 appAddBtn.addEventListener('click', () => {
   const name = appName.value.trim()
   if (!name) {
     statusEl.textContent = '⚠️ Isi nama aplikasi.'
+    showToast('Nama Aplikasi Kosong', 'Harap isi nama aplikasi yang ingin ditambahkan', 'error', '⚠️')
     return
   }
   settings.actionApps = settings.actionApps || []
@@ -1230,6 +2547,7 @@ appAddBtn.addEventListener('click', () => {
   })
   saveSettings(settings)
   renderAppList()
+  showToast('Aplikasi Ditambahkan! ✅', `Aplikasi "${name}" siap dipanggil via perintah suara/chat`, 'success', '⚡')
   appName.value = ''
   appCommand.value = ''
   pendingAppIcon = ''
@@ -1239,54 +2557,176 @@ appAddBtn.addEventListener('click', () => {
 // --- Shortcut global ---
 const shortcutList = document.getElementById('shortcut-list')
 
+// Helper format accelerator untuk tampilan fisik keycap
+function formatKeyName(part) {
+  const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad|iPod/i.test(navigator.platform)
+  switch (part) {
+    case 'CommandOrControl':
+      return isMac ? '⌘ Cmd' : 'Ctrl'
+    case 'Control':
+      return 'Ctrl'
+    case 'Shift':
+      return 'Shift'
+    case 'Alt':
+      return isMac ? '⌥ Opt' : 'Alt'
+    case 'Meta':
+      return isMac ? '⌘ Cmd' : 'Win'
+    case 'Space':
+      return 'Spasi'
+    case 'Up':
+      return '↑ Up'
+    case 'Down':
+      return '↓ Down'
+    case 'Left':
+      return '← Left'
+    case 'Right':
+      return '→ Right'
+    default:
+      return part
+  }
+}
+
+function renderKeycapsHtml(accel) {
+  if (!accel || !accel.trim()) {
+    return `<span class="shortcut-keycaps muted" style="font-size:12px; color:var(--text-secondary);">Klik untuk atur</span>`
+  }
+  const parts = accel.split('+')
+  const caps = parts.map((p) => `<kbd class="mac-kbd">${escapeHtml(formatKeyName(p))}</kbd>`)
+  return `<span class="shortcut-keycaps">${caps.join('<span class="kbd-joiner">+</span>')}</span>`
+}
+
 async function renderShortcuts() {
   try {
     const list = await window.hermesAvatar.getShortcuts()
     if (!list || list.length === 0) {
-      shortcutList.innerHTML = '<p class="hint">Tidak ada shortcut.</p>'
+      shortcutList.innerHTML = '<p class="hint" style="padding:16px;">Tidak ada shortcut.</p>'
       return
     }
     shortcutList.innerHTML = list.map((s) => {
-      return `<div class="shortcut-row" data-id="${escapeHtml(s.id)}">
-        <span>${escapeHtml(s.label)}</span>
-        <div class="shortcut-edit">
-          <input class="shortcut-input" type="text" value="${escapeHtml(s.accel)}" placeholder="Tekan kombinasi..." readonly />
-          <button class="mini-btn use shortcut-save" data-id="${escapeHtml(s.id)}">Simpan</button>
+      return `<div class="shortcut-card-row" data-id="${escapeHtml(s.id)}">
+        <div class="shortcut-info">
+          <span class="shortcut-title">${escapeHtml(s.label)}</span>
+          <span class="shortcut-desc">ID Perintah: <code>${escapeHtml(s.id)}</code></span>
+        </div>
+        <div class="shortcut-action-group">
+          <button type="button" class="shortcut-key-trigger" data-id="${escapeHtml(s.id)}" data-current="${escapeHtml(s.accel)}" data-new="${escapeHtml(s.accel)}" title="Klik untuk merekam kombinasi tombol baru">
+            <span class="trigger-content">${renderKeycapsHtml(s.accel)}</span>
+            <span class="shortcut-edit-icon">${renderIcon('pencil', { size: 12 })}</span>
+          </button>
+          <button class="mini-btn primary shortcut-save hidden" data-id="${escapeHtml(s.id)}" title="Simpan kombinasi tombol ini">Simpan</button>
         </div>
       </div>`
     }).join('')
 
-    // Bind key capture (deteksi keyboard) + tombol simpan.
-    shortcutList.querySelectorAll('.shortcut-input').forEach((input) => {
-      input.addEventListener('focus', () => input.classList.add('capturing'))
-      input.addEventListener('blur', () => input.classList.remove('capturing'))
+    // Bind recording keyboard interaktif & tombol simpan
+    shortcutList.querySelectorAll('.shortcut-card-row').forEach((row) => {
+      const trigger = row.querySelector('.shortcut-key-trigger')
+      const saveBtn = row.querySelector('.shortcut-save')
+      const id = row.dataset.id
 
-      input.addEventListener('keydown', (e) => {
-        e.preventDefault()
-        const accel = keyEventToAccelerator(e)
-        if (accel) input.value = accel
+      let isRecording = false
+
+      const startRecording = () => {
+        // Matikan recording di baris lain jika ada
+        shortcutList.querySelectorAll('.shortcut-key-trigger.recording').forEach((other) => {
+          if (other !== trigger) {
+            other.classList.remove('recording')
+            const prev = other.dataset.new || other.dataset.current
+            other.querySelector('.trigger-content').innerHTML = renderKeycapsHtml(prev)
+          }
+        })
+
+        isRecording = true
+        trigger.classList.add('recording')
+        trigger.querySelector('.trigger-content').innerHTML = `
+          <span class="kbd-rec-pulse"></span>
+          <span class="kbd-rec-hint" style="font-size:11.5px; font-weight:500; color:var(--accent); margin-left:4px;">Tekan tombol... (Esc batal)</span>
+        `
+        trigger.focus()
+      }
+
+      const stopRecording = (applyNew = false, newAccel = null) => {
+        isRecording = false
+        trigger.classList.remove('recording')
+        if (applyNew && newAccel) {
+          trigger.dataset.new = newAccel
+          trigger.querySelector('.trigger-content').innerHTML = renderKeycapsHtml(newAccel)
+          if (newAccel !== trigger.dataset.current) {
+            saveBtn.classList.remove('hidden')
+          } else {
+            saveBtn.classList.add('hidden')
+          }
+        } else {
+          const prev = trigger.dataset.new || trigger.dataset.current
+          trigger.querySelector('.trigger-content').innerHTML = renderKeycapsHtml(prev)
+        }
+      }
+
+      trigger.addEventListener('click', (e) => {
+        e.stopPropagation()
+        if (isRecording) {
+          stopRecording(false)
+        } else {
+          startRecording()
+        }
       })
-    })
 
-    shortcutList.querySelectorAll('.shortcut-save').forEach((btn) => {
-      btn.addEventListener('click', async () => {
-        const id = btn.dataset.id
-        const row = btn.closest('.shortcut-row')
-        const input = row.querySelector('.shortcut-input')
-        const accel = input.value.trim()
-        if (!accel) { statusEl.textContent = '⚠️ Tekan kombinasi dulu.'; return }
+      trigger.addEventListener('keydown', (e) => {
+        if (!isRecording) return
+        e.preventDefault()
+        e.stopPropagation()
+
+        if (e.key === 'Escape') {
+          stopRecording(false)
+          return
+        }
+
+        const accel = keyEventToAccelerator(e)
+        if (accel) {
+          stopRecording(true, accel)
+        }
+      })
+
+      saveBtn.addEventListener('click', async (e) => {
+        e.stopPropagation()
+        const accel = (trigger.dataset.new || '').trim()
+        if (!accel) {
+          showToast('Kombinasi Kosong', 'Klik tombol kombinasi untuk merekam pintasan baru', 'error', '⚠️')
+          return
+        }
         try {
+          saveBtn.disabled = true
+          saveBtn.textContent = 'Menyimpan...'
           const res = await window.hermesAvatar.setShortcut(id, accel)
-          if (!res.ok) throw new Error(res.error)
+          if (!res?.ok) throw new Error(res?.error || 'Gagal menyimpan')
+          trigger.dataset.current = accel
+          saveBtn.classList.add('hidden')
+          const label = row.querySelector('.shortcut-title')?.textContent || id
+          const displayCombo = accel.split('+').map(formatKeyName).join(' + ')
+          showToast('Shortcut Disimpan! ⌨️', `${label} diatur ke [${displayCombo}]`, 'success', '⌨️')
           statusEl.textContent = 'Shortcut disimpan.'
-          renderShortcuts()
         } catch (err) {
           statusEl.textContent = `Gagal simpan shortcut: ${err?.message || err}`
+          showToast('Gagal Simpan Shortcut', err?.message || err, 'error', '❌')
+        } finally {
+          saveBtn.disabled = false
+          saveBtn.textContent = 'Simpan'
         }
       })
     })
+
+    // Klik di luar membatalkan recording
+    document.addEventListener('click', (e) => {
+      if (!e.target.closest('.shortcut-key-trigger')) {
+        shortcutList.querySelectorAll('.shortcut-key-trigger.recording').forEach((tr) => {
+          tr.classList.remove('recording')
+          const prev = tr.dataset.new || tr.dataset.current
+          tr.querySelector('.trigger-content').innerHTML = renderKeycapsHtml(prev)
+        })
+      }
+    })
   } catch (err) {
-    shortcutList.innerHTML = `<p class="hint">Gagal memuat (${escapeHtml(err?.message || err)})</p>`
+    shortcutList.innerHTML = `<p class="hint" style="padding:16px;">Gagal memuat (${escapeHtml(err?.message || err)})</p>`
   }
 }
 
@@ -1320,24 +2760,33 @@ llmSwitchBtn.addEventListener('click', async () => {
   const value = llmSwitchModel.value.trim()
   if (!value) {
     statusEl.textContent = '⚠️ Pilih model dulu.'
+    showToast('Pilih Model Dulu', 'Silakan pilih model LLM dari daftar pilihan', 'error', '⚠️')
     return
   }
   llmSwitchBtn.disabled = true
+  showToast('Menerapkan Model LLM...', `Mengalihkan model aktif ke "${value}"`, 'running', '🧠')
   try {
     const res = await window.hermesAvatar.setModel(value)
     if (!res.ok) throw new Error(res.error)
     statusEl.textContent = 'Model diterapkan.'
+    showToast('Model Diterapkan! ✅', `Model LLM aktif: ${value}`, 'success', '🧠')
     await refreshLlmActive()
   } catch (err) {
     statusEl.textContent = `Gagal switch model: ${err?.message || err}`
+    showToast('Gagal Menerapkan Model', err?.message || err, 'error', '❌')
   } finally {
     llmSwitchBtn.disabled = false
   }
 })
 
 function init() {
+  initThemeSwitcher()
+  initWindowControls()
+  initHistoryControls()
+  initSidebarSearch()
   renderNav()
   refreshServiceStatus()
+  bindPackageActions()
   loadVoiceUI()
   renderLlmList()
   renderFormatList()

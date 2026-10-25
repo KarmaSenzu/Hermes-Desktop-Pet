@@ -1,11 +1,12 @@
-import { app, BrowserWindow, ipcMain, protocol, dialog, screen, safeStorage } from 'electron'
-import { join, extname } from 'path'
+import { app, BrowserWindow, ipcMain, protocol, dialog, screen, safeStorage, shell, Menu } from 'electron'
+import { join, extname, isAbsolute } from 'path'
 import { readFile, writeFile, mkdir, rm } from 'fs/promises'
+import { existsSync, statSync, readdirSync } from 'fs'
 import { homedir } from 'os'
 import http from 'http'
 import https from 'https'
-import { execFile } from 'child_process'
-import { startAllServices, stopAllServices, SESSION_TOKEN, isPortOpen, ROUTER_PORT, HERMES_PORT } from './service-manager.js'
+import { execFile, spawn } from 'child_process'
+import { startAllServices, stopAllServices, SESSION_TOKEN, isPortOpen, ROUTER_PORT, HERMES_PORT, KOKORO_PORT, startKokoro } from './service-manager.js'
 import { connectGateway, disconnectGateway, request as gatewayRequest, isGatewayConnected } from './hermes-gateway.js'
 import { registerShortcuts, unregisterShortcuts, getShortcutList, updateShortcut } from './shortcuts.js'
 
@@ -79,17 +80,28 @@ function stopAutoDodge() {
 
 function createLauncherWindow() {
   launcherWindow = new BrowserWindow({
-    width: 720,
-    height: 560,
+    width: 960,
+    height: 640,
+    minWidth: 780,
+    minHeight: 540,
     resizable: true,
-    frame: true,
+    frame: false, // Menghilangkan seluruh frame native Windows & tanda silang di pojok kanan atas
+    titleBarStyle: 'hidden',
+    autoHideMenuBar: true,
     title: 'Hermes 3D Avatar — Pengaturan',
+    backgroundColor: '#1e1e20', // Warna background dark mode identik launcher.css (cegah buffer hitam saat show)
+    show: true,
     webPreferences: {
       preload: join(__dirname, '../preload/index.mjs'),
       contextIsolation: true,
-      sandbox: false
+      sandbox: false,
+      backgroundThrottling: false // Cegah pembekuan rendering oleh Chromium saat window di-hide
     }
   })
+
+  // Hilangkan menu bar bawaan Electron (File, Edit, View, dsb.)
+  launcherWindow.setMenu(null)
+  launcherWindow.setMenuBarVisibility(false)
 
   // electron-vite: dev pakai dev server, prod pakai file hasil build.
   if (process.env['ELECTRON_RENDERER_URL']) {
@@ -103,16 +115,38 @@ function createLauncherWindow() {
   })
 }
 
+// Buka dan tampilkan launcher/settings secara mulus tanpa lag atau layar hitam
+function showLauncherWindow() {
+  if (launcherWindow && !launcherWindow.isDestroyed()) {
+    if (launcherWindow.isMinimized()) launcherWindow.restore()
+    launcherWindow.show()
+    launcherWindow.focus()
+    // Paksa Chromium compositor me-repaint render pipeline seketika tanpa menunggu klik mouse
+    if (launcherWindow.webContents) {
+      launcherWindow.webContents.invalidate()
+    }
+  } else {
+    createLauncherWindow()
+  }
+}
+
 function createAvatarWindow(modelPath) {
+  const primaryDisplay = screen.getPrimaryDisplay()
+  const { x, y, width, height } = primaryDisplay.bounds
+
   avatarWindow = new BrowserWindow({
-    width: 320,
-    height: 480,
-    transparent: true, // kunci desktop pet
-    frame: false, // frameless → kita buat drag manual
-    hasShadow: false, // hindari bayangan kotak di sekitar karakter
+    x,
+    y,
+    width,
+    height: height - 1, // 1 piksel di bawah ukuran layar penuh mencegah Windows DWM mengklasifikasikan window sebagai fullscreen eksklusif yang ditenggelamkan saat unfocused
+    transparent: true, // kunci desktop pet overlay
+    frame: false, // frameless
+    hasShadow: false, // hindari bayangan kotak
+    roundedCorners: false, // hilangkan rounded corners Windows 11
     alwaysOnTop: true,
-    skipTaskbar: false,
-    resizable: true, // user tetap bisa resize manual
+    skipTaskbar: true, // Desktop pet murni: tidak mencuri tab di taskbar
+    focusable: true, // Tetap focusable agar saat diklik avatar tidak tenggelam/hilang di Windows DWM
+    resizable: false,
     webPreferences: {
       preload: join(__dirname, '../preload/index.mjs'),
       contextIsolation: true,
@@ -120,11 +154,31 @@ function createAvatarWindow(modelPath) {
     }
   })
 
-  // macOS: tampil di semua workspace agar selalu "menemani" user.
-  if (process.platform === 'darwin') {
-    avatarWindow.setAlwaysOnTop(true, 'floating')
-    avatarWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
-  }
+  // Set always-on-top level tertinggi agar tidak pernah tenggelam
+  avatarWindow.setAlwaysOnTop(true, 'screen-saver')
+  avatarWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
+
+  // Jaga agar window TIDAK PERNAH tenggelam jika kehilangan fokus atau di-minimize oleh OS
+  avatarWindow.on('blur', () => {
+    if (avatarWindow && !avatarWindow.isDestroyed()) {
+      avatarWindow.setAlwaysOnTop(true, 'screen-saver')
+    }
+  })
+
+  avatarWindow.on('minimize', (e) => {
+    e.preventDefault()
+    if (avatarWindow && !avatarWindow.isDestroyed()) {
+      avatarWindow.restore()
+      avatarWindow.setAlwaysOnTop(true, 'screen-saver')
+    }
+  })
+
+  // Mode click-through awal agar klik di area kosong tembus ke desktop
+  avatarWindow.setIgnoreMouseEvents(true, { forward: true })
+
+  avatarWindow.webContents.on('console-message', (_event, _level, message) => {
+    console.log('[Avatar Window]', message)
+  })
 
   if (process.env['ELECTRON_RENDERER_URL']) {
     avatarWindow.loadURL(`${process.env['ELECTRON_RENDERER_URL']}/index.html`)
@@ -132,12 +186,38 @@ function createAvatarWindow(modelPath) {
     avatarWindow.loadFile(join(__dirname, '../renderer/index.html'))
   }
 
+  let cursorPollTimer = null
+
   // Kirim path model ke renderer setelah siap (renderer yang baca via read-model).
   avatarWindow.webContents.on('did-finish-load', () => {
     avatarWindow.webContents.send('avatar:load-model', modelPath)
+
+    // Global desktop cursor tracking ala YourMother Win32 Hook
+    if (!cursorPollTimer) {
+      let lastX = -1
+      let lastY = -1
+      cursorPollTimer = setInterval(() => {
+        if (avatarWindow && !avatarWindow.isDestroyed()) {
+          const point = screen.getCursorScreenPoint()
+          // Hanya kirim IPC bila kursor benar-benar berpindah posisi untuk menghemat event loop saat mengetik
+          if (point.x !== lastX || point.y !== lastY) {
+            lastX = point.x
+            lastY = point.y
+            avatarWindow.webContents.send('avatar:cursor-screen-point', point)
+          }
+        } else if (cursorPollTimer) {
+          clearInterval(cursorPollTimer)
+          cursorPollTimer = null
+        }
+      }, 30) // ~33 FPS tracking
+    }
   })
 
   avatarWindow.on('closed', () => {
+    if (cursorPollTimer) {
+      clearInterval(cursorPollTimer)
+      cursorPollTimer = null
+    }
     avatarWindow = null
     stopMotion()
   })
@@ -157,12 +237,7 @@ function registerGlobalShortcuts() {
     } else if (id === 'toggle-mic') {
       sendToAvatar('avatar:shortcut', { action: 'toggle-mic' })
     } else if (id === 'open-settings') {
-      if (launcherWindow && !launcherWindow.isDestroyed()) {
-        launcherWindow.show()
-        launcherWindow.focus()
-      } else {
-        createLauncherWindow()
-      }
+      showLauncherWindow()
     }
   })
 }
@@ -190,19 +265,43 @@ ipcMain.handle('avatar:set-shortcut', (_event, id, accel) => {
 
 // IPC: launcher → main → buka avatar window dengan model terpilih.
 ipcMain.handle('avatar:start', (_event, modelPath) => {
+  const defaultPath = join(__dirname, '../../assets/live2d/mother/20250106.model3.json')
+  const resolvedPath = modelPath
+    ? (isAbsolute(modelPath) ? modelPath : join(__dirname, '../../', modelPath))
+    : defaultPath
+
   if (avatarWindow && !avatarWindow.isDestroyed()) {
     avatarWindow.focus()
+    avatarWindow.webContents.send('avatar:load-model', resolvedPath)
     return { ok: true, reused: true }
   }
-  createAvatarWindow(modelPath)
+  createAvatarWindow(resolvedPath)
   if (launcherWindow) launcherWindow.hide()
   return { ok: true, reused: false }
 })
 
 // IPC: avatar window bisa minta fokus/drag via OS-native (drag region).
 ipcMain.handle('avatar:close', () => {
-  if (avatarWindow) avatarWindow.close()
-  if (launcherWindow && !launcherWindow.isDestroyed()) launcherWindow.show()
+  if (avatarWindow && !avatarWindow.isDestroyed()) avatarWindow.close()
+  showLauncherWindow()
+})
+
+// IPC: berikan fokus keyboard ke window avatar (untuk mengetik chat).
+ipcMain.on('avatar:focus-window', () => {
+  if (avatarWindow && !avatarWindow.isDestroyed()) {
+    avatarWindow.setFocusable(true)
+    avatarWindow.setAlwaysOnTop(true, 'screen-saver')
+    avatarWindow.focus()
+  }
+})
+
+// IPC: kontrol fokus khusus saat chat dibuka/ditutup (agar bisa mengetik tanpa merusak z-order).
+ipcMain.on('avatar:chat-focus', (_event, enable) => {
+  if (!avatarWindow || avatarWindow.isDestroyed()) return
+  avatarWindow.setAlwaysOnTop(true, 'screen-saver')
+  if (enable) {
+    avatarWindow.focus()
+  }
 })
 
 // IPC: trigger animasi DVD bounce (fitur/emote).
@@ -211,24 +310,140 @@ ipcMain.handle('avatar:dvd-bounce', () => {
   return { ok: true }
 })
 
+// IPC: drag manual window (gantikan app-region: drag).
+// Renderer mengirim delta perpindahan mouse; main memindahkan window sesuai.
+ipcMain.on('avatar:drag-move', (_event, dx, dy) => {
+  if (!avatarWindow || avatarWindow.isDestroyed()) return
+  const b = avatarWindow.getBounds()
+  avatarWindow.setPosition(b.x + Math.round(dx), b.y + Math.round(dy))
+})
+
+// IPC: toggle click-through (klik tembus ke desktop saat di area kosong).
+ipcMain.on('avatar:set-ignore-mouse', (_event, ignore, forward) => {
+  if (!avatarWindow || avatarWindow.isDestroyed()) return
+  avatarWindow.setIgnoreMouseEvents(ignore, { forward: forward !== false })
+  // Pastikan Z-order tetap di puncak saat mouse menyentuh area interaktif/avatar
+  if (!ignore) {
+    avatarWindow.setAlwaysOnTop(true, 'screen-saver')
+  }
+})
+
+// IPC: buka jendela pengaturan (launcher) dari avatar HUD.
+ipcMain.handle('avatar:open-settings', () => {
+  showLauncherWindow()
+  return { ok: true }
+})
+
+// IPC: kontrol window kustom (ala macOS traffic lights)
+ipcMain.handle('avatar:window-close', (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender)
+  if (win) win.close()
+  return { ok: true }
+})
+
+ipcMain.handle('avatar:window-minimize', (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender)
+  if (win) win.minimize()
+  return { ok: true }
+})
+
+ipcMain.handle('avatar:window-maximize', (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender)
+  if (win) {
+    if (win.isMaximized()) {
+      win.unmaximize()
+    } else {
+      win.maximize()
+    }
+  }
+  return { ok: true }
+})
+
+// IPC: jalankan perintah di terminal sistem baru (PowerShell transparan untuk instalasi/service)
+ipcMain.handle('avatar:run-in-terminal', async (_event, cmd, workingDir) => {
+  try {
+    const candidateRoots = [
+      join(app.getAppPath(), '..'),
+      join(process.cwd(), '..'),
+      process.cwd()
+    ]
+    const repoRoot = candidateRoots.find((dir) => existsSync(join(dir, 'scripts', 'kokoro_server.py'))) || candidateRoots[0]
+    const cwd = workingDir || repoRoot
+
+    if (process.platform === 'win32') {
+      const safeCwd = cwd.replace(/'/g, "''")
+      const safeCmd = `Set-Location '${safeCwd}'; ${cmd}`
+      const child = spawn('cmd.exe', ['/c', 'start', 'Hermes Terminal', 'powershell', '-NoExit', '-Command', safeCmd], {
+        cwd,
+        detached: true,
+        stdio: 'ignore'
+      })
+      child.unref()
+    } else {
+      const child = spawn('bash', ['-c', `cd "${cwd}" && ${cmd}`], {
+        cwd,
+        detached: true,
+        stdio: 'ignore'
+      })
+      child.unref()
+    }
+    return { ok: true }
+  } catch (err) {
+    console.error('[run-in-terminal] failed:', err)
+    return { ok: false, error: err.message }
+  }
+})
+
 // IPC: path model default (dipakai launcher untuk pre-select).
 ipcMain.handle('avatar:default-model', () => {
-  return join(__dirname, '../../assets/models/default.vrm')
+  return join(__dirname, '../../assets/live2d/mother/20250106.model3.json')
 })
 
 // IPC: buka dialog pilih file model (native Finder/Explorer).
 // Mengembalikan path file yang dipilih, atau null jika batal.
 ipcMain.handle('avatar:pick-model', async () => {
   const result = await dialog.showOpenDialog({
-    title: 'Pilih model 3D',
+    title: 'Pilih model avatar (3D / Live2D)',
     properties: ['openFile'],
     filters: [
-      { name: 'Model 3D', extensions: ['vrm', 'glb', 'gltf', 'pmx', 'pmd', 'fbx'] },
+      { name: 'Model Avatar', extensions: ['vrm', 'glb', 'gltf', 'pmx', 'pmd', 'fbx', 'model3.json', 'json'] },
       { name: 'Semua file', extensions: ['*'] }
     ]
   })
   if (result.canceled || result.filePaths.length === 0) return null
   return result.filePaths[0]
+})
+
+// IPC: buka dialog pilih file audio musik lokal (mp3, wav, ogg, flac, m4a, aac).
+ipcMain.handle('avatar:pick-audio-files', async () => {
+  const result = await dialog.showOpenDialog({
+    title: 'Pilih File Lagu / Musik',
+    properties: ['openFile', 'multiSelections'],
+    filters: [
+      { name: 'File Audio Musik', extensions: ['mp3', 'wav', 'ogg', 'flac', 'm4a', 'aac'] },
+      { name: 'Semua file', extensions: ['*'] }
+    ]
+  })
+  if (result.canceled || result.filePaths.length === 0) return []
+  return result.filePaths.map((fp) => {
+    const filename = basename(fp)
+    const ext = extname(fp)
+    const rawTitle = basename(fp, ext)
+    const parts = rawTitle.split(' - ')
+    let artist = 'Koleksi Lokal'
+    let title = rawTitle
+    if (parts.length >= 2) {
+      artist = parts[0].trim()
+      title = parts.slice(1).join(' - ').trim()
+    }
+    return {
+      path: fp,
+      name: filename,
+      title: title,
+      artist: artist,
+      url: `model://${encodeURI(fp.replace(/\\/g, '/'))}`
+    }
+  })
 })
 
 // IPC: token Hermes gateway — pakai SESSION_TOKEN dari service-manager
@@ -240,11 +455,157 @@ ipcMain.handle('avatar:hermes-config', () => {
   }
 })
 
-// IPC: status service (9Router & hermes) — untuk settings panel.
+// IPC: status service (9Router, Hermes, Kokoro, Python, model disk) — untuk settings & Package Hub.
 ipcMain.handle('avatar:service-status', async () => {
   const router = await isPortOpen(ROUTER_PORT)
   const hermes = await isPortOpen(HERMES_PORT)
-  return { router, hermes }
+  const kokoro = await isPortOpen(8880)
+
+  // Cek deteksi Python di sistem
+  let pythonOk = false
+  let pythonVersion = ''
+  try {
+    const pyOut = await new Promise((res, rej) => {
+      execFile('py', ['--version'], { timeout: 3000 }, (err, stdout) => {
+        if (!err && stdout) return res(stdout.trim())
+        execFile('python', ['--version'], { timeout: 3000 }, (err2, stdout2) => {
+          if (!err2 && stdout2) return res(stdout2.trim())
+          rej(err2 || err)
+        })
+      })
+    })
+    pythonOk = true
+    pythonVersion = pyOut
+  } catch {
+    pythonOk = false
+    pythonVersion = 'Belum terpasang'
+  }
+
+  // Cek apakah paket python kokoro-onnx & soundfile terpasang di environment
+  let kokoroInstalled = false
+  if (pythonOk) {
+    try {
+      await new Promise((res, rej) => {
+        execFile('py', ['-c', 'import kokoro_onnx, soundfile; print("ok")'], { timeout: 4000 }, (err, stdout) => {
+          if (!err && stdout && stdout.includes('ok')) return res(true)
+          execFile('python', ['-c', 'import kokoro_onnx, soundfile; print("ok")'], { timeout: 4000 }, (err2, stdout2) => {
+            if (!err2 && stdout2 && stdout2.includes('ok')) return res(true)
+            rej(err2 || err)
+          })
+        })
+      })
+      kokoroInstalled = true
+    } catch {
+      kokoroInstalled = false
+    }
+  }
+
+  // Cek keberadaan model di folder penyimpanan terpusat
+  const pkgDir = join(homedir(), '.hermes-avatar', 'packages', 'kokoro')
+  const legacyDir = join(homedir(), '.kokoro-models')
+  const modelFile1 = join(pkgDir, 'kokoro-v1.0.onnx')
+  const modelFile2 = join(legacyDir, 'kokoro-v1.0.onnx')
+  const kokoroModelReady = existsSync(modelFile1) || existsSync(modelFile2)
+
+  let modelSizeMb = 0
+  try {
+    const targetFile = existsSync(modelFile1) ? modelFile1 : (existsSync(modelFile2) ? modelFile2 : null)
+    if (targetFile) {
+      const st = statSync(targetFile)
+      modelSizeMb = Math.round(st.size / (1024 * 1024))
+    }
+  } catch {}
+
+  return {
+    router,
+    hermes,
+    kokoro,
+    pythonOk,
+    pythonVersion,
+    kokoroInstalled,
+    kokoroModelReady,
+    modelSizeMb,
+    packagePath: pkgDir
+  }
+})
+
+// IPC: jalankan script server Kokoro-TTS (Lokal)
+ipcMain.handle('avatar:start-kokoro-server', async () => {
+  try {
+    const res = await startKokoro()
+    return res
+  } catch (err) {
+    return { ok: false, error: err?.message || String(err) }
+  }
+})
+
+// IPC: install dependensi Kokoro via pip
+ipcMain.handle('avatar:install-kokoro-deps', async () => {
+  try {
+    const out = await new Promise((res, rej) => {
+      execFile('py', ['-m', 'pip', 'install', 'kokoro-onnx', 'soundfile'], { timeout: 180000 }, (err, stdout, stderr) => {
+        if (err) {
+          execFile('python', ['-m', 'pip', 'install', 'kokoro-onnx', 'soundfile'], { timeout: 180000 }, (err2, stdout2, stderr2) => {
+            if (err2) return rej(new Error(stderr2 || stdout2 || err2.message))
+            res(stdout2 || 'Berhasil terpasang')
+          })
+          return
+        }
+        res(stdout || 'Berhasil terpasang')
+      })
+    })
+    return { ok: true, output: out }
+  } catch (err) {
+    return { ok: false, error: err?.message || String(err) }
+  }
+})
+
+// IPC: uninstall dependensi Kokoro via pip
+ipcMain.handle('avatar:uninstall-kokoro-deps', async () => {
+  try {
+    const out = await new Promise((res, rej) => {
+      execFile('py', ['-m', 'pip', 'uninstall', '-y', 'kokoro-onnx', 'soundfile'], { timeout: 60000 }, (err, stdout, stderr) => {
+        if (err) {
+          execFile('python', ['-m', 'pip', 'uninstall', '-y', 'kokoro-onnx', 'soundfile'], { timeout: 60000 }, (err2, stdout2, stderr2) => {
+            if (err2) return rej(new Error(stderr2 || stdout2 || err2.message))
+            res(stdout2 || 'Berhasil dicopot')
+          })
+          return
+        }
+        res(stdout || 'Berhasil dicopot')
+      })
+    })
+    return { ok: true, output: out }
+  } catch (err) {
+    return { ok: false, error: err?.message || String(err) }
+  }
+})
+
+// IPC: buka folder penyimpanan paket di File Explorer / Finder
+ipcMain.handle('avatar:open-package-folder', async (_event, pkgName = 'kokoro') => {
+  try {
+    let targetDir = join(homedir(), '.hermes-avatar', 'packages', pkgName)
+    if (pkgName === 'hermes') targetDir = join(homedir(), '.hermes')
+    if (pkgName === 'packages-root') targetDir = join(homedir(), '.hermes-avatar', 'packages')
+    await mkdir(targetDir, { recursive: true })
+    await shell.openPath(targetDir)
+    return { ok: true, path: targetDir }
+  } catch (err) {
+    return { ok: false, error: err?.message || String(err) }
+  }
+})
+
+// IPC: hapus cache model paket untuk menghemat ruang disk
+ipcMain.handle('avatar:clean-package', async (_event, pkgName = 'kokoro') => {
+  try {
+    const targetDir = join(homedir(), '.hermes-avatar', 'packages', pkgName)
+    await rm(targetDir, { recursive: true, force: true })
+    const legacyDir = join(homedir(), '.kokoro-models')
+    await rm(legacyDir, { recursive: true, force: true })
+    return { ok: true }
+  } catch (err) {
+    return { ok: false, error: err?.message || String(err) }
+  }
 })
 
 // IPC: RPC config/model ke Hermes (shared gateway) — untuk LLM section.
@@ -290,6 +651,11 @@ ipcMain.handle('avatar:delete-skill', async (_event, { name, category }) => {
     const safeName = String(name || '').replace(/[^a-zA-Z0-9_-]/g, '-').replace(/^-+/, '')
     const safeCat = (category || 'general').replace(/[^a-zA-Z0-9_-]/g, '-').replace(/^-+/, '') || 'general'
     if (!safeName) return { ok: false, error: 'Nama skill tidak valid.' }
+
+    // Proteksi skill inti Mnemosyne (wajib ada untuk sistem memori)
+    if (safeName.toLowerCase() === 'mnemosyne' || safeName.toLowerCase().includes('mnemosyne')) {
+      return { ok: false, error: 'Skill Mnemosyne adalah modul memori permanen bawaan sistem dan tidak dapat dihapus.' }
+    }
 
     const skillsDir = join(homedir(), '.hermes', 'skills', safeCat, safeName)
     await rm(skillsDir, { recursive: true, force: true })
@@ -548,6 +914,278 @@ ipcMain.handle('avatar:pick-app', async () => {  const filters = process.platfor
   return result.filePaths[0]
 })
 
+const APPS_CACHE_FILE = join(homedir(), '.hermes-avatar', 'apps_cache.json')
+
+// Pindai shortcut aplikasi Windows di Start Menu & aplikasi bawaan resmi
+function scanWindowsShortcuts() {
+  const isWindows = process.platform === 'win32'
+  if (!isWindows) return []
+
+  const dirs = [
+    join(process.env.APPDATA || '', 'Microsoft', 'Windows', 'Start Menu', 'Programs'),
+    join(process.env.ProgramData || '', 'Microsoft', 'Windows', 'Start Menu', 'Programs')
+  ].filter((p) => existsSync(p))
+
+  const results = []
+  const seenNames = new Set()
+
+  function walk(dir) {
+    try {
+      const entries = readdirSync(dir, { withFileTypes: true })
+      for (const ent of entries) {
+        const full = join(dir, ent.name)
+        if (ent.isDirectory()) {
+          walk(full)
+        } else if (ent.name.toLowerCase().endsWith('.lnk')) {
+          const rawName = ent.name.replace(/\.lnk$/i, '').trim()
+          const lower = rawName.toLowerCase()
+          if (
+            lower.includes('uninstall') ||
+            lower.includes('readme') ||
+            lower.includes('documentation') ||
+            lower.includes('help') ||
+            lower.includes('setup')
+          ) {
+            continue
+          }
+          if (!seenNames.has(lower)) {
+            seenNames.add(lower)
+            const aliases = []
+            if (lower.includes('visual studio code')) {
+              aliases.push('vscode', 'vs code', 'code', 'vsc')
+            } else if (lower === 'word' || lower.includes('microsoft word')) {
+              aliases.push('word', 'ms word', 'microsoft word')
+            } else if (lower === 'excel' || lower.includes('microsoft excel')) {
+              aliases.push('excel', 'ms excel', 'microsoft excel')
+            } else if (lower.includes('powerpoint')) {
+              aliases.push('powerpoint', 'ppt', 'ms powerpoint')
+            } else if (lower.includes('chrome')) {
+              aliases.push('chrome', 'google chrome')
+            } else if (lower.includes('edge')) {
+              aliases.push('edge', 'microsoft edge')
+            } else if (lower.includes('task manager')) {
+              aliases.push('task manager', 'taskmgr', 'taskman')
+            }
+            results.push({
+              name: rawName,
+              command: full,
+              aliases,
+              source: 'windows-start-menu'
+            })
+          }
+        }
+      }
+    } catch {
+      // Lewati subfolder dengan akses dibatasi
+    }
+  }
+
+  for (const d of dirs) {
+    walk(d)
+  }
+
+  // Aplikasi bawaan umum Windows
+  const builtins = [
+    { name: 'Notepad', command: 'notepad.exe', aliases: ['notepad', 'catatan'] },
+    { name: 'Kalkulator', command: 'calc.exe', aliases: ['calc', 'kalkulator', 'calculator'] },
+    { name: 'File Explorer', command: 'explorer.exe', aliases: ['explorer', 'file explorer'] },
+    { name: 'Paint', command: 'mspaint.exe', aliases: ['paint', 'mspaint', 'gambar'] },
+    { name: 'Task Manager', command: 'taskmgr.exe', aliases: ['taskmgr', 'task manager'] },
+    { name: 'Command Prompt', command: 'cmd.exe', aliases: ['cmd', 'command prompt'] },
+    { name: 'PowerShell', command: 'powershell.exe', aliases: ['powershell', 'pwsh'] },
+    { name: 'Pengaturan Windows', command: 'ms-settings:', aliases: ['settings', 'pengaturan'] }
+  ]
+
+  for (const b of builtins) {
+    if (!seenNames.has(b.name.toLowerCase())) {
+      seenNames.add(b.name.toLowerCase())
+      results.push({
+        name: b.name,
+        command: b.command,
+        aliases: b.aliases,
+        source: 'builtin'
+      })
+    }
+  }
+
+  return results
+}
+
+// IPC: jalankan aplikasi secara cross-platform (Windows, macOS, Linux) dengan fast fallback.
+ipcMain.handle('avatar:launch-app', async (_event, targetPath) => {
+  try {
+    if (!targetPath) return { ok: false, error: 'Path aplikasi kosong' }
+    const p = String(targetPath).trim()
+
+    // 1. URL / protocol URI (misal ms-settings:, spotify:, https://)
+    if (/^[a-zA-Z0-9\-_]+:/.test(p) && !p.includes('\\') && !p.includes('/')) {
+      await shell.openExternal(p)
+      return { ok: true }
+    }
+
+    // 2. File / shortcut path langsung jika ada di disk
+    if (existsSync(p)) {
+      const err = await shell.openPath(p)
+      if (!err) return { ok: true }
+    }
+
+    // 3. Fallback: Eksekusi command langsung di OS (misal "notepad.exe", "calc.exe", atau nama aplikasi)
+    const { exec } = await import('child_process')
+    return new Promise((resolve) => {
+      exec(`start "" "${p}"`, { windowsHide: true }, (error) => {
+        if (error) {
+          exec(p, { windowsHide: true }, (err2) => {
+            if (err2) resolve({ ok: false, error: err2.message || String(err2) })
+            else resolve({ ok: true })
+          })
+        } else {
+          resolve({ ok: true })
+        }
+      })
+    })
+  } catch (err) {
+    return { ok: false, error: err?.message || String(err) }
+  }
+})
+
+// IPC: Scan semua aplikasi terpasang di Windows (Start Menu & Builtins)
+ipcMain.handle('avatar:scan-installed-apps', async () => {
+  try {
+    const apps = scanWindowsShortcuts()
+    await mkdir(join(homedir(), '.hermes-avatar'), { recursive: true })
+    await writeFile(APPS_CACHE_FILE, JSON.stringify(apps, null, 2), 'utf-8')
+    return { ok: true, apps, count: apps.length }
+  } catch (err) {
+    return { ok: false, error: err?.message || String(err) }
+  }
+})
+
+// IPC: Ambil cache aplikasi terpasang (jika belum ada, lakukan auto-scan)
+ipcMain.handle('avatar:get-installed-apps', async () => {
+  try {
+    if (existsSync(APPS_CACHE_FILE)) {
+      const data = await readFile(APPS_CACHE_FILE, 'utf-8')
+      const apps = JSON.parse(data)
+      return { ok: true, apps, count: apps.length }
+    }
+    const apps = scanWindowsShortcuts()
+    await mkdir(join(homedir(), '.hermes-avatar'), { recursive: true })
+    await writeFile(APPS_CACHE_FILE, JSON.stringify(apps, null, 2), 'utf-8')
+    return { ok: true, apps, count: apps.length }
+  } catch (err) {
+    return { ok: false, error: err?.message || String(err) }
+  }
+})
+
+// IPC: Belajar / simpan aplikasi baru secara permanen
+ipcMain.handle('avatar:learn-app', async (_event, appData) => {
+  try {
+    if (!appData || !appData.name || !appData.command) {
+      return { ok: false, error: 'Nama dan path/command aplikasi wajib diisi' }
+    }
+    let list = []
+    if (existsSync(APPS_CACHE_FILE)) {
+      try {
+        list = JSON.parse(await readFile(APPS_CACHE_FILE, 'utf-8'))
+      } catch {}
+    }
+    list = list.filter((a) => a.name.toLowerCase() !== appData.name.toLowerCase())
+    list.unshift({
+      name: appData.name,
+      command: appData.command,
+      aliases: appData.aliases || [],
+      source: 'user-learned',
+      updatedAt: Date.now()
+    })
+    await mkdir(join(homedir(), '.hermes-avatar'), { recursive: true })
+    await writeFile(APPS_CACHE_FILE, JSON.stringify(list, null, 2), 'utf-8')
+    return { ok: true, count: list.length }
+  } catch (err) {
+    return { ok: false, error: err?.message || String(err) }
+  }
+})
+
+// IPC: Cuaca real-time live (Open-Meteo / WMO — gratis, response cepat <300ms)
+ipcMain.handle('avatar:get-live-weather', async (_event, city = 'Jakarta') => {
+  try {
+    const lat = -6.2
+    const lon = 106.8
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m&timezone=Asia%2FJakarta`
+    const resp = await fetch(url, { headers: { 'User-Agent': 'HermesAvatar/1.0' }, signal: AbortSignal.timeout(5000) })
+    if (!resp.ok) return { ok: false, error: `HTTP ${resp.status}` }
+    const data = await resp.json()
+    const cur = data.current || {}
+
+    const WMO_MAP = {
+      0: 'Cerah',
+      1: 'Sebagian Besar Cerah',
+      2: 'Sebagian Berawan',
+      3: 'Mendung Berawan',
+      45: 'Berkabut',
+      48: 'Kabut Tebal',
+      51: 'Gerimis Ringan',
+      53: 'Gerimis Sedang',
+      55: 'Gerimis Lebat',
+      61: 'Hujan Ringan',
+      63: 'Hujan Sedang',
+      65: 'Hujan Lebat',
+      80: 'Hujan Lokal Singkat',
+      81: 'Hujan Lebat Berselang',
+      82: 'Hujan Sangat Deras',
+      95: 'Hujan Disertai Petir',
+      96: 'Badai Petir Ringan',
+      99: 'Badai Petir Lebat'
+    }
+    const condition = WMO_MAP[cur.weather_code] || 'Cerah Berawan'
+    return {
+      ok: true,
+      city: 'Jakarta',
+      temp: cur.temperature_2m,
+      humidity: cur.relative_humidity_2m,
+      wind: cur.wind_speed_10m,
+      weatherCode: cur.weather_code,
+      condition,
+      time: cur.time
+    }
+  } catch (err) {
+    return { ok: false, error: err?.message || String(err) }
+  }
+})
+
+// IPC: Berita terkini Indonesia live hari ini (Google News RSS Indonesia)
+ipcMain.handle('avatar:get-live-news', async () => {
+  try {
+    const url = 'https://news.google.com/rss?hl=id&gl=ID&ceid=ID:id'
+    const resp = await fetch(url, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
+      signal: AbortSignal.timeout(6000)
+    })
+    if (!resp.ok) return { ok: false, error: `HTTP ${resp.status}` }
+    const xml = await resp.text()
+
+    const itemRegex = /<item>[\s\S]*?<title>(.*?)<\/title>[\s\S]*?<link>(.*?)<\/link>[\s\S]*?<pubDate>(.*?)<\/pubDate>[\s\S]*?<\/item>/g
+    const items = []
+    let match
+    while ((match = itemRegex.exec(xml)) !== null && items.length < 5) {
+      let rawTitle = match[1] || ''
+      rawTitle = rawTitle
+        .replace(/&quot;/g, '"')
+        .replace(/&apos;/g, "'")
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .trim()
+      items.push({
+        title: rawTitle,
+        pubDate: match[3] || ''
+      })
+    }
+    return { ok: true, items }
+  } catch (err) {
+    return { ok: false, error: err?.message || String(err) }
+  }
+})
+
 // IPC: ambil icon aplikasi (NativeImage → data URL PNG).
 ipcMain.handle('avatar:app-icon', async (_event, filePath) => {
   try {
@@ -563,15 +1201,24 @@ ipcMain.handle('avatar:app-icon', async (_event, filePath) => {
 // IPC: pilih file animasi (native dialog, filter GLB/VMD).
 ipcMain.handle('avatar:pick-animation', async () => {
   const result = await dialog.showOpenDialog({
-    title: 'Pilih file animasi',
+    title: 'Pilih file animasi gerakan atau pose',
     properties: ['openFile'],
     filters: [
-      { name: 'Animasi', extensions: ['glb', 'gltf', 'vmd'] },
+      { name: 'File Animasi Gerakan', extensions: ['glb', 'gltf', 'vmd', 'motion3.json', 'bvh', 'fbx', 'json'] },
       { name: 'Semua file', extensions: ['*'] }
     ]
   })
   if (result.canceled || result.filePaths.length === 0) return null
   return result.filePaths[0]
+})
+
+// IPC: kirim preview / uji animasi langsung ke jendela avatar aktif
+ipcMain.handle('avatar:preview-animation', async (_event, data) => {
+  if (avatarWindow && !avatarWindow.isDestroyed()) {
+    avatarWindow.webContents.send('avatar:preview-animation', data)
+    return { ok: true }
+  }
+  return { ok: false, error: 'Jendela avatar belum aktif' }
 })
 
 // IPC: TTS — jalur utama memakai endpoint /api/audio/speak milik Hermes
@@ -592,11 +1239,75 @@ function resolveTtsUrl() {
   }
 }
 
-ipcMain.handle('avatar:tts', async (_event, text, voice) => {
+ipcMain.handle('avatar:tts', async (_event, text, voice, options = {}) => {
+  const chosenVoice = voice || 'af_heart'
+  const isKokoro = options.provider === 'kokoro' || /^[a-z]{2}_/i.test(chosenVoice)
+
+  // 1) Jalur Kokoro-TTS (Lokal AI Anime — Apache 2.0 Komersial)
+  if (isKokoro) {
+    try {
+      // Auto-start Kokoro server jika port 8880 belum aktif
+      if (!(await isPortOpen(KOKORO_PORT))) {
+        console.log('[avatar:tts] Kokoro server belum aktif di port 8880, mencoba auto-start...')
+        await startKokoro()
+      }
+
+      const endpoint = options.kokoroEndpoint || 'http://127.0.0.1:8880'
+      const kokoroUrl = endpoint.endsWith('/speech')
+        ? endpoint
+        : `${endpoint.replace(/\/+$/, '')}/v1/audio/speech`
+
+      const kokoroVoice = /^[a-z]{2}_/i.test(chosenVoice) ? chosenVoice : 'af_heart'
+      const resp = await fetch(kokoroUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'kokoro',
+          input: String(text),
+          voice: kokoroVoice,
+          speed: options.speed || 1.0,
+          intonation: options.intonation || 'anime',
+          lang: options.lang,
+          response_format: 'wav'
+        })
+      })
+
+      if (resp.ok) {
+        const arrayBuf = await resp.arrayBuffer()
+        const buf = Buffer.from(arrayBuf)
+        const base64 = buf.toString('base64')
+        return {
+          ok: true,
+          dataUrl: `data:audio/wav;base64,${base64}`,
+          base64,
+          mimeType: 'audio/wav',
+          isKokoro: true,
+          voice: kokoroVoice
+        }
+      } else {
+        console.warn(`[avatar:tts] Kokoro server HTTP ${resp.status}:`, await resp.text().catch(() => ''))
+      }
+    } catch (err) {
+      console.warn('[avatar:tts] Kokoro server offline / gagal diakses, mencoba jalur cadangan:', err?.message || err)
+    }
+
+    // Jika mode noFallback aktif (misal dari pengujian suara), tolak fallback agar pengguna tidak tertipu suara cewek default
+    if (options.noFallback) {
+      return {
+        ok: false,
+        error: `Server Kokoro-TTS (port 8880) belum aktif atau tidak merespons. Silakan buka tab Package Hub lalu klik 'Jalankan di Background App' atau 'Buka Terminal & Jalankan Server' terlebih dahulu.`
+      }
+    }
+  }
+
+  // 2) Jalur utama cadangan: endpoint TTS Hermes.
   const token = SESSION_TOKEN
   const ttsUrl = resolveTtsUrl()
+  const fallbackVoice = /^[a-z]{2}_/i.test(chosenVoice) ? 'id-ID-GadisNeural' : chosenVoice
+  const fallbackWarning = isKokoro
+    ? `Server Kokoro offline di port 8880. Sistem beralih sementara ke suara cadangan (${fallbackVoice}).`
+    : null
 
-  // 1) Jalur utama: endpoint TTS Hermes.
   try {
     const resp = await fetch(ttsUrl, {
       method: 'POST',
@@ -604,7 +1315,7 @@ ipcMain.handle('avatar:tts', async (_event, text, voice) => {
         'Content-Type': 'application/json',
         'X-Hermes-Session-Token': token
       },
-      body: JSON.stringify({ text: String(text), voice: voice || 'id-ID-GadisNeural' })
+      body: JSON.stringify({ text: String(text), voice: fallbackVoice })
     })
     if (resp.ok) {
       const data = await resp.json()
@@ -612,24 +1323,60 @@ ipcMain.handle('avatar:tts', async (_event, text, voice) => {
         return {
           ok: true,
           dataUrl: data.data_url,
-          mimeType: data.mime_type || 'audio/mpeg'
+          mimeType: data.mime_type || 'audio/mpeg',
+          isFallback: isKokoro,
+          warning: fallbackWarning
         }
       }
-      return {
-        ok: false,
-        error: `Hermes TTS endpoint error (${resp.status}): ${JSON.stringify(data)}`
-      }
     }
-    return { ok: false, error: `Hermes TTS endpoint HTTP ${resp.status}` }
   } catch {
-    // Hermes tidak terjangkau → jatuh ke fallback msedge-tts di bawah.
+    // Hermes tidak terjangkau → jatuh ke fallback Windows SAPI di bawah.
   }
 
-  // 2) Fallback: msedge-tts langsung (butuh ws/stream/Buffer Node).
+  // 3) Fallback Offline Cepat & Pasti: Windows System.Speech SAPI (Bawaan Windows, tanpa internet, zero lag)
+  if (process.platform === 'win32') {
+    try {
+      const cleanT = String(text).replace(/[\r\n\t]+/g, ' ').replace(/"/g, '""').trim()
+      const b64Input = Buffer.from(cleanT, 'utf8').toString('base64')
+      const psScript = `
+        Add-Type -AssemblyName System.Speech
+        $s = New-Object System.Speech.Synthesis.SpeechSynthesizer
+        $female = $s.GetInstalledVoices() | Where-Object { $_.VoiceInfo.Gender -eq 'Female' } | Select-Object -First 1
+        if ($female) { $s.SelectVoice($female.VoiceInfo.Name) }
+        $ms = New-Object System.IO.MemoryStream
+        $s.SetOutputToWaveStream($ms)
+        $bytes = [System.Convert]::FromBase64String("${b64Input}")
+        $txt = [System.Text.Encoding]::UTF8.GetString($bytes)
+        $s.Speak($txt)
+        [System.Convert]::ToBase64String($ms.ToArray())
+      `
+      const base64Wav = await new Promise((res, rej) => {
+        execFile('powershell', ['-NoProfile', '-Command', psScript], { timeout: 12000 }, (err, stdout) => {
+          if (err) return rej(err)
+          res(stdout.trim())
+        })
+      })
+
+      if (base64Wav) {
+        return {
+          ok: true,
+          dataUrl: `data:audio/wav;base64,${base64Wav}`,
+          base64: base64Wav,
+          mimeType: 'audio/wav',
+          isFallback: isKokoro,
+          warning: fallbackWarning
+        }
+      }
+    } catch (err) {
+      console.warn('[avatar:tts] Windows SAPI fallback gagal:', err?.message || err)
+    }
+  }
+
+  // 4) Fallback darurat: msedge-tts
   try {
     const { MsEdgeTTS, OUTPUT_FORMAT } = await import('msedge-tts')
     const tts = new MsEdgeTTS()
-    await tts.setMetadata(voice || 'id-ID-GadisNeural', OUTPUT_FORMAT.AUDIO_24KHZ_48KBITRATE_MONO_MP3)
+    await tts.setMetadata(fallbackVoice, OUTPUT_FORMAT.AUDIO_24KHZ_48KBITRATE_MONO_MP3)
 
     const stream = tts.toStream(String(text))
     const chunks = []
@@ -637,7 +1384,13 @@ ipcMain.handle('avatar:tts', async (_event, text, voice) => {
       chunks.push(Buffer.from(chunk))
     }
     const buffer = Buffer.concat(chunks)
-    return { ok: true, base64: buffer.toString('base64'), mimeType: 'audio/mpeg' }
+    return {
+      ok: true,
+      base64: buffer.toString('base64'),
+      mimeType: 'audio/mpeg',
+      isFallback: isKokoro,
+      warning: fallbackWarning
+    }
   } catch (err) {
     return { ok: false, error: err?.message || String(err) }
   }
@@ -648,7 +1401,7 @@ ipcMain.handle('avatar:tts', async (_event, text, voice) => {
 ipcMain.handle('avatar:read-model', async (_event, modelPath) => {
   try {
     const buffer = await readFile(modelPath)
-    const name = modelPath.split('/').pop() || 'model'
+    const name = modelPath.split(/[/\\]/).pop() || 'model'
     return {
       ok: true,
       name,
@@ -660,11 +1413,11 @@ ipcMain.handle('avatar:read-model', async (_event, modelPath) => {
   }
 })
 
-// IPC: ubah path filesystem model → URL `model://` (untuk MMD yang butuh texture relatif).
+// IPC: ubah path filesystem model → URL `model://` (untuk MMD/Live2D yang butuh texture relatif).
 ipcMain.handle('avatar:model-url', (_event, modelPath) => {
-  // Encode tiap segmen path (jaga `/` sebagai pemisah) agar texture relatif
-  // bisa di-resolve MMDLoader dengan benar terhadap base URL.
-  const segments = modelPath.split('/')
+  // Normalize Windows backslashes dan encode segmen path
+  const normalized = modelPath.replace(/\\/g, '/')
+  const segments = normalized.split('/')
   const encoded = segments.map((s) => encodeURIComponent(s)).join('/')
   return `model://local/${encoded}`
 })
@@ -683,11 +1436,19 @@ const MIME_MAP = {
   '.pmx': 'application/octet-stream',
   '.pmd': 'application/octet-stream',
   '.vmd': 'application/octet-stream',
-  '.fbx': 'application/octet-stream'
+  '.fbx': 'application/octet-stream',
+  '.moc3': 'application/octet-stream',
+  '.json': 'application/json',
+  '.wav': 'audio/wav',
+  '.mp3': 'audio/mpeg',
+  '.ogg': 'audio/ogg',
+  '.flac': 'audio/flac',
+  '.m4a': 'audio/mp4',
+  '.aac': 'audio/aac'
 }
 
 // Register custom protocol `model://` untuk serve file model + texture dari disk.
-// Diperlukan karena MMDLoader me-resolve texture relatif ke URL model.
+// Diperlukan karena MMDLoader dan Live2D me-resolve texture relatif ke URL model.
 protocol.registerSchemesAsPrivileged([
   { scheme: 'model', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } }
 ])
@@ -706,15 +1467,20 @@ function registerModelProtocol() {
       const data = await readFile(filePath)
       return new Response(data, {
         status: 200,
-        headers: { 'Content-Type': mime }
+        headers: {
+          'Content-Type': mime,
+          'Access-Control-Allow-Origin': '*'
+        }
       })
     } catch (err) {
+      console.warn('[model-protocol] Not found:', request.url)
       return new Response('Not found', { status: 404 })
     }
   })
 }
 
 app.whenReady().then(() => {
+  Menu.setApplicationMenu(null)
   registerModelProtocol()
   createLauncherWindow()
   registerGlobalShortcuts()

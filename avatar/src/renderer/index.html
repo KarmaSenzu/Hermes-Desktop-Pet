@@ -4,46 +4,302 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Hermes Avatar</title>
+    <script src="./live2dcubismcore.min.js"></script>
     <link rel="stylesheet" href="./styles/main.css" />
   </head>
   <body>
-    <!-- Kontainer three.js (canvas dibuat dinamis) -->
+    <!-- Kontainer avatar (canvas Live2D / three.js) -->
     <div id="app" class="stage"></div>
 
-    <!-- Bubble status di atas avatar (thinking/processing/speaking/idle) -->
-    <div id="status-bubble" class="status-bubble" hidden></div>
-
-    <!-- Area drag untuk memindahkan window (karena frameless) -->
-    <div id="drag-handle" class="drag-handle" title="Seret untuk memindahkan"></div>
-
-    <!-- Ikon komentar (trigger buka/tutup bottom sheet) -->
-    <button id="comment-toggle" class="comment-toggle" title="Buka chat">💬</button>
-
-    <!-- Tombol emote (buka menu) -->
-    <button id="emote-toggle" class="emote-btn" title="Emote">😀</button>
-
-    <!-- Panel emote -->
-    <div id="emote-panel" class="emote-panel" hidden>
-      <button class="emote-item" data-emote="bounce" data-icon="arrow-up">Bounce</button>
-      <button class="emote-item" data-emote="jump" data-icon="arrow-up">Jump</button>
-      <button class="emote-item" data-emote="wave" data-icon="hand">Wave</button>
-      <button class="emote-item" data-emote="nod" data-icon="smile">Nod</button>
+    <!-- Balon Subtitle di Atas Kepala Avatar ala YourMother -->
+    <div id="speech-bubble" class="interactive-ui speech-bubble" hidden>
+      <div id="speech-bubble-text" class="speech-bubble-text"></div>
+      <div class="speech-bubble-tail"></div>
     </div>
 
-    <!-- Tombol kembali ke pengaturan -->
-    <button id="settings-btn" class="emote-btn settings-btn" title="Pengaturan">⚙️</button>
+    <!-- Bubble status di atas avatar (thinking/processing/speaking/idle) -->
+    <div id="status-bubble" class="interactive-ui status-bubble" hidden></div>
 
-    <!-- Backdrop (klik luar untuk menutup panel) -->
-    <div id="sheet-backdrop" class="sheet-backdrop" hidden></div>
+    <!-- Floating Action Menu di Samping Avatar ala YourMother (MotherSelectMenu) -->
+    <div id="companion-hud" class="interactive-ui hud-dock vertical-menu">
+      <div id="hud-actions" class="hud-actions">
+        <!-- AI Chat Hermes -->
+        <button id="comment-toggle" class="hud-item hud-anim-chat" title="Buka Percakapan AI dengan Hermes">
+          <span class="hud-emoji">💬</span>
+          <span class="hud-label">Chat</span>
+        </button>
 
-    <!-- Bottom sheet / chat drawer -->
-    <div id="chat" class="chat">
+        <!-- Timer Pomodoro ala YourMother -->
+        <button id="timer-toggle" class="hud-item hud-anim-timer" title="Fokus & Pomodoro Timer ⏱️">
+          <span class="hud-emoji">⏱️</span>
+          <span class="hud-label">Timer</span>
+        </button>
+
+        <!-- Pemutar Musik & Lofi ala Spotify Mini -->
+        <button id="music-toggle" class="hud-item hud-anim-music" title="Pemutar Musik & Lofi Companion 🎵">
+          <span class="hud-emoji">🎵</span>
+          <span class="hud-label">Musik</span>
+        </button>
+
+        <!-- Mute / Unmute Suara ala YourMother (MotherMute) -->
+        <button id="mute-btn" class="hud-item hud-anim-mute" title="Bungkam / Nyalakan Suara TTS">
+          <span id="mute-icon" class="hud-emoji">🔊</span>
+          <span id="mute-label" class="hud-label">Suara</span>
+        </button>
+
+        <span class="hud-sep"></span>
+
+        <!-- Kontrol Ukuran (Zoom) & Posisi Layar -->
+        <div class="hud-zoom-group">
+          <button id="zoom-in-btn" class="hud-item hud-mini-btn" title="Perbesar Karakter (+)">
+            <span class="hud-emoji">➕</span>
+          </button>
+          <span id="zoom-level-badge" class="hud-zoom-badge" title="Ukuran Saat Ini (Bisa juga scroll roda mouse di atas karakter)">100%</span>
+          <button id="zoom-out-btn" class="hud-item hud-mini-btn" title="Perkecil Karakter (-)">
+            <span class="hud-emoji">➖</span>
+          </button>
+        </div>
+
+        <button id="reset-pos-btn" class="hud-item hud-anim-pin" title="Kembalikan Karakter ke Posisi Ideal (Reset)">
+          <span class="hud-emoji">📍</span>
+          <span class="hud-label">Reset</span>
+        </button>
+
+        <span class="hud-sep"></span>
+
+        <!-- Panel Pengaturan -->
+        <button id="settings-btn" class="hud-item hud-anim-gear" title="Buka Panel Pengaturan">
+          <span class="hud-emoji">⚙️</span>
+          <span class="hud-label">Setting</span>
+        </button>
+
+        <!-- Tutup Avatar & Kembali ke Launcher Utama -->
+        <button id="exit-avatar-btn" class="hud-item hud-anim-exit" title="Tutup Avatar & Kembali ke Launcher Utama">
+          <span class="hud-emoji">🚪</span>
+          <span class="hud-label">Keluar</span>
+        </button>
+
+        <!-- Tutup Menu -->
+        <button id="hud-close-btn" class="hud-item hud-anim-close" title="Tutup Menu">
+          <span class="hud-emoji">✕</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Panel Pomodoro & Focus Timer ala YourMother -->
+    <div id="timer-panel" class="interactive-ui timer-panel" hidden>
+      <div class="panel-header">
+        <div class="panel-header-title">
+          <span>⏱️ Timer Fokus</span>
+        </div>
+        <button id="timer-close-btn" class="panel-close-mini" title="Tutup Timer">✕</button>
+      </div>
+
+      <!-- Input Catatan Info Tugas di atas Timer -->
+      <div class="timer-task-box">
+        <label for="timer-task-input" class="timer-task-label">Info Tugas / Catatan Fokus:</label>
+        <div class="timer-task-input-wrap">
+          <input id="timer-task-input" type="text" placeholder="Tulis info / tugas fokus (mis: Belajar)..." maxlength="60" autocomplete="off" />
+        </div>
+      </div>
+
+      <!-- Tampilan Waktu (Bisa diklik untuk input manual) -->
+      <div class="timer-display" id="timer-display-box" title="Klik untuk edit waktu manual ✏️">
+        <div class="timer-time-row">
+          <span id="timer-time-display">25:00</span>
+          <button id="timer-edit-time-btn" class="timer-edit-badge" title="Ubah waktu manual">✏️ Edit</button>
+        </div>
+        <span id="timer-status-text">Siap untuk sesi fokus</span>
+      </div>
+
+      <!-- Input Manual Waktu (Muncul saat tombol Edit atau Custom diklik) -->
+      <div id="timer-custom-box" class="timer-custom-box" hidden>
+        <span class="custom-box-title">Atur Waktu Manual:</span>
+        <div class="custom-time-inputs">
+          <div class="custom-field">
+            <input id="timer-custom-min" type="number" min="0" max="999" value="25" />
+            <small>Menit</small>
+          </div>
+          <span class="custom-sep">:</span>
+          <div class="custom-field">
+            <input id="timer-custom-sec" type="number" min="0" max="59" value="00" />
+            <small>Detik</small>
+          </div>
+          <button type="button" id="timer-custom-apply-btn" class="custom-apply-btn">Pasang ✓</button>
+          <button type="button" id="timer-custom-cancel-btn" class="custom-cancel-btn" title="Tutup">✕</button>
+        </div>
+      </div>
+
+      <!-- Preset Cepat Durasi -->
+      <div class="timer-presets">
+        <button class="timer-preset-btn active" data-minutes="25">25m</button>
+        <button class="timer-preset-btn" data-minutes="15">15m</button>
+        <button class="timer-preset-btn" data-minutes="45">45m</button>
+        <button class="timer-preset-btn" data-minutes="5">5m</button>
+        <button id="timer-preset-custom-btn" class="timer-preset-btn" title="Atur menit manual">✏️ Custom</button>
+      </div>
+
+      <!-- Toggle Ganti Baju Fokus (Jas & Kacamata) ala YourMother -->
+      <div class="timer-outfit-row">
+        <label class="timer-outfit-label" title="Mother otomatis memakai jas kerja, jam tangan, & kacamata saat timer aktif">
+          <input id="timer-outfit-toggle" type="checkbox" checked />
+          <span class="outfit-toggle-slider"></span>
+          <span class="outfit-toggle-text">👗 Auto Ganti Baju Fokus (Jas & Kacamata)</span>
+        </label>
+      </div>
+
+      <!-- Kontrol Timer -->
+      <div class="timer-controls">
+        <button id="timer-start-btn" class="timer-action-btn primary">▶ Mulai</button>
+        <button id="timer-reset-btn" class="timer-action-btn">🔄 Reset</button>
+      </div>
+    </div>
+
+    <!-- Panel Pemutar Musik ala Spotify Mini -->
+    <div id="music-panel" class="interactive-ui music-panel" hidden>
+      <div class="panel-header">
+        <div class="music-header-title">
+          <span class="music-spotify-dot"></span>
+          <span>🎵 Hermes Music Player</span>
+        </div>
+        <button id="music-close-btn" class="panel-close-mini" title="Tutup Pemutar Musik">✕</button>
+      </div>
+
+      <!-- Now Playing Hero Card -->
+      <div class="music-hero-card">
+        <div class="music-disc-wrap">
+          <div id="music-disc" class="music-disc" title="Now Playing">
+            <div class="music-disc-inner">
+              <span id="music-disc-icon" class="music-disc-icon">🎵</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="music-meta">
+          <div class="music-meta-top">
+            <span id="music-title" class="music-title" title="Judul Lagu">Cozy Rain & Warm Rhodes</span>
+            <button id="music-fav-btn" class="music-fav-btn" title="Simpan ke Favorit ❤️">🤍</button>
+          </div>
+          <div class="music-meta-sub">
+            <span id="music-artist" class="music-artist">Hermes Chill Beats</span>
+            <span id="music-badge" class="music-badge">Fokus ☕</span>
+          </div>
+          <div id="music-eq" class="music-eq" title="Audio Visualizer">
+            <span class="eq-bar bar-1"></span>
+            <span class="eq-bar bar-2"></span>
+            <span class="eq-bar bar-3"></span>
+            <span class="eq-bar bar-4"></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Scrubber / Seek Bar -->
+      <div class="music-scrubber-wrap">
+        <span id="music-current-time" class="music-time-label">0:00</span>
+        <input id="music-seek-bar" type="range" class="music-slider music-seek-bar" min="0" max="100" value="0" step="0.1" />
+        <span id="music-duration" class="music-time-label">∞</span>
+      </div>
+
+      <!-- Main Controls -->
+      <div class="music-controls-row">
+        <button id="music-shuffle-btn" class="music-ctrl-btn" title="Acak Lagu (Shuffle)">🔀</button>
+        <button id="music-prev-btn" class="music-ctrl-btn" title="Lagu Sebelumnya">⏮️</button>
+        <button id="music-play-btn" class="music-ctrl-btn music-play-main" title="Putar / Jeda Musik">▶</button>
+        <button id="music-next-btn" class="music-ctrl-btn" title="Lagu Berikutnya">⏭️</button>
+        <button id="music-repeat-btn" class="music-ctrl-btn active" title="Ulangi Lagu (Loop)">🔁</button>
+      </div>
+
+      <!-- Volume Bar -->
+      <div class="music-volume-row">
+        <button id="music-mute-btn" class="music-vol-btn" title="Bungkam Suara Musik">🔊</button>
+        <input id="music-vol-slider" type="range" class="music-slider music-vol-slider" min="0" max="100" value="70" />
+        <span id="music-vol-label" class="music-vol-label">70%</span>
+      </div>
+
+      <!-- Search & Category Filters -->
+      <div class="music-filter-box">
+        <div class="music-search-wrap">
+          <span class="music-search-icon">🔍</span>
+          <input id="music-search-input" type="text" placeholder="Cari lagu, artis, atau genre..." autocomplete="off" />
+          <button id="music-search-clear" class="music-search-clear" title="Bersihkan pencarian" hidden>✕</button>
+        </div>
+        <div class="music-categories">
+          <button class="music-cat-btn active" data-category="all">Semua 🎵</button>
+          <button class="music-cat-btn" data-category="favorite">Favorit ❤️</button>
+          <button class="music-cat-btn" data-category="focus">Fokus ☕</button>
+          <button class="music-cat-btn" data-category="chill">Santai 🌸</button>
+          <button class="music-cat-btn" data-category="online">Online 🌐</button>
+          <button class="music-cat-btn" data-category="local">Lokal 📁</button>
+        </div>
+      </div>
+
+      <!-- Scrollable Tracklist -->
+      <div class="music-tracklist-wrap">
+        <div id="music-tracklist" class="music-tracklist">
+          <!-- Dynamically populated -->
+        </div>
+      </div>
+
+      <!-- Footer Actions: Import Local Music & Online Stream -->
+      <div class="music-footer">
+        <button id="music-add-online-toggle-btn" class="music-add-btn online" title="Tambah Stasiun Radio atau Link Musik Online dari Internet">
+          <span>🌐 + Stream Online</span>
+        </button>
+        <button id="music-add-local-btn" class="music-add-btn local" title="Pilih File Musik dari Komputer Anda">
+          <span>📁 + File Lokal</span>
+        </button>
+      </div>
+
+      <!-- Drawer Input Stream Online -->
+      <div id="music-online-drawer" class="music-online-drawer" hidden>
+        <div class="drawer-header">
+          <span>🌐 Tambah Link Audio / Stream Web</span>
+          <button id="music-online-drawer-close" class="panel-close-mini">✕</button>
+        </div>
+        <div class="drawer-body">
+          <input id="music-online-url-input" type="url" placeholder="URL Audio / YouTube (mis: https://youtube.com/watch?v=... atau .mp3)" autocomplete="off" />
+          <div class="drawer-inputs-row">
+            <input id="music-online-title-input" type="text" placeholder="Nama Lagu / Video (otomatis)..." autocomplete="off" />
+            <input id="music-online-artist-input" type="text" placeholder="Artis / Channel (otomatis)..." autocomplete="off" />
+          </div>
+          <div class="drawer-actions-row">
+            <button id="music-online-submit-btn" class="drawer-action-btn primary">Pasang & Putar ✓</button>
+            <button id="music-online-research-btn" class="drawer-action-btn ai-agent" title="Minta Hermes AI meriset link musik lofi gratis di internet">🤖 Minta Hermes Carikan</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Floating Chat Window AI (Hermes) -->
+    <div id="chat" class="interactive-ui chat hidden">
+      <!-- Handle drag untuk kustomisasi ukuran chat bebas -->
+      <div id="chat-resize-handle" class="chat-resize-handle" title="Tarik sudut ini untuk memperbesar/memperkecil kotak chat">
+        <span class="resize-icon">⤡</span>
+      </div>
+
+      <div class="chat-header">
+        <div class="chat-header-title-wrap">
+          <span class="chat-status-dot"></span>
+          <span class="chat-title">Hermes AI Companion</span>
+        </div>
+        <div class="chat-header-actions">
+          <button type="button" id="chat-size-toggle-btn" class="chat-tool-btn" title="Ganti Mode Ukuran (Ringkas / Normal / Luas)">
+            <span>⛶</span>
+          </button>
+          <button type="button" id="chat-close-btn" class="chat-close" title="Tutup">✕</button>
+        </div>
+      </div>
       <div id="chat-log" class="chat-log"></div>
       <form id="chat-form" class="chat-form">
-        <input id="chat-input" type="text" placeholder="Ketik pesan..." autocomplete="off" />
-        <button type="submit">Kirim</button>
-        <button type="button" id="mic-btn" title="Rekam suara">🎤</button>
+        <input id="chat-input" type="text" placeholder="Ketik pesan untuk Hermes..." autocomplete="off" />
+        <button type="submit" id="chat-submit-btn">Kirim</button>
+        <button type="button" id="mic-btn" title="Bicara via Mikrofon">🎤</button>
       </form>
+    </div>
+
+    <!-- Host YouTube Audio Player (Invisible Background Embed) -->
+    <div id="yt-player-host" style="position: fixed; width: 1px; height: 1px; left: -9999px; top: -9999px; opacity: 0; pointer-events: none;">
+      <div id="youtube-player-element"></div>
     </div>
 
     <script type="module" src="./js/main.js"></script>

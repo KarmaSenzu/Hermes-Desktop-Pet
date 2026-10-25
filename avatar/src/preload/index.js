@@ -26,17 +26,47 @@ const api = {
   // Trigger animasi DVD bounce (emote/skill).
   dvdBounce: () => ipcRenderer.invoke('avatar:dvd-bounce'),
 
+  // Drag manual window (delta px → main pindahkan window).
+  dragMove: (dx, dy) => ipcRenderer.send('avatar:drag-move', dx, dy),
+
+  // Klik tembus ke OS saat kursor di luar karakter (overlay full-screen).
+  setIgnoreMouse: (ignore, forward = true) => ipcRenderer.send('avatar:set-ignore-mouse', ignore, forward),
+
+  // Berikan fokus keyboard ke window avatar (untuk mengetik chat)
+  focusWindow: () => ipcRenderer.send('avatar:focus-window'),
+
+  // Kontrol fokus khusus saat chat dibuka/ditutup (agar bisa mengetik tanpa merusak z-order)
+  setChatFocus: (enable) => ipcRenderer.send('avatar:chat-focus', enable),
+
+  // Menerima koordinat kursor global OS (desktop-wide mouse tracking ala YourMother)
+  onCursorMove: (callback) => {
+    const handler = (_event, point) => callback(point)
+    ipcRenderer.on('avatar:cursor-screen-point', handler)
+    return () => ipcRenderer.removeListener('avatar:cursor-screen-point', handler)
+  },
+
+  // Buka jendela pengaturan / launcher dari avatar.
+  openSettings: () => ipcRenderer.invoke('avatar:open-settings'),
+
   // Akses path model default (baca dari argumen/env, bukan hardcode mesin lain).
   getDefaultModelPath: () => ipcRenderer.invoke('avatar:default-model'),
 
   // Buka dialog pilih file model (native Finder/Explorer) → path | null.
   pickModelFile: () => ipcRenderer.invoke('avatar:pick-model'),
 
+  // Buka dialog pilih file audio musik lokal (mp3, wav, ogg, flac, m4a, aac).
+  pickAudioFiles: () => ipcRenderer.invoke('avatar:pick-audio-files'),
+
   // Konfigurasi Hermes gateway (WS URL + token dari env).
   getHermesConfig: () => ipcRenderer.invoke('avatar:hermes-config'),
 
-  // Status service (9Router & hermes) untuk settings panel.
+  // Status service (9Router, hermes, kokoro, python) untuk settings panel & Package Hub.
   getServiceStatus: () => ipcRenderer.invoke('avatar:service-status'),
+  startKokoroServer: () => ipcRenderer.invoke('avatar:start-kokoro-server'),
+  installKokoroDeps: () => ipcRenderer.invoke('avatar:install-kokoro-deps'),
+  uninstallKokoroDeps: () => ipcRenderer.invoke('avatar:uninstall-kokoro-deps'),
+  openPackageFolder: (pkgName) => ipcRenderer.invoke('avatar:open-package-folder', pkgName),
+  cleanPackage: (pkgName) => ipcRenderer.invoke('avatar:clean-package', pkgName),
 
   // RPC ke Hermes (shared gateway) — untuk config/model di LLM section.
   rpc: (method, params) => ipcRenderer.invoke('avatar:rpc', method, params),
@@ -70,9 +100,27 @@ const api = {
   // Pilih file aplikasi (native dialog) + ambil icon.
   pickApp: () => ipcRenderer.invoke('avatar:pick-app'),
   getAppIcon: (filePath) => ipcRenderer.invoke('avatar:app-icon', filePath),
+  launchApp: (targetPath) => ipcRenderer.invoke('avatar:launch-app', targetPath),
+  scanInstalledApps: () => ipcRenderer.invoke('avatar:scan-installed-apps'),
+  getInstalledApps: () => ipcRenderer.invoke('avatar:get-installed-apps'),
+  learnApp: (appData) => ipcRenderer.invoke('avatar:learn-app', appData),
+  getLiveWeather: (city) => ipcRenderer.invoke('avatar:get-live-weather', city),
+  getLiveNews: () => ipcRenderer.invoke('avatar:get-live-news'),
 
-  // Pilih file animasi (GLB/VMD).
+  // Kontrol jendela (macOS traffic lights: close, minimize, maximize)
+  windowClose: () => ipcRenderer.invoke('avatar:window-close'),
+  windowMinimize: () => ipcRenderer.invoke('avatar:window-minimize'),
+  windowMaximize: () => ipcRenderer.invoke('avatar:window-maximize'),
+
+  // Eksekusi terminal transparan (PowerShell)
+  runInTerminal: (cmd, cwd) => ipcRenderer.invoke('avatar:run-in-terminal', cmd, cwd),
+
+  // Pilih file animasi (GLB/VMD/Live2D/BVH).
   pickAnimation: () => ipcRenderer.invoke('avatar:pick-animation'),
+  previewAnimation: (data) => ipcRenderer.invoke('avatar:preview-animation', data),
+  onPreviewAnimation: (callback) => {
+    ipcRenderer.on('avatar:preview-animation', (_event, data) => callback(data))
+  },
 
   // Daftar global shortcut (untuk settings).
   getShortcuts: () => ipcRenderer.invoke('avatar:shortcuts'),
@@ -86,7 +134,7 @@ const api = {
   },
 
   // TTS: kirim teks → dapatkan audio base64 (diproses di main process).
-  synthesizeSpeech: (text, voice) => ipcRenderer.invoke('avatar:tts', text, voice)
+  synthesizeSpeech: (text, voice, options) => ipcRenderer.invoke('avatar:tts', text, voice, options)
 }
 
 contextBridge.exposeInMainWorld('hermesAvatar', api)

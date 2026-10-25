@@ -184,9 +184,13 @@ export class HermesClient {
     // Event server.
     if (frame.method === 'event' && frame.params?.type) {
       const type = frame.params.type
-      // Debug: log semua event yang diterima.
+      // Debug: log event yang diterima (kecualikan session.info & stream delta untuk menjaga privasi memori dan kerapian).
       if (typeof console !== 'undefined') {
-        console.log('[hermes event]', type, JSON.stringify(frame.params?.payload ?? {}))
+        if (type !== 'session.info' && !['message.delta', 'thinking.delta'].includes(type)) {
+          console.log('[hermes event]', type, JSON.stringify(frame.params?.payload ?? {}))
+        } else if (type === 'session.info') {
+          console.log('[hermes event] session.info (connected to Hermes)')
+        }
       }
       // Listener debug (semua event).
       if (this._anyHandlers) {
