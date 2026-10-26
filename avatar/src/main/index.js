@@ -79,14 +79,16 @@ function stopAutoDodge() {
 }
 
 function createLauncherWindow() {
+  const isMac = process.platform === 'darwin'
   launcherWindow = new BrowserWindow({
     width: 960,
     height: 640,
     minWidth: 780,
     minHeight: 540,
     resizable: true,
-    frame: false, // Menghilangkan seluruh frame native Windows & tanda silang di pojok kanan atas
+    frame: false, // Menghilangkan frame native OS
     titleBarStyle: 'hidden',
+    ...(isMac ? { trafficLightPosition: { x: 16, y: 16 } } : {}),
     autoHideMenuBar: true,
     title: 'Hermes 3D Avatar — Pengaturan',
     backgroundColor: '#1e1e20', // Warna background dark mode identik launcher.css (cegah buffer hitam saat show)

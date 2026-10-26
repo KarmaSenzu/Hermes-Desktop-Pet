@@ -2779,7 +2779,18 @@ llmSwitchBtn.addEventListener('click', async () => {
   }
 })
 
+function detectPlatform() {
+  const isMac = (window.hermesAvatar?.platform === 'darwin') ||
+    navigator.userAgent.includes('Macintosh') ||
+    (navigator.platform && navigator.platform.toUpperCase().indexOf('MAC') >= 0)
+  if (isMac) {
+    document.documentElement.classList.add('is-mac')
+    document.body.classList.add('is-mac')
+  }
+}
+
 function init() {
+  detectPlatform()
   initThemeSwitcher()
   initWindowControls()
   initHistoryControls()

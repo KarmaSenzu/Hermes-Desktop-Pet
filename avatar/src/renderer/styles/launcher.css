@@ -148,6 +148,18 @@ button {
   -webkit-app-region: drag;
 }
 
+/* Sembunyikan window-controls HTML di macOS agar tidak double dengan traffic lights bawaan native MacBook */
+.is-mac .window-controls {
+  display: none !important;
+}
+
+.is-mac .sidebar-topbar {
+  height: 38px;
+  min-height: 38px;
+  padding: 0 6px;
+  -webkit-app-region: drag;
+}
+
 .window-controls {
   display: flex;
   align-items: center;
@@ -671,9 +683,8 @@ button {
 select.mac-select,
 .row-control select {
   height: 28px;
-  width: 240px;
-  min-width: 240px;
-  max-width: 240px;
+  width: 220px;
+  max-width: 100%;
   padding: 0 24px 0 10px;
   border-radius: 6px;
   border: 1px solid var(--border-strong);
@@ -704,9 +715,8 @@ input[type='password'].mac-input,
 .row-control input[type='text'],
 .row-control input[type='password'] {
   height: 28px;
-  width: 240px;
-  min-width: 240px;
-  max-width: 240px;
+  width: 220px;
+  max-width: 100%;
   padding: 0 10px;
   border-radius: 6px;
   border: 1px solid var(--border-strong);
@@ -985,10 +995,51 @@ input[type='password'].mac-input:focus,
 }
 
 .mini-btn {
-  min-height: 30px;
-  padding: 6px 10px;
-  font-size: 11px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: auto !important;
+  max-width: fit-content;
+  min-height: 28px !important;
+  padding: 5px 12px !important;
+  font-size: 11.5px !important;
+  font-weight: 600;
+  border-radius: 6px !important;
   border: none;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  box-sizing: border-box;
+  transition: all 0.14s ease;
+}
+
+.mini-btn.primary {
+  width: auto !important;
+  background: var(--accent);
+  color: #fff;
+  border: 1px solid transparent;
+}
+
+.mini-btn.primary:hover {
+  background: var(--accent-hover);
+}
+
+.mini-btn.primary:active {
+  filter: brightness(0.95);
+}
+
+.mini-btn.secondary,
+.mini-btn.browse {
+  width: auto !important;
+  background: var(--surface-raised);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+}
+
+.mini-btn.secondary:hover,
+.mini-btn.browse:hover {
+  background: var(--surface-hover);
 }
 
 .mini-btn.use {
@@ -2270,8 +2321,8 @@ textarea:focus-visible {
   display: flex;
   align-items: center;
   gap: 14px;
-  padding: 12px 16px;
-  margin-bottom: 18px;
+  padding: 14px 18px;
+  margin-bottom: 20px;
   border-radius: var(--radius-lg);
   background: rgba(245, 158, 11, 0.08);
   border: 1px solid rgba(245, 158, 11, 0.28);
@@ -2282,8 +2333,12 @@ textarea:focus-visible {
   display: none !important;
 }
 
+.settings-alert-banner .format-emblem {
+  flex-shrink: 0;
+}
+
 .settings-alert-banner .alert-content {
-  flex: 1;
+  flex: 1 1 auto;
   min-width: 0;
 }
 
@@ -2292,14 +2347,24 @@ textarea:focus-visible {
   font-size: 13.5px;
   font-weight: 600;
   color: #fbbf24;
-  margin-bottom: 2px;
+  margin-bottom: 3px;
 }
 
 .settings-alert-banner .alert-content p {
   margin: 0;
   font-size: 12px;
   color: var(--text-secondary);
-  line-height: 1.4;
+  line-height: 1.45;
+  word-break: normal;
+  overflow-wrap: break-word;
+}
+
+.settings-alert-banner .mini-btn {
+  flex-shrink: 0;
+  width: auto !important;
+  max-width: fit-content;
+  white-space: nowrap;
+  margin-left: auto;
 }
 
 .pkg-icon-badge {
@@ -2565,28 +2630,114 @@ textarea:focus-visible {
   cursor: pointer;
 }
 
+/* ===== Form Tambah Aplikasi Manual & Kontrol Fleksibel ===== */
+.settings-row.app-add-row {
+  align-items: center;
+}
+
+.app-add-control-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.app-name-input {
+  width: 120px !important;
+  min-width: 90px;
+}
+
+.app-path-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.app-path-input {
+  width: 160px !important;
+  min-width: 110px;
+}
+
 /* ===== Responsive ===== */
 @media (min-width: 1400px) {
   .content { padding-left: 56px; padding-right: 56px; }
-  .panel { max-width: 920px; }
+  .panel { max-width: 960px; }
 }
 
 @media (max-width: 900px) {
   .sidebar { width: 220px; min-width: 190px; }
-  .content { padding: 26px 22px 36px; }
-  .card { padding: 18px; }
+  .content { padding: 24px 20px 36px; }
+  .card { padding: 16px; }
+
+  .settings-row.app-add-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+
+  .app-add-control-group {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .app-name-input {
+    flex: 1 1 120px;
+    width: auto !important;
+  }
+
+  .app-path-wrapper {
+    flex: 2 1 180px;
+  }
+
+  .app-path-input {
+    flex: 1;
+    width: auto !important;
+  }
+}
+
+@media (max-width: 768px) {
+  .settings-alert-banner {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .settings-alert-banner .mini-btn {
+    margin-left: 0;
+    width: auto !important;
+  }
+
+  .sidebar {
+    width: 190px;
+    min-width: 170px;
+    padding: 12px 8px;
+  }
+
+  .content {
+    padding: 18px 12px 28px;
+  }
+
+  .panel > h1 {
+    font-size: 24px;
+  }
+
+  .panel > .subtitle {
+    margin-bottom: 18px;
+    font-size: 13px;
+  }
 }
 
 @media (max-width: 640px) {
-  .sidebar { width: 172px; min-width: 156px; padding: 14px 8px; }
-  .brand { padding: 5px 7px 16px; font-size: 14px; }
-  .brand-dot { width: 23px; height: 23px; }
-  .nav-item { gap: 7px; padding: 9px 7px; font-size: 12px; }
-  .nav-icon { width: 18px; font-size: 13px; }
-  .content { padding: 22px 14px 30px; }
-  .panel > h1 { font-size: 25px; }
-  .panel > .subtitle { margin-bottom: 20px; font-size: 13px; }
-  .card { padding: 15px; border-radius: 13px; }
+  .sidebar { width: 160px; min-width: 150px; padding: 12px 6px; }
+  .brand { padding: 5px 6px 14px; font-size: 13.5px; }
+  .brand-dot { width: 20px; height: 20px; }
+  .nav-item { gap: 6px; padding: 8px 6px; font-size: 11.5px; }
+  .nav-icon { width: 16px; font-size: 12px; }
+  .content { padding: 16px 10px 24px; }
+  .panel > h1 { font-size: 22px; }
+  .panel > .subtitle { margin-bottom: 16px; font-size: 12px; }
+  .card { padding: 12px; border-radius: 12px; }
   .shortcut-row { align-items: flex-start; flex-direction: column; gap: 8px; }
   .shortcut-edit { width: 100%; justify-content: flex-start; }
   .shortcut-input { width: min(180px, 55vw); }

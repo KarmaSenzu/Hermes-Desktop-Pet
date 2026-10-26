@@ -6,6 +6,9 @@ import { contextBridge, ipcRenderer } from 'electron'
  */
 
 const api = {
+  // Platform OS aktif (darwin, win32, linux)
+  platform: process.platform,
+
   // Launcher: mulai avatar dengan model terpilih.
   startAvatar: (modelPath) => ipcRenderer.invoke('avatar:start', modelPath),
 

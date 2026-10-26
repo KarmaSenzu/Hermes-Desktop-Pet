@@ -6,6 +6,16 @@
     <title>Hermes 3D Avatar — Pengaturan</title>
     <script src="./live2dcubismcore.min.js"></script>
     <link rel="stylesheet" href="./styles/launcher.css" />
+    <script>
+      (function () {
+        const isMac = (typeof window !== 'undefined' && window.hermesAvatar && window.hermesAvatar.platform === 'darwin') ||
+          navigator.userAgent.includes('Macintosh') ||
+          (navigator.platform && navigator.platform.toUpperCase().indexOf('MAC') >= 0);
+        if (isMac) {
+          document.documentElement.classList.add('is-mac');
+        }
+      })();
+    </script>
   </head>
   <body>
     <div class="settings">
@@ -945,7 +955,7 @@
                 <button type="button" id="app-scan-btn" class="mini-btn secondary" title="Pindai semua aplikasi di Start Menu Windows secara otomatis">Pindai Windows</button>
               </div>
             </div>
-            <div class="settings-row">
+            <div class="settings-row app-add-row">
               <div class="format-emblem theme-emerald">
                 <svg class="lucide-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
               </div>
@@ -953,12 +963,14 @@
                 <div class="format-title-line">
                   <span class="format-title">Tambah Aplikasi Manual</span>
                 </div>
-                <p class="format-desc-text">Daftarkan file .exe atau shortcut .lnk aplikasi lokal</p>
+                <p class="format-desc-text">Daftarkan file .exe, .lnk, atau .app aplikasi lokal</p>
               </div>
-              <div class="row-control" style="gap:6px; flex-wrap:wrap; justify-content:flex-end;">
-                <input id="app-name" type="text" class="mac-input" placeholder="Nama aplikasi" style="width:120px;" />
-                <input id="app-command" type="text" class="mac-input" placeholder="Path .exe / .lnk" style="width:150px;" />
-                <button type="button" id="app-pick-btn" class="mini-btn browse">Pilih…</button>
+              <div class="row-control app-add-control-group">
+                <input id="app-name" type="text" class="mac-input app-name-input" placeholder="Nama aplikasi" />
+                <div class="app-path-wrapper">
+                  <input id="app-command" type="text" class="mac-input app-path-input" placeholder="Path .exe / .lnk / .app" />
+                  <button type="button" id="app-pick-btn" class="mini-btn browse" title="Pilih file aplikasi">Pilih…</button>
+                </div>
                 <button id="app-add-btn" class="mini-btn primary">Tambah</button>
               </div>
             </div>
