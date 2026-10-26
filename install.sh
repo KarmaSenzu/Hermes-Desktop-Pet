@@ -42,14 +42,23 @@ if [ "${HTTP_STATUS}" -eq 200 ] && [ -f /tmp/hermes_release.json ]; then
   fi
 
   if [ -n "${DOWNLOAD_URL}" ]; then
-    TARGET_FILE="/tmp/hermes-installer-asset"
-    echo -e "  ${CYAN}⬇${NC} Mengunduh berkas biner..."
+    if [ "${OS}" = "darwin" ]; then
+      TARGET_FILE="/tmp/Hermes-Desktop-Pet-Installer.dmg"
+    else
+      TARGET_FILE="/tmp/hermes-installer-asset"
+    fi
+    echo -e "  ${CYAN}⬇${NC} Mengunduh berkas biner (${DOWNLOAD_URL})..."
     curl -fL --progress-bar -o "${TARGET_FILE}" "${DOWNLOAD_URL}"
     
     if [ "${OS}" = "darwin" ]; then
-      echo -e "  ${GREEN}✓${NC} Berkas .dmg terunduh. Membuka installer..."
-      hdiutil attach "${TARGET_FILE}"
-      echo -e "\n${GREEN}Instalasi selesai! Silakan seret Hermes Desktop Pet ke Applications.${NC}\n"
+      echo -e "  ${GREEN}✓${NC} Berkas .dmg terunduh. Membuka jendela installer..."
+      hdiutil attach "${TARGET_FILE}" || true
+      echo -e "\n${GREEN}${BOLD}✓ Berkas installer DMG berhasil dibuka!${NC}"
+      echo -e "Silakan seret ikon ${BOLD}Hermes Desktop Pet${NC} ke folder ${BOLD}Applications${NC} di jendela yang terbuka."
+      echo -e "\n${YELLOW}💡 CATATAN PENTING MACOS (Gatekeeper):${NC}"
+      echo -e "Jika saat dibuka muncul peringatan: ${YELLOW}'Aplikasi rusak dan tidak dapat dibuka'${NC},"
+      echo -e "cukup jalankan perintah ini di Terminal Mac Anda:"
+      echo -e "  ${BOLD}${CYAN}xattr -cr \"/Applications/Hermes Desktop Pet.app\"${NC}\n"
       exit 0
     elif [ "${OS}" = "linux" ]; then
       mv "${TARGET_FILE}" "${BIN_DIR}/hermes-desktop-pet"

@@ -22,18 +22,29 @@
 
 <div align="center">
 
-### Unduh Hermes Desktop Pet (Rilis Siap Pakai)
+### 📦 Unduh Hermes Desktop Pet (Rilis Siap Pakai)
 
-| Windows | macOS | Linux |
-| :---: | :---: | :---: |
-| **Windows 10 / 11 (x64)** | **Apple Silicon (M-Series) & Intel** | **Ubuntu / Debian / Fedora** |
-| [**Download Setup .exe**](https://github.com/KarmaSenzu/Hermes-Desktop-Pet/releases/latest) | [**Download .dmg**](https://github.com/KarmaSenzu/Hermes-Desktop-Pet/releases/latest) | [**Download .deb**](https://github.com/KarmaSenzu/Hermes-Desktop-Pet/releases/latest) |
-| *Installer NSIS & Versi Portable* | *Universal Binary (.dmg)* | *AppImage & .deb Package* |
+Pilih berkas installer resmi yang sesuai dengan sistem operasi dan arsitektur prosesor komputer Anda:
 
-**Pemasangan Cepat via Terminal (Linux & macOS):**
+| Sistem Operasi | Arsitektur / Tipe | Berkas Unduhan | Tipe Paket & Keterangan |
+| :--- | :--- | :---: | :--- |
+| 🍏 **macOS (Apple Silicon)** | Apple M1 / M2 / M3 / M4 (ARM64) | [**Download .dmg (Apple Silicon)**](https://github.com/KarmaSenzu/Hermes-Desktop-Pet/releases/latest) | Installer DMG Resmi (Rekomendasi Mac Modern) |
+| 🍏 **macOS (Intel Core)** | Intel x86_64 | [**Download .zip (Mac Intel)**](https://github.com/KarmaSenzu/Hermes-Desktop-Pet/releases/latest) / [Script Terminal](#-metode-1-pemasangan-cepat-via-terminal-macos--linux) | Universal ZIP / Auto Installer |
+| 🪟 **Windows 10 / 11** | 64-bit (x64) | [**Download Setup .exe**](https://github.com/KarmaSenzu/Hermes-Desktop-Pet/releases/latest) | Installer NSIS (Pemasangan Otomatis + Shortcut) |
+| 🪟 **Windows Portable** | 64-bit (x64) | [**Download Portable .zip**](https://github.com/KarmaSenzu/Hermes-Desktop-Pet/releases/latest) | Versi Portabel (Tinggal Ekstrak & Jalankan) |
+| 🐧 **Linux (Universal)** | 64-bit (x86_64) | [**Download .AppImage**](https://github.com/KarmaSenzu/Hermes-Desktop-Pet/releases/latest) | AppImage Standalone (Semua Distro Linux) |
+| 🐧 **Linux (Tarball)** | 64-bit (tar.gz) | [**Download .tar.gz**](https://github.com/KarmaSenzu/Hermes-Desktop-Pet/releases/latest) | Arsip Biner Linux Lengkap |
+
+👉 *Semua varian file rilis dapat dilihat langsung di [**Halaman Rilis GitHub (GitHub Releases)**](https://github.com/KarmaSenzu/Hermes-Desktop-Pet/releases/latest)*
+
+---
+
+#### ⚡ Pemasangan Cepat via Terminal (macOS & Linux):
+Bagi Anda yang ingin memasang langsung secara otomatis dalam satu baris perintah:
 ```bash
 curl -fsSL https://raw.githubusercontent.com/KarmaSenzu/Hermes-Desktop-Pet/main/install.sh | bash
 ```
+*(Panduan lengkap cara mengetik dan tahapan normal eksekusi script ini dapat dibaca pada [bagian Metode 1](#-metode-1-pemasangan-cepat-via-terminal-macos--linux) di bawah).*
 
 </div>
 
@@ -41,14 +52,22 @@ curl -fsSL https://raw.githubusercontent.com/KarmaSenzu/Hermes-Desktop-Pet/main/
 
 ## Daftar Isi
 
-- [Unduh Installer Multi-Platform](#unduh-hermes-desktop-pet-rilis-siap-pakai)
+- [Pusat Unduhan Installer](#-unduh-hermes-desktop-pet-rilis-siap-pakai)
 - [Tentang Proyek](#tentang-proyek)
 - [Prinsip Arsitektur](#prinsip-arsitektur)
 - [Fitur Utama](#fitur-utama)
 - [Galeri Showcase](#galeri-showcase)
 - [7 Core Skills Bawaan](#7-core-skills-bawaan)
 - [Kebutuhan Sistem & Standar Keamanan](#kebutuhan-sistem--standar-keamanan)
-- [Panduan Instalasi & Menjalankan](#panduan-instalasi--menjalankan)
+- [Panduan Lengkap Instalasi & Menjalankan](#panduan-lengkap-instalasi--menjalankan)
+  - [Metode 1: Pemasangan Cepat via Terminal (macOS & Linux)](#-metode-1-pemasangan-cepat-via-terminal-macos--linux)
+  - [Metode 2: Panduan Instalasi Manual Per Sistem Operasi](#-metode-2-panduan-instalasi-manual-per-sistem-operasi)
+    - [1. Panduan macOS (Apple Silicon M-Series & Intel)](#1-panduan-instalasi-macos-apple-silicon-m-series--intel)
+    - [2. Cara Mengatasi Gatekeeper macOS (`xattr -cr`)](#2-solusi-gatekeeper-macos-aplikasi-rusak-dan-tidak-dapat-dibuka)
+    - [3. Panduan Windows 10 & 11 (Installer & Portable)](#3-panduan-instalasi-windows-10--11)
+    - [4. Panduan Linux (AppImage & Tarball)](#4-panduan-instalasi-linux-ubuntu-debian-fedora-arch)
+  - [Metode 3: Menjalankan dari Kode Sumber (Pengembang / Developer)](#-metode-3-menjalankan-dari-kode-sumber-pengembang--developer)
+  - [Panduan Komponen Ekstra (Kokoro-TTS & Chrome Extension)](#-panduan-komponen-ekstra-opsional)
 - [Verifikasi Sistem dan Diagnosa Mandiri](#verifikasi-sistem-dan-diagnosa-mandiri)
 - [Struktur Direktori](#struktur-direktori)
 - [Tata Kelola & Kontribusi](#tata-kelola--kontribusi)
@@ -170,44 +189,135 @@ Untuk melindungi sistem dari kerentanan keamanan, gunakan versi runtime Node.js 
 
 ---
 
-## Panduan Instalasi & Menjalankan
+## Panduan Lengkap Instalasi & Menjalankan
 
-Anda dapat menjalankan Hermes Desktop Pet menggunakan salah satu dari dua cara berikut:
-
-### Metode 1: Menggunakan Installer Biner (Pengguna Umum)
-
-Bagi pengguna yang ingin langsung memakai aplikasi tanpa menyentuh kode program atau memasang Node.js:
-1. Buka halaman rilis resmi: [**GitHub Releases — Hermes Desktop Pet**](https://github.com/KarmaSenzu/Hermes-Desktop-Pet/releases/latest).
-2. Unduh paket installer yang cocok dengan sistem operasi Anda:
-   * **Windows 10/11:** Unduh file `Hermes-Desktop-Pet-Setup-x.x.x.exe` (klik 2x untuk memasang otomatis) atau versi Portable `.zip`.
-   * **macOS (Apple Silicon & Intel):** Unduh file `Hermes-Desktop-Pet-x.x.x.dmg`, buka berkas, dan seret ikon Hermes ke folder *Applications*.
-   * **Linux (Ubuntu/Debian/Fedora):** Unduh paket `Hermes-Desktop-Pet-x.x.x.AppImage` (beri izin eksekusi `chmod +x` lalu klik) atau berkas `.deb`.
-3. Buka aplikasi, dan karakter avatar interaktif akan seketika hadir di layar komputer Anda.
-
-> **Tips Pengguna Linux & macOS:** Anda juga dapat memasang otomatis melalui satu baris perintah terminal:
-> ```bash
-> curl -fsSL https://raw.githubusercontent.com/KarmaSenzu/Hermes-Desktop-Pet/main/install.sh | bash
-> ```
-
-> [!TIP]
-> **Khusus Pengguna macOS (Peringatan Gatekeeper / "Aplikasi Rusak & Pindahkan ke Tong Sampah"):**
-> Jika macOS menampilkan peringatan *"Hermes Desktop Pet rusak dan tidak dapat dibuka. Anda harus memindahkannya ke Tong Sampah"*, ini adalah proteksi keamanan bawaan **macOS Gatekeeper (Quarantine)** untuk aplikasi yang diunduh dari internet tanpa sertifikat berbayar Apple Developer. Aplikasi Anda **tidak rusak sama sekali**.
->
-> **Solusi Cepat (Cukup 1 Baris di Terminal Mac):**
-> 1. Klik **Batalkan** pada peringatan tersebut.
-> 2. Buka aplikasi **Terminal** di Mac Anda, lalu ketik/tempel perintah berikut dan tekan **Enter**:
->    ```bash
->    xattr -cr "/Applications/Hermes Desktop Pet.app"
->    ```
-> 3. Buka kembali aplikasi, dan Hermes Avatar akan seketika terbuka normal 100%!
->
-> *(Atau buka **System Settings** > **Privacy & Security** > scroll ke bawah ke bagian Security > klik tombol **"Open Anyway"**).*
+Pilih metode instalasi yang paling sesuai dengan kebutuhan Anda:
 
 ---
 
-### Metode 2: Menjalankan dari Kode Sumber (Pengembang / Developer)
+### ⚡ Metode 1: Pemasangan Cepat via Terminal (macOS & Linux)
 
-Bagi Anda yang ingin memodifikasi kode, menyesuaikan tema, atau berkontribusi pada pengembangan:
+Bagi pengguna macOS dan Linux, cara paling mudah dan cepat untuk memasang aplikasi adalah melalui script satu baris otomatis:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/KarmaSenzu/Hermes-Desktop-Pet/main/install.sh | bash
+```
+
+#### 📖 Tata Cara Penggunaan (Panduan Pemula):
+1. **Buka Aplikasi Terminal:**
+   - **Di Mac:** Tekan kombinasi tombol <kbd>Cmd</kbd> + <kbd>Spasi</kbd> untuk membuka Spotlight, ketik `Terminal`, lalu tekan <kbd>Enter</kbd>.
+   - **Di Linux:** Tekan <kbd>Ctrl</kbd> + <kbd>Alt</kbd> + <kbd>T</kbd>.
+2. **Ketik / Tempel Perintah:**
+   Salin baris perintah `curl` di atas, tempelkan ke dalam jendela Terminal, lalu tekan <kbd>Enter</kbd>.
+3. **Apa yang Normalnya Terjadi di Layar:**
+   - **Tahap 1 — Deteksi Sistem:** Script otomatis mendeteksi sistem operasi dan tipe prosesor Anda (`darwin arm64` untuk Apple Silicon M1/M2/M3/M4, `x86_64` untuk Intel Mac/Linux).
+   - **Tahap 2 — Pemeriksaan Rilis:** Script menghubungi GitHub Releases API untuk mencari installer biner rilis terbaru.
+   - **Tahap 3 — Pengunduhan Berkas:** Muncul bilah kemajuan (*progress bar*) pengunduhan:
+     ```text
+     === Hermes Desktop Pet — Auto Installer ===
+     Mendeteksi sistem operasi: darwin (arm64)
+     ℹ Memeriksa rilis terbaru dari GitHub...
+       ✓ Rilis biner ditemukan: v0.1.2
+       ⬇ Mengunduh berkas biner...
+     ################################################ 100.0%
+     ```
+   - **Tahap 4 — Pemasangan Selesai:**
+     - **Di macOS:** Script otomatis membuka (*mount*) berkas `.dmg` ke layar Finder. Jendela penggeser aplikasi akan terbuka di layar Anda.
+     - **Di Linux:** Berkas langsung dipasang ke `~/.local/bin/hermes-desktop-pet` dan diberi izin eksekusi (`chmod +x`).
+4. **Cara Membuka Aplikasi Setelah Selesai:**
+   - **Di macOS:** Seret ikon **Hermes Desktop Pet** ke folder **Applications**. Lalu buka aplikasi melalui Launchpad atau Finder. *(Jika muncul dialog proteksi Apple, lihat [solusi Gatekeeper](#2-solusi-gatekeeper-macos-aplikasi-rusak-dan-tidak-dapat-dibuka) di bawah).*
+   - **Di Linux:** Buka Terminal kapan saja dan ketik perintah: `hermes-desktop-pet`.
+
+---
+
+### 📦 Metode 2: Panduan Instalasi Manual Per Sistem Operasi
+
+Bagi Anda yang memilih mengunduh installer biner secara manual dari browser tanpa terminal:
+
+#### 1. Panduan Instalasi macOS (Apple Silicon M-Series & Intel)
+
+1. Buka halaman [**GitHub Releases Resmi**](https://github.com/KarmaSenzu/Hermes-Desktop-Pet/releases/latest).
+2. Unduh berkas installer yang sesuai dengan Mac Anda:
+   - **Untuk Mac Apple Silicon (M1 / M2 / M3 / M4 / ARM64):**  
+     Unduh berkas: `Hermes.Desktop.Pet-x.x.x-arm64.dmg` *(Sangat direkomendasikan untuk efisiensi baterai & performa grafis Apple Silicon).*
+   - **Untuk Mac Berprosesor Intel (x86_64):**  
+     Unduh berkas: `Hermes.Desktop.Pet-x.x.x-arm64-mac.zip` atau gunakan [Script Terminal Otomatis](#-metode-1-pemasangan-cepat-via-terminal-macos--linux).
+3. **Langkah Pemasangan:**
+   - Klik ganda pada berkas `.dmg` yang telah selesai diunduh.
+   - Pada jendela Finder yang muncul, **seret (*drag-and-drop*)** ikon aplikasi **Hermes Desktop Pet** ke dalam folder shortcut **Applications**.
+   - Tunggu proses penyalinan selesai (sekitar 3–5 detik).
+   - Keluarkan (*Eject*) disk image installer dari Finder.
+   - Buka aplikasi dari **Launchpad** atau cari di Spotlight (<kbd>Cmd</kbd> + <kbd>Spasi</kbd> ketik `Hermes Desktop Pet`).
+
+---
+
+#### 2. Solusi Gatekeeper macOS ("Aplikasi Rusak dan Tidak Dapat Dibuka")
+
+> [!CAUTION]
+> **Peringatan Keamanan macOS (Apple Quarantine):**  
+> Saat pertama kali membuka aplikasi di macOS, Anda mungkin melihat kotak dialog peringatan:  
+> *"Hermes Desktop Pet rusak dan tidak dapat dibuka. Anda harus memindahkannya ke Tong Sampah"*  
+> *(Bahasa Inggris: "Hermes Desktop Pet is damaged and can't be opened. You should move it to the Trash")*.
+
+**Mengapa ini terjadi?**  
+Ini adalah mekanisme proteksi bawaan sistem keamanan **macOS Gatekeeper**. Setiap aplikasi yang diunduh dari browser luar (bukan dari Mac App Store) akan ditandai dengan atribut karantina (`com.apple.quarantine`). Karena proyek ini adalah aplikasi *open-source* komunitas yang belum didaftarkan sertifikat berbayar Apple Developer ID ($99/tahun), macOS secara otomatis memblokir eksekusinya dan menampilkan pesan tersebut. **Aplikasi Anda sama sekali tidak rusak**.
+
+**Cara Mengatasi dalam 1 Detik (Sangat Mudah):**
+1. Klik tombol **Batalkan** (*Cancel*) pada kotak dialog peringatan tersebut (jangan klik pindahkan ke tong sampah).
+2. Buka aplikasi **Terminal** di Mac Anda.
+3. Ketik atau tempel perintah berikut lalu tekan <kbd>Enter</kbd>:
+   ```bash
+   xattr -cr "/Applications/Hermes Desktop Pet.app"
+   ```
+4. *(Perintah ini langsung menghapus tanda karantina Gatekeeper tanpa pesan error).*
+5. Buka kembali aplikasi **Hermes Desktop Pet** dari Launchpad atau Finder. Aplikasi akan **langsung terbuka dengan normal 100%**!
+
+*Opsi Alternatif (Melalui Pengaturan Sistem macOS):*  
+Buka menu **System Settings** > **Privacy & Security** > gulir ke bawah ke bagian **Security** > klik tombol **"Open Anyway"** (Buka Saja).
+
+---
+
+#### 3. Panduan Instalasi Windows 10 & 11
+
+Tersedia dua opsi pilihan sesuai kenyamanan Anda:
+
+##### Opsi A: Setup Installer Otomatis (.exe — Rekomendasi)
+1. Unduh berkas `Hermes.Desktop.Pet.Setup.x.x.x.exe` dari [GitHub Releases](https://github.com/KarmaSenzu/Hermes-Desktop-Pet/releases/latest).
+2. Klik ganda berkas installer tersebut.
+3. *Catatan Windows SmartScreen:* Jika Windows menampilkan layar biru *"Windows protected your PC"* / *"Windows melindungi PC Anda"*, klik tulisan **"More info"** (*Informasi selengkapnya*), lalu klik tombol **"Run anyway"** (*Tetap jalankan*).
+4. Wizard instalasi akan memasang aplikasi ke komputer Anda dan otomatis membuat ikon pintasan di Desktop serta Start Menu.
+
+##### Opsi B: Versi Portable (.zip — Tanpa Instalasi)
+1. Unduh berkas `Hermes.Desktop.Pet-x.x.x-win.zip`.
+2. Klik kanan berkas zip lalu pilih **Extract All...** (Ekstrak Semua) ke folder pilihan Anda (misalnya `D:\Hermes-Avatar\`).
+3. Buka folder hasil ekstrak, lalu klik ganda pada berkas **`Hermes Desktop Pet.exe`** untuk langsung menjalankan aplikasi tanpa perlu hak akses administrator.
+
+---
+
+#### 4. Panduan Instalasi Linux (Ubuntu / Debian / Fedora / Arch)
+
+##### Menggunakan AppImage (Universal Standalone):
+1. Unduh berkas `Hermes.Desktop.Pet-x.x.x.AppImage` dari [GitHub Releases](https://github.com/KarmaSenzu/Hermes-Desktop-Pet/releases/latest).
+2. Buka Terminal pada direktori tempat berkas diunduh dan beri izin eksekusi:
+   ```bash
+   chmod +x Hermes.Desktop.Pet-*.AppImage
+   ./Hermes.Desktop.Pet-*.AppImage
+   ```
+
+##### Menggunakan Arsip Tarball (.tar.gz):
+1. Unduh berkas `hermes-desktop-pet-x.x.x.tar.gz`.
+2. Ekstrak dan jalankan biner aplikasi:
+   ```bash
+   tar -xzf hermes-desktop-pet-*.tar.gz
+   cd hermes-desktop-pet-*
+   ./hermes-desktop-pet
+   ```
+
+---
+
+### 💻 Metode 3: Menjalankan dari Kode Sumber (Pengembang / Developer)
+
+Bagi Anda yang ingin memodifikasi kode, menyesuaikan tema antarmuka, atau berkontribusi pada repositori:
 
 #### 1. Kloning Repositori
 ```bash
@@ -236,6 +346,40 @@ npm run dev
 ```bash
 npm run build
 ```
+
+---
+
+### 🧩 Panduan Komponen Ekstra (Opsional)
+
+Setelah aplikasi terpasang, Anda dapat mengaktifkan modul tambahan berikut untuk pengalaman yang lebih maksimal:
+
+#### 1. Kokoro-TTS (Sintesis Suara Karakter Anime Lokal)
+Untuk mengaktifkan suara vokal anime lokal port 8880 secara offline:
+1. Pasang dependensi python `kokoro-onnx` dan `soundfile`:
+   ```bash
+   # Di Windows (CMD / PowerShell):
+   py -m pip install kokoro-onnx soundfile
+
+   # Di macOS & Linux (Terminal):
+   python3 -m pip install kokoro-onnx soundfile --break-system-packages
+   ```
+2. Buka aplikasi Hermes Desktop Pet > masuk ke menu **Package Hub** > **Kokoro-TTS Engine** > klik tombol **"Jalankan di Background App"** (atau klik *"⚡ Buka Terminal & Jalankan Server"*).
+3. Model suara ONNX (`kokoro-v1.0.onnx` ~340MB) akan otomatis diunduh saat server pertama kali dijalankan.
+
+#### 2. Hermes Web Companion (Ekstensi Browser Chrome & Edge)
+Ekstensi pendamping untuk merangkum halaman web dan bertanya langsung ke avatar dari browser:
+1. Buka browser Google Chrome atau Microsoft Edge.
+2. Di bilah alamat browser, ketik `chrome://extensions` (atau `edge://extensions`) lalu tekan <kbd>Enter</kbd>.
+3. Aktifkan sakelar **"Developer mode"** di pojok kanan atas layar.
+4. Klik tombol **"Load unpacked"** (Muat yang belum dibongkar) di pojok kiri atas.
+5. Pada jendela dialog pemilih file yang muncul:
+   - **Di macOS:** Tekan <kbd>Cmd</kbd> + <kbd>Shift</kbd> + <kbd>G</kbd>, lalu ketik/tempel path:
+     ```text
+     ~/.hermes-avatar/extensions/chrome
+     ```
+     Lalu tekan Enter dan klik tombol **Select / Pilih**.
+   - **Di Windows:** Pilih folder `%USERPROFILE%\.hermes-avatar\extensions\chrome`.
+6. Ekstensi terpasang! Anda dapat memblok teks di web mana saja dan menekan shortcut <kbd>Alt</kbd> + <kbd>A</kbd> untuk langsung bertanya ke avatar.
 
 ---
 
