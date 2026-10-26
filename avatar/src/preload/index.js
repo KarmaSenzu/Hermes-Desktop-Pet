@@ -138,7 +138,14 @@ const api = {
   },
 
   // TTS: kirim teks → dapatkan audio base64 (diproses di main process).
-  synthesizeSpeech: (text, voice, options) => ipcRenderer.invoke('avatar:tts', text, voice, options)
+  synthesizeSpeech: (text, voice, options) => ipcRenderer.invoke('avatar:tts', text, voice, options),
+
+  // Web Companion (Chrome & Edge Extension) ask-ai prompt receiver
+  onWebPrompt: (callback) => {
+    const handler = (_event, payload) => callback(payload)
+    ipcRenderer.on('avatar:web-prompt', handler)
+    return () => ipcRenderer.removeListener('avatar:web-prompt', handler)
+  }
 }
 
 contextBridge.exposeInMainWorld('hermesAvatar', api)

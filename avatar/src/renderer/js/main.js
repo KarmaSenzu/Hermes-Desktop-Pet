@@ -3104,3 +3104,64 @@ window.hermesAvatar.onShortcut((payload) => {
     toggleMic()
   }
 })
+
+// --- Web Companion (Chrome & Edge Extension) Ask AI Prompt Handler ---
+window.hermesAvatar.onWebPrompt?.(async (data) => {
+  if (!data) return
+
+  // 1. Buka jendela chat jika sedang tersembunyi
+  if (chatSheet?.classList.contains('hidden')) {
+    toggleChat()
+  }
+
+  const title = (data.title || 'Halaman Web').trim()
+  const url = (data.url || '').trim()
+  const snippet = (data.text || '').trim()
+  const question = (data.prompt || 'Tolong jelaskan teks berikut:').trim()
+
+  // Format pesan pengguna dengan referensi sumber web yang elegan
+  let userDisplay = `🌐 **[${escapeHtml(title)}](${escapeHtml(url)})**\n\n`
+  if (snippet && snippet !== url) {
+    const preview = snippet.length > 280 ? snippet.slice(0, 280) + '…' : snippet
+    userDisplay += `> _"${escapeHtml(preview)}"_\n\n`
+  }
+  userDisplay += `❓ **Pertanyaan:** ${escapeHtml(question)}`
+
+  log('user', userDisplay)
+
+  // Emosi avatar: curious / thinking
+  controller?.setExpression('curious')
+  showSpeechBubble('Menerima pertanyaan dari browser! 🌐 Menganalisis...', 4000)
+
+  if (!hermesReady) {
+    log('avatar', '⚠️ **Hermes AI Daemon belum aktif di background.** Silakan periksa status koneksi di menu Pengaturan.')
+    speak('Hermes belum terhubung, silakan nyalakan service di pengaturan.', 'neutral')
+    return
+  }
+
+  setInputLocked(true)
+
+  try {
+    const promptPayload = `[PERTANYAAN DARI CHROME/EDGE EXTENSION (HERMES WEB COMPANION)]
+Sumber Halaman: ${title} (${url})
+Teks / Kutipan dari Web:
+"""
+${snippet}
+"""
+
+Instruksi / Pertanyaan Pengguna:
+${question}
+
+Panduan Format:
+1. Berikan intisari singkat 1-2 kalimat di awal.
+2. Rangkum penjelasan dan fakta-fakta kunci menjadi 3-4 poin/bullet penting (key takeaways) yang mudah dipahami.
+3. Gunakan bahasa Indonesia yang santun, lugas, dan bersahabat.`
+
+    const finalPrompt = await buildPrompt(promptPayload)
+    await hermes.submitPrompt(finalPrompt)
+  } catch (err) {
+    log('avatar', `Gagal memproses pertanyaan web: ${err.message}`)
+    setInputLocked(false)
+  }
+})
+

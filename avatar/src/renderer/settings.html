@@ -499,6 +499,88 @@
               </div>
             </div>
           </div>
+
+          <!-- 7. Hermes Web Companion (Ekstensi Chrome & Edge) -->
+          <div class="pkg-card" data-pkg="companion">
+            <div class="pkg-header">
+              <div class="pkg-title-area">
+                <div class="pkg-icon-badge theme-cyan">
+                  <svg class="lucide-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" x2="22" y1="12" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+                </div>
+                <div class="pkg-title-text">
+                  <span class="pkg-title">🌐 Hermes Web Companion (Ekstensi Chrome & Edge)</span>
+                  <span class="pkg-sub">Ekstensi browser Ask AI pendamping — klik kanan atau Alt+A untuk merangkum web langsung ke Avatar</span>
+                </div>
+              </div>
+              <div class="pkg-header-right">
+                <span class="package-badge badge" id="pkg-status-companion">…</span>
+                <span class="pkg-chevron">▾</span>
+              </div>
+            </div>
+            <div class="pkg-body">
+              <div class="pkg-subtabs">
+                <button type="button" class="pkg-tab-btn active" data-tab="install">📥 Panduan Pasang di Chrome / Edge</button>
+                <button type="button" class="pkg-tab-btn" data-tab="manage">⚙️ Status Bridge & Tes Koneksi</button>
+              </div>
+
+              <!-- Sub-panel Install -->
+              <div class="pkg-tab-panel active" data-panel="install">
+                <div class="package-meta" style="margin-bottom:6px;">
+                  <span>Tipe: <code>Manifest V3 Unpacked Extension</code></span> · 
+                  <span>Kompatibel: <code>Chrome, Edge, Brave, Opera</code></span>
+                </div>
+                <p class="row-desc">Pasang ekstensi ini ke browser Anda hanya dalam 3 langkah mudah:</p>
+                
+                <div class="companion-install-steps">
+                  <div class="install-step-item">
+                    <span class="step-num">1</span>
+                    <div class="step-desc">
+                      Buka halaman ekstensi di browser: ketik <code>chrome://extensions</code> (atau <code>edge://extensions</code>).
+                      <button type="button" class="mini-btn copy-cmd-btn" style="margin-left:8px;" data-copy="chrome://extensions">Salin URL 📋</button>
+                    </div>
+                  </div>
+                  <div class="install-step-item">
+                    <span class="step-num">2</span>
+                    <div class="step-desc">
+                      Aktifkan toggle <strong>"Developer mode"</strong> di pojok kanan atas layar ekstensi browser Anda.
+                    </div>
+                  </div>
+                  <div class="install-step-item">
+                    <span class="step-num">3</span>
+                    <div class="step-desc">
+                      Klik tombol <strong>"Load unpacked"</strong> (Muat yang belum dibongkar), lalu pilih folder ekstensi di bawah:
+                    </div>
+                  </div>
+                </div>
+
+                <div style="display:flex; gap:8px; margin: 10px 0 6px; flex-wrap:wrap;">
+                  <button type="button" id="pkg-open-extension-folder-btn" class="terminal-action-btn">📂 Buka Folder Ekstensi di Explorer / Finder</button>
+                </div>
+              </div>
+
+              <!-- Sub-panel Manage -->
+              <div class="pkg-tab-panel" data-panel="manage">
+                <div class="package-meta">
+                  <span>Port Bridge Lokal: <code>9124</code></span> · 
+                  <span>Status: <code id="pkg-bridge-status-text">Memeriksa…</code></span>
+                </div>
+                <p class="row-desc">Bridge HTTP lokal berjalan di port 9124 untuk menghubungkan browser dengan avatar secara aman (hanya localhost):</p>
+                <div style="display:flex; gap:8px; margin: 8px 0 10px; flex-wrap:wrap;">
+                  <button type="button" id="pkg-test-bridge-btn" class="mini-btn primary">⚡ Tes Koneksi Bridge</button>
+                  <button type="button" class="terminal-action-btn secondary-term" data-terminal-cmd="curl http://127.0.0.1:9124/api/ping">Cek via Curl di Terminal</button>
+                </div>
+                <div class="command-box-group">
+                  <span class="command-box-label">Fitur Ekstensi:</span>
+                  <ul style="margin: 4px 0 0 16px; font-size:12px; color:var(--text-secondary); line-height:1.6;">
+                    <li><strong>Shortcut Cepat:</strong> Tekan <kbd>Alt + A</kbd> di browser untuk langsung menanyakan teks yang diblok ke avatar.</li>
+                    <li><strong>Context Menu:</strong> Klik kanan teks apa pun → pilih <em>"Tanyakan ke Hermes Avatar 🎙️"</em> atau <em>"Rangkum Halaman Ini"</em>.</li>
+                    <li><strong>Rangkuman Otomatis:</strong> Jawaban muncul seketika di panel chat avatar, lengkap dengan pembacaan suara & animasi bibir!</li>
+                  </ul>
+                </div>
+                <div id="pkg-bridge-log" class="package-log muted" style="margin-top: 8px;"></div>
+              </div>
+            </div>
+          </div>
         </section>
 
         <!-- KARAKTER -->

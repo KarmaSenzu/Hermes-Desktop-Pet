@@ -23,6 +23,7 @@ import {
 } from './service-manager.js'
 import { connectGateway, disconnectGateway, request as gatewayRequest, isGatewayConnected } from './hermes-gateway.js'
 import { registerShortcuts, unregisterShortcuts, getShortcutList, updateShortcut } from './shortcuts.js'
+import { startBridgeServer, stopBridgeServer, BRIDGE_PORT } from './bridge-server.js'
 
 // Inisialisasi perbaikan PATH untuk macOS/Windows sedini mungkin
 fixSystemPath()
@@ -211,6 +212,17 @@ function createAvatarWindow(modelPath) {
   avatarWindow.webContents.on('did-finish-load', () => {
     avatarWindow.webContents.send('avatar:load-model', modelPath)
 
+    // Forward pending prompt dari Chrome extension jika ada
+    if (pendingWebPrompt) {
+      const promptToDeliver = pendingWebPrompt
+      pendingWebPrompt = null
+      setTimeout(() => {
+        if (avatarWindow && !avatarWindow.isDestroyed()) {
+          avatarWindow.webContents.send('avatar:web-prompt', promptToDeliver)
+        }
+      }, 1200)
+    }
+
     // Global desktop cursor tracking ala YourMother Win32 Hook
     if (!cursorPollTimer) {
       let lastX = -1
@@ -240,6 +252,25 @@ function createAvatarWindow(modelPath) {
     avatarWindow = null
     stopMotion()
   })
+}
+
+// --- Buffer antrian Web Companion Prompt saat avatar belum siap ---
+let pendingWebPrompt = null
+
+function handleIncomingWebPrompt(payload) {
+  if (!payload) return
+  if (avatarWindow && !avatarWindow.isDestroyed()) {
+    avatarWindow.show()
+    avatarWindow.setAlwaysOnTop(true, 'screen-saver')
+    avatarWindow.webContents.send('avatar:web-prompt', payload)
+  } else {
+    pendingWebPrompt = payload
+    const defaultPath = join(__dirname, '../../assets/live2d/mother/20250106.model3.json')
+    if (existsSync(defaultPath)) {
+      createAvatarWindow(defaultPath)
+      if (launcherWindow && !launcherWindow.isDestroyed()) launcherWindow.hide()
+    }
+  }
 }
 
 // --- Global shortcut (dari modul shortcuts.js, bisa di-custom user) ---
@@ -506,11 +537,12 @@ ipcMain.handle('avatar:hermes-config', () => {
   }
 })
 
-// IPC: status service (9Router, Hermes, Kokoro, Python, model disk) — untuk settings & Package Hub.
+// IPC: status service (9Router, Hermes, Kokoro, Companion Bridge, Python, model disk) — untuk settings & Package Hub.
 ipcMain.handle('avatar:service-status', async () => {
   const router = await isPortOpen(ROUTER_PORT)
   const hermes = await isPortOpen(HERMES_PORT)
   const kokoro = await isPortOpen(KOKORO_PORT)
+  const companion = await isPortOpen(BRIDGE_PORT)
 
   // Cek deteksi Python di sistem menggunakan resolver cross-platform
   const pyInfo = await resolvePythonCmd()
@@ -554,6 +586,7 @@ ipcMain.handle('avatar:service-status', async () => {
     router,
     hermes,
     kokoro,
+    companion,
     pythonOk,
     pythonVersion,
     kokoroInstalled,
@@ -640,6 +673,16 @@ ipcMain.handle('avatar:open-package-folder', async (_event, pkgName = 'kokoro') 
     let targetDir = join(homedir(), '.hermes-avatar', 'packages', pkgName)
     if (pkgName === 'hermes') targetDir = join(homedir(), '.hermes')
     if (pkgName === 'packages-root') targetDir = join(homedir(), '.hermes-avatar', 'packages')
+    if (pkgName === 'chrome-extension' || pkgName === 'companion') {
+      const candidates = [
+        join(__dirname, '../../../extensions/chrome'),
+        join(app.getAppPath(), '..', 'extensions', 'chrome'),
+        join(app.getAppPath(), 'extensions', 'chrome'),
+        join(process.resourcesPath, 'extensions', 'chrome'),
+        join(homedir(), '.hermes-avatar', 'extensions', 'chrome')
+      ]
+      targetDir = candidates.find((p) => existsSync(p)) || candidates[0]
+    }
     await mkdir(targetDir, { recursive: true })
     await shell.openPath(targetDir)
     return { ok: true, path: targetDir }
@@ -1607,6 +1650,11 @@ app.whenReady().then(() => {
   createLauncherWindow()
   registerGlobalShortcuts()
 
+  // Jalankan bridge server untuk Web Companion (Chrome & Edge Extension) di port 9124
+  startBridgeServer((payload) => {
+    handleIncomingWebPrompt(payload)
+  })
+
   // Jalankan service (9Router + hermes serve) secara otomatis di background.
   startAllServices()
     .then(async (res) => {
@@ -1635,6 +1683,7 @@ app.on('window-all-closed', () => {
   stopMotion()
   unregisterGlobalShortcuts()
   disconnectGateway()
+  stopBridgeServer()
   stopAllServices()
   if (process.platform !== 'darwin') app.quit()
 })

@@ -239,6 +239,12 @@ const pkgKokoroModelStatus = document.getElementById('pkg-kokoro-model-status')
 const pkgKokoroLocation = document.getElementById('pkg-kokoro-location')
 const pkgKokoroLog = document.getElementById('pkg-kokoro-log')
 
+const pkgStatusCompanion = document.getElementById('pkg-status-companion')
+const pkgBridgeStatusText = document.getElementById('pkg-bridge-status-text')
+const pkgOpenExtensionFolderBtn = document.getElementById('pkg-open-extension-folder-btn')
+const pkgTestBridgeBtn = document.getElementById('pkg-test-bridge-btn')
+const pkgBridgeLog = document.getElementById('pkg-bridge-log')
+
 // --- Floating Toast Alert macOS Style ---
 export function showToast(title, message = '', type = 'info', icon = null, duration = 3200) {
   const container = document.getElementById('mac-toast-container')
@@ -455,8 +461,14 @@ async function refreshServiceStatus() {
     if (pkgStatusHermes) setBadge(pkgStatusHermes, s.hermes, 'Aktif (Port 9119)', 'Belum Aktif')
     if (pkgStatusRouter) setBadge(pkgStatusRouter, s.router, 'Aktif (Port 20128)', 'Belum Aktif')
     if (pkgStatusKokoro) setBadge(pkgStatusKokoro, s.kokoro, 'Aktif (Port 8880)', 'Belum Aktif')
+    if (pkgStatusCompanion) setBadge(pkgStatusCompanion, s.companion, 'Bridge Aktif (Port 9124)', 'Siap Digunakan')
     if (pkgStatusPython) setBadge(pkgStatusPython, s.pythonOk, 'Terpasang', 'Belum Terpasang')
     if (pkgPythonVersion) pkgPythonVersion.textContent = s.pythonOk ? `Versi: ${s.pythonVersion}` : 'Python 3.10+ belum terdeteksi di PATH'
+
+    if (pkgBridgeStatusText) {
+      pkgBridgeStatusText.textContent = s.companion ? 'Aktif di 127.0.0.1:9124 ✅' : 'Port 9124 (Menunggu Permintaan)'
+      pkgBridgeStatusText.style.color = s.companion ? '#7ee787' : '#8b949e'
+    }
 
     if (pkgKokoroPipStatus) {
       if (s.kokoroInstalled) {
@@ -775,6 +787,51 @@ function bindPackageActions() {
         showToast('Error Uninstall', err.message, 'error', '❌')
       } finally {
         pkgUninstallPipBtn.disabled = false
+      }
+    })
+  }
+
+  // 7. Hermes Web Companion (Ekstensi Chrome/Edge)
+  if (pkgOpenExtensionFolderBtn) {
+    pkgOpenExtensionFolderBtn.addEventListener('click', async () => {
+      try {
+        const res = await window.hermesAvatar.openPackageFolder('chrome-extension')
+        if (res.ok) {
+          showToast('Membuka Folder Ekstensi 📂', res.path, 'info', '📂')
+          if (pkgBridgeLog) {
+            pkgBridgeLog.innerHTML = `📂 Folder ekstensi dibuka: <code>${escapeHtml(res.path)}</code><br>👉 Di Chrome/Edge, klik <strong>"Load unpacked"</strong> lalu pilih folder tersebut.`
+          }
+        } else {
+          showToast('Gagal Buka Folder', res.error, 'error', '❌')
+        }
+      } catch (err) {
+        showToast('Error', err.message, 'error', '❌')
+      }
+    })
+  }
+
+  if (pkgTestBridgeBtn) {
+    pkgTestBridgeBtn.addEventListener('click', async () => {
+      pkgTestBridgeBtn.disabled = true
+      showToast('Menguji Bridge Lokal...', 'Ping http://127.0.0.1:9124/api/ping', 'info', '⚡')
+      try {
+        const res = await fetch('http://127.0.0.1:9124/api/ping', { cache: 'no-store' })
+        if (res.ok) {
+          const data = await res.json()
+          showToast('Bridge Terhubung Sempurna! ✅', 'Port 9124 siap melayani ekstensi browser', 'success', '🌐')
+          if (pkgBridgeLog) {
+            pkgBridgeLog.innerHTML = `✅ <strong>Bridge HTTP Online:</strong> ${escapeHtml(data.app)} (v${escapeHtml(data.version)}) pada port <code>9124</code>.`
+          }
+        } else {
+          showToast('Bridge Merespons Kode: ' + res.status, 'Periksa log server', 'error', '⚠️')
+        }
+      } catch (err) {
+        showToast('Bridge Belum Merespons', 'Pastikan aplikasi berjalan', 'error', '❌')
+        if (pkgBridgeLog) {
+          pkgBridgeLog.innerHTML = `❌ Gagal menghubungi bridge: <code>${escapeHtml(err.message)}</code>`
+        }
+      } finally {
+        pkgTestBridgeBtn.disabled = false
       }
     })
   }

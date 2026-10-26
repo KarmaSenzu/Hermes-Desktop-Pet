@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Hermes Web Companion</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <div class="popup-container">
+      <!-- Header -->
+      <header class="popup-header">
+        <div class="header-brand">
+          <div class="brand-avatar">🤖</div>
+          <div class="brand-text">
+            <span class="brand-title">Hermes Companion</span>
+            <span class="brand-sub">Ask AI Desktop Pet</span>
+          </div>
+        </div>
+        <div id="conn-badge" class="conn-badge checking" title="Status koneksi ke Desktop Pet">
+          <span class="dot"></span>
+          <span id="conn-text">Memeriksa…</span>
+        </div>
+      </header>
+
+      <!-- Active Page Card -->
+      <div class="page-meta-card">
+        <span class="page-meta-label">Halaman Aktif:</span>
+        <div id="page-title" class="page-title">Memuat judul halaman…</div>
+        <div id="page-url" class="page-url">https://…</div>
+      </div>
+
+      <!-- Quick Action Buttons -->
+      <div class="quick-actions-grid">
+        <button type="button" id="btn-quick-summarize" class="action-btn">
+          <span class="btn-icon">📑</span>
+          <span>Rangkum Halaman</span>
+        </button>
+        <button type="button" id="btn-quick-points" class="action-btn">
+          <span class="btn-icon">💡</span>
+          <span>Poin Kunci</span>
+        </button>
+        <button type="button" id="btn-quick-explain" class="action-btn">
+          <span class="btn-icon">🔍</span>
+          <span>Jelaskan Topik</span>
+        </button>
+        <button type="button" id="btn-quick-translate" class="action-btn">
+          <span class="btn-icon">🌐</span>
+          <span>Terjemahkan</span>
+        </button>
+      </div>
+
+      <!-- Custom Prompt Form -->
+      <form id="ask-form" class="ask-form">
+        <label for="custom-prompt" class="form-label">Tanyakan sesuatu tentang halaman ini:</label>
+        <div class="input-wrap">
+          <textarea id="custom-prompt" rows="2" placeholder="Ketik pertanyaan untuk avatar Anda..."></textarea>
+          <button type="submit" id="btn-submit" class="submit-btn" title="Kirim ke Avatar">
+            <span>Kirim 🚀</span>
+          </button>
+        </div>
+      </form>
+
+      <!-- Status Notification Banner -->
+      <div id="status-toast" class="status-toast hidden"></div>
+
+      <!-- Footer -->
+      <footer class="popup-footer">
+        <span>Shortcut Cepat: <kbd>Alt + A</kbd></span>
+        <span class="sep">•</span>
+        <a href="#" id="link-open-docs">Bantuan</a>
+      </footer>
+    </div>
+
+    <script src="popup.js"></script>
+  </body>
+</html>
