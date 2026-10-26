@@ -189,6 +189,20 @@ Bagi pengguna yang ingin langsung memakai aplikasi tanpa menyentuh kode program 
 > curl -fsSL https://raw.githubusercontent.com/KarmaSenzu/Hermes-Desktop-Pet/main/install.sh | bash
 > ```
 
+> [!TIP]
+> **Khusus Pengguna macOS (Peringatan Gatekeeper / "Aplikasi Rusak & Pindahkan ke Tong Sampah"):**
+> Jika macOS menampilkan peringatan *"Hermes Desktop Pet rusak dan tidak dapat dibuka. Anda harus memindahkannya ke Tong Sampah"*, ini adalah proteksi keamanan bawaan **macOS Gatekeeper (Quarantine)** untuk aplikasi yang diunduh dari internet tanpa sertifikat berbayar Apple Developer. Aplikasi Anda **tidak rusak sama sekali**.
+>
+> **Solusi Cepat (Cukup 1 Baris di Terminal Mac):**
+> 1. Klik **Batalkan** pada peringatan tersebut.
+> 2. Buka aplikasi **Terminal** di Mac Anda, lalu ketik/tempel perintah berikut dan tekan **Enter**:
+>    ```bash
+>    xattr -cr "/Applications/Hermes Desktop Pet.app"
+>    ```
+> 3. Buka kembali aplikasi, dan Hermes Avatar akan seketika terbuka normal 100%!
+>
+> *(Atau buka **System Settings** > **Privacy & Security** > scroll ke bawah ke bagian Security > klik tombol **"Open Anyway"**).*
+
 ---
 
 ### Metode 2: Menjalankan dari Kode Sumber (Pengembang / Developer)

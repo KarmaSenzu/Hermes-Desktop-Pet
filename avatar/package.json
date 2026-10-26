@@ -62,7 +62,10 @@
         "dmg",
         "zip"
       ],
-      "category": "public.app-category.entertainment"
+      "category": "public.app-category.entertainment",
+      "identity": null,
+      "gatekeeperAssess": false,
+      "hardenedRuntime": false
     },
     "linux": {
       "icon": "build/icon.png",
