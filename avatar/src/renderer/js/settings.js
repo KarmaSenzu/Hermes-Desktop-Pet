@@ -3128,6 +3128,164 @@ function detectPlatform() {
   }
 }
 
+let cachedUpdateInfo = null
+
+async function checkAppUpdates(interactive = false) {
+  const banner = document.getElementById('home-update-banner')
+  const bannerTag = document.getElementById('update-banner-tag')
+  const bannerDesc = document.getElementById('update-banner-desc')
+  const footerVerTag = document.getElementById('footer-version-tag')
+  const footerUpdateBadge = document.getElementById('footer-update-badge')
+  const homeVerBadge = document.getElementById('home-version-badge')
+  const homeVerDesc = document.getElementById('home-version-desc')
+  const checkBtn = document.getElementById('home-check-update-btn')
+
+  if (checkBtn && interactive) {
+    checkBtn.disabled = true
+    checkBtn.textContent = 'Memeriksa…'
+  }
+
+  if (interactive) {
+    showToast('Memeriksa Pembaruan...', 'Menghubungi server rilis GitHub...', 'info', '🔄')
+  }
+
+  try {
+    const res = await window.hermesAvatar?.checkAppUpdate?.()
+    if (!res || !res.ok) {
+      if (interactive) {
+        showToast('Gagal Periksa Pembaruan', res?.error || 'Tidak dapat terhubung ke GitHub', 'error', '❌')
+      }
+      return
+    }
+
+    cachedUpdateInfo = res
+    const currentVer = res.currentVersion ? (res.currentVersion.startsWith('v') ? res.currentVersion : `v${res.currentVersion}`) : 'v0.1.2'
+    const latestVer = res.latestVersion ? (res.latestVersion.startsWith('v') ? res.latestVersion : `v${res.latestVersion}`) : currentVer
+
+    if (footerVerTag) footerVerTag.textContent = currentVer
+    if (homeVerDesc) homeVerDesc.textContent = `Versi terpasang: ${currentVer}`
+
+    if (res.hasUpdate) {
+      if (banner) banner.classList.remove('hidden')
+      if (bannerTag) bannerTag.textContent = latestVer
+      if (bannerDesc) bannerDesc.textContent = `Versi ${latestVer} sudah tersedia dengan perbaikan bug dan peningkatan fitur.`
+      if (footerUpdateBadge) footerUpdateBadge.style.display = 'inline-block'
+      if (homeVerBadge) {
+        homeVerBadge.textContent = `Update ${latestVer} Tersedia! 🚀`
+        homeVerBadge.className = 'badge ready'
+      }
+
+      if (interactive) {
+        showToast(`Versi Baru ${latestVer} Tersedia! 🚀`, 'Klik tombol "Unduh Update" di banner untuk memperbarui.', 'success', '🎉', 5000)
+      }
+    } else {
+      if (banner) banner.classList.add('hidden')
+      if (footerUpdateBadge) footerUpdateBadge.style.display = 'none'
+      if (homeVerBadge) {
+        homeVerBadge.textContent = `${currentVer} Terbaru ✅`
+        homeVerBadge.className = 'badge ready'
+      }
+
+      if (interactive) {
+        showToast('Aplikasi Sudah Versi Terbaru ✅', `Anda sedang menggunakan versi ${currentVer} (paling mutakhir).`, 'success', '✨')
+      }
+    }
+  } catch (err) {
+    if (interactive) {
+      showToast('Error', err.message, 'error', '❌')
+    }
+  } finally {
+    if (checkBtn) {
+      checkBtn.disabled = false
+      checkBtn.textContent = 'Cek Update 🔄'
+    }
+  }
+}
+
+function showUpdateModal() {
+  const modal = document.getElementById('update-modal')
+  const curVerEl = document.getElementById('modal-current-ver')
+  const latVerEl = document.getElementById('modal-latest-ver')
+  const dateEl = document.getElementById('modal-release-date')
+  const changelogEl = document.getElementById('modal-changelog-content')
+
+  if (!modal) return
+
+  const cur = cachedUpdateInfo?.currentVersion || '0.1.2'
+  const lat = cachedUpdateInfo?.latestVersion || 'v0.1.2'
+  const date = cachedUpdateInfo?.releaseDate || 'Rilis Terbaru'
+  const changelog = cachedUpdateInfo?.changelog || 'Pembaruan stabilitas dan perbaikan bug.'
+
+  if (curVerEl) curVerEl.textContent = cur.startsWith('v') ? cur : `v${cur}`
+  if (latVerEl) latVerEl.textContent = lat.startsWith('v') ? lat : `v${lat}`
+  if (dateEl) dateEl.textContent = date
+  if (changelogEl) changelogEl.textContent = changelog
+
+  modal.hidden = false
+}
+
+function hideUpdateModal() {
+  const modal = document.getElementById('update-modal')
+  if (modal) modal.hidden = true
+}
+
+function initAppUpdateChecker() {
+  const banner = document.getElementById('home-update-banner')
+  const downloadBtn = document.getElementById('update-download-btn')
+  const detailsBtn = document.getElementById('update-details-btn')
+  const dismissBtn = document.getElementById('update-dismiss-btn')
+  const checkBtn = document.getElementById('home-check-update-btn')
+  const sidebarFooter = document.getElementById('sidebar-footer')
+
+  const modalClose = document.getElementById('update-modal-close')
+  const modalCancel = document.getElementById('modal-cancel-btn')
+  const modalGithub = document.getElementById('modal-github-btn')
+  const modalDownload = document.getElementById('modal-download-btn')
+
+  setTimeout(() => {
+    checkAppUpdates(false)
+  }, 1200)
+
+  checkBtn?.addEventListener('click', () => {
+    checkAppUpdates(true)
+  })
+
+  dismissBtn?.addEventListener('click', () => {
+    if (banner) banner.classList.add('hidden')
+  })
+
+  detailsBtn?.addEventListener('click', () => {
+    showUpdateModal()
+  })
+
+  sidebarFooter?.addEventListener('click', () => {
+    if (cachedUpdateInfo?.hasUpdate) {
+      showUpdateModal()
+    } else {
+      checkAppUpdates(true)
+    }
+  })
+
+  downloadBtn?.addEventListener('click', () => {
+    const url = cachedUpdateInfo?.downloadUrl || cachedUpdateInfo?.releaseUrl || 'https://github.com/KarmaSenzu/Hermes-Desktop-Pet/releases'
+    window.hermesAvatar?.openExternalUrl?.(url)
+    showToast('Membuka Browser Unduhan 📥', 'Mengunduh file paket instalasi rilis terbaru...', 'info', '🌐')
+  })
+
+  modalClose?.addEventListener('click', hideUpdateModal)
+  modalCancel?.addEventListener('click', hideUpdateModal)
+  modalGithub?.addEventListener('click', () => {
+    const url = cachedUpdateInfo?.releaseUrl || 'https://github.com/KarmaSenzu/Hermes-Desktop-Pet/releases'
+    window.hermesAvatar?.openExternalUrl?.(url)
+  })
+  modalDownload?.addEventListener('click', () => {
+    const url = cachedUpdateInfo?.downloadUrl || cachedUpdateInfo?.releaseUrl || 'https://github.com/KarmaSenzu/Hermes-Desktop-Pet/releases'
+    window.hermesAvatar?.openExternalUrl?.(url)
+    showToast('Membuka Browser Unduhan 📥', 'Mengunduh installer rilis terbaru...', 'info', '🌐')
+    hideUpdateModal()
+  })
+}
+
 function init() {
   detectPlatform()
   adaptPlatformCommands()
@@ -3149,6 +3307,7 @@ function init() {
   renderAppList()
   renderShortcuts()
   refreshSkills()
+  initAppUpdateChecker()
 }
 
 init()

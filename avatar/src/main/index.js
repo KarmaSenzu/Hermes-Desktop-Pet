@@ -807,6 +807,133 @@ ipcMain.handle('avatar:clean-package', async (_event, pkgName = 'kokoro') => {
   }
 })
 
+function isNewerVersion(vLatest, vCurrent) {
+  if (!vLatest || !vCurrent) return false
+  const p1 = vLatest.replace(/^v/i, '').split('.').map((x) => parseInt(x, 10) || 0)
+  const p2 = vCurrent.replace(/^v/i, '').split('.').map((x) => parseInt(x, 10) || 0)
+  for (let i = 0; i < Math.max(p1.length, p2.length); i++) {
+    const num1 = p1[i] || 0
+    const num2 = p2[i] || 0
+    if (num1 > num2) return true
+    if (num1 < num2) return false
+  }
+  return false
+}
+
+async function checkAppUpdate() {
+  const currentVersion = app.getVersion() || '0.1.2'
+  const repoOwner = 'KarmaSenzu'
+  const repoName = 'Hermes-Desktop-Pet'
+
+  try {
+    const apiUrl = `https://api.github.com/repos/${repoOwner}/${repoName}/releases/latest`
+    const resp = await fetch(apiUrl, {
+      headers: {
+        'User-Agent': 'Hermes-Desktop-Pet-App',
+        'Accept': 'application/vnd.github.v3+json'
+      }
+    })
+
+    if (!resp.ok) {
+      try {
+        const rawPkgResp = await fetch(`https://raw.githubusercontent.com/${repoOwner}/${repoName}/main/avatar/package.json`)
+        if (rawPkgResp.ok) {
+          const rawPkg = await rawPkgResp.json()
+          const remoteVer = rawPkg.version || ''
+          const hasUpdate = isNewerVersion(remoteVer, currentVersion)
+          return {
+            ok: true,
+            hasUpdate,
+            currentVersion,
+            latestVersion: `v${remoteVer}`,
+            releaseName: `Hermes Desktop Pet v${remoteVer}`,
+            releaseDate: '',
+            changelog: 'Pembaruan terkini tersedia di rilis GitHub.',
+            releaseUrl: `https://github.com/${repoOwner}/${repoName}/releases`,
+            downloadUrl: `https://github.com/${repoOwner}/${repoName}/releases`,
+            assetName: null
+          }
+        }
+      } catch {}
+
+      return {
+        ok: true,
+        hasUpdate: false,
+        currentVersion,
+        latestVersion: `v${currentVersion}`,
+        message: 'Versi saat ini adalah yang terbaru.'
+      }
+    }
+
+    const data = await resp.json()
+    const latestTag = data.tag_name || ''
+    const cleanLatest = latestTag.replace(/^v/i, '')
+    const cleanCurrent = currentVersion.replace(/^v/i, '')
+
+    const hasUpdate = isNewerVersion(cleanLatest, cleanCurrent)
+
+    let downloadUrl = data.html_url
+    let matchedAsset = null
+    if (data.assets && Array.isArray(data.assets)) {
+      if (process.platform === 'darwin') {
+        matchedAsset = data.assets.find((a) => a.name.endsWith('.dmg')) ||
+                       data.assets.find((a) => a.name.endsWith('.zip') && a.name.includes('mac'))
+      } else if (process.platform === 'win32') {
+        matchedAsset = data.assets.find((a) => a.name.endsWith('.exe')) ||
+                       data.assets.find((a) => a.name.endsWith('.zip') && a.name.includes('win'))
+      } else {
+        matchedAsset = data.assets.find((a) => a.name.endsWith('.AppImage')) ||
+                       data.assets.find((a) => a.name.endsWith('.deb'))
+      }
+      if (matchedAsset?.browser_download_url) {
+        downloadUrl = matchedAsset.browser_download_url
+      }
+    }
+
+    return {
+      ok: true,
+      hasUpdate,
+      currentVersion,
+      latestVersion: latestTag.startsWith('v') ? latestTag : `v${latestTag}`,
+      releaseName: data.name || data.tag_name || `Versi ${latestTag}`,
+      releaseDate: data.published_at ? data.published_at.split('T')[0] : '',
+      changelog: data.body || 'Pembaruan stabilitas, perbaikan bug, dan peningkatan fitur.',
+      releaseUrl: data.html_url || `https://github.com/${repoOwner}/${repoName}/releases`,
+      downloadUrl,
+      assetName: matchedAsset ? matchedAsset.name : null
+    }
+  } catch (err) {
+    return {
+      ok: false,
+      currentVersion,
+      error: err?.message || String(err)
+    }
+  }
+}
+
+// IPC: periksa pembaruan rilis aplikasi
+ipcMain.handle('avatar:check-update', async () => {
+  return await checkAppUpdate()
+})
+
+// IPC: ambil versi aplikasi saat ini
+ipcMain.handle('avatar:get-app-version', () => {
+  return app.getVersion()
+})
+
+// IPC: buka URL rilis / download file installer di browser
+ipcMain.handle('avatar:open-external-url', async (_event, url) => {
+  try {
+    if (url && (url.startsWith('https://') || url.startsWith('http://'))) {
+      await shell.openExternal(url)
+      return { ok: true }
+    }
+    return { ok: false, error: 'URL tidak valid' }
+  } catch (err) {
+    return { ok: false, error: err?.message || String(err) }
+  }
+})
+
 // IPC: RPC config/model ke Hermes (shared gateway) — untuk LLM section.
 ipcMain.handle('avatar:rpc', async (_event, method, params) => {
   try {

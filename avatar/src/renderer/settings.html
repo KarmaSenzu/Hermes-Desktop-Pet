@@ -56,7 +56,10 @@
 
         <!-- Menu Navigasi -->
         <nav class="nav" id="nav"></nav>
-        <div class="sidebar-footer">Hermes 3D v0.1.0</div>
+        <div class="sidebar-footer" id="sidebar-footer" title="Klik untuk memeriksa pembaruan aplikasi" style="cursor:pointer; display:flex; align-items:center; justify-content:space-between;">
+          <span>Hermes 3D <span id="footer-version-tag">v0.1.2</span></span>
+          <span id="footer-update-badge" class="badge ready" style="display:none; font-size:9.5px; padding:1px 6px;">Update 🚀</span>
+        </div>
       </aside>
 
       <!-- Panel konten (kanan) -->
@@ -82,6 +85,25 @@
         <section id="panel-home" class="panel active">
           <h1>Home</h1>
           <p class="subtitle">Status sistem & mulai avatar.</p>
+
+          <!-- UPDATE BANNER: Muncul otomatis bila ada update baru di GitHub -->
+          <div id="home-update-banner" class="settings-alert-banner update-banner hidden" style="border-left: 4px solid #3b82f6; background: rgba(59, 130, 246, 0.1);">
+            <div class="format-emblem theme-blue" style="color:#60a5fa;">
+              <svg class="lucide-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m18 15-6-6-6 6"/><path d="M12 9v12"/></svg>
+            </div>
+            <div class="alert-content">
+              <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                <strong id="update-banner-title" style="color:#60a5fa;">🚀 Pembaruan Aplikasi Tersedia!</strong>
+                <span id="update-banner-tag" class="badge ready" style="font-size:10.5px; padding:2px 8px;">v0.1.2</span>
+              </div>
+              <p id="update-banner-desc" style="margin-top:2px;">Versi baru telah rilis di GitHub dengan pembaruan stabilitas dan fitur.</p>
+            </div>
+            <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+              <button type="button" id="update-download-btn" class="mini-btn primary" style="background:#3b82f6; color:#fff;">Unduh Update 📥</button>
+              <button type="button" id="update-details-btn" class="mini-btn">Info Rilis 📋</button>
+              <button type="button" id="update-dismiss-btn" class="mini-btn del" title="Tutup pemberitahuan ini" style="padding:4px 8px;">✕</button>
+            </div>
+          </div>
 
           <!-- ALERT BANNER: Muncul bila ada paket yang belum siap -->
           <div id="home-setup-alert" class="settings-alert-banner hidden">
@@ -178,6 +200,23 @@
               </div>
               <div class="row-control">
                 <span id="home-tts-status" class="badge">…</span>
+              </div>
+            </div>
+
+            <!-- 6. Status Versi & Update Aplikasi -->
+            <div class="settings-row">
+              <div class="format-emblem theme-cyan">
+                <svg class="lucide-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6"/><path d="M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+              </div>
+              <div class="format-info-col">
+                <div class="format-title-line">
+                  <span class="format-title">Versi & Pembaruan Aplikasi</span>
+                </div>
+                <p class="format-desc-text" id="home-version-desc">Versi terpasang: Memeriksa…</p>
+              </div>
+              <div class="row-control" style="display:flex; align-items:center; gap:8px;">
+                <span id="home-version-badge" class="badge">…</span>
+                <button type="button" id="home-check-update-btn" class="mini-btn" title="Periksa apakah ada pembaruan rilis baru di GitHub">Cek Update 🔄</button>
               </div>
             </div>
           </div>
@@ -1149,6 +1188,44 @@
           <button type="button" id="prereq-hub-btn" class="modal-btn secondary">Buka Package Hub</button>
           <button type="button" id="prereq-auto-btn" class="modal-btn primary" style="background:var(--accent,#3b82f6); color:#fff;">⚡ Nyalakan Otomatis</button>
           <button type="button" id="prereq-force-btn" class="modal-btn" style="background:rgba(255,255,255,0.06); color:var(--text); border:1px solid var(--border);">Tetap Mulai Saja</button>
+        </div>
+      </div>
+    <!-- Modal Detail Catatan Rilis & Pembaruan Aplikasi -->
+    <div id="update-modal" class="modal-overlay" hidden>
+      <div class="modal update-modal-box" role="dialog" aria-modal="true" aria-labelledby="update-modal-title" style="max-width: 540px;">
+        <div style="display:flex; align-items:flex-start; gap:12px; margin-bottom:14px;">
+          <div class="format-emblem theme-blue" style="width:40px; height:40px; font-size:20px; flex-shrink:0;">🚀</div>
+          <div style="flex:1;">
+            <h2 id="update-modal-title" class="modal-title" style="margin:0 0 4px; font-size:16px;">Pembaruan Aplikasi Tersedia</h2>
+            <div id="update-modal-subtitle" style="font-size:12.5px; color:var(--text-secondary); line-height:1.4;">
+              Versi baru telah rilis di GitHub.
+            </div>
+          </div>
+          <button type="button" id="update-modal-close" class="mini-btn del" style="padding:4px 8px;" title="Tutup">✕</button>
+        </div>
+
+        <div class="update-version-comparison" style="display:flex; align-items:center; justify-content:space-between; background:rgba(255,255,255,0.04); border:1px solid var(--border); border-radius:8px; padding:10px 14px; margin-bottom:14px;">
+          <div>
+            <span style="font-size:11px; color:var(--text-secondary); display:block;">Versi Terpasang:</span>
+            <strong id="modal-current-ver" style="font-size:14px; color:var(--text);">v0.1.2</strong>
+          </div>
+          <span style="font-size:16px; color:var(--text-secondary);">➔</span>
+          <div>
+            <span style="font-size:11px; color:var(--text-secondary); display:block;">Versi Terbaru:</span>
+            <strong id="modal-latest-ver" style="font-size:14px; color:#3b82f6;">v0.1.2</strong>
+          </div>
+          <span id="modal-release-date" class="badge" style="font-size:11px;">Rilis Terbaru</span>
+        </div>
+
+        <div class="command-box-group" style="margin-bottom:16px;">
+          <span class="command-box-label">Catatan Perubahan (Changelog):</span>
+          <div id="modal-changelog-content" style="max-height:180px; overflow-y:auto; background:var(--bg-primary, #18181b); border:1px solid var(--border); border-radius:6px; padding:10px 12px; font-size:12px; color:var(--text); line-height:1.5; white-space:pre-wrap; word-break:break-word;"></div>
+        </div>
+
+        <div class="modal-actions" style="display:flex; flex-wrap:wrap; justify-content:flex-end; gap:8px;">
+          <button type="button" id="modal-cancel-btn" class="modal-btn secondary">Nanti Saja</button>
+          <button type="button" id="modal-github-btn" class="modal-btn secondary">Buka Halaman GitHub 🌐</button>
+          <button type="button" id="modal-download-btn" class="modal-btn primary" style="background:var(--accent,#3b82f6); color:#fff;">Unduh Installer 📥</button>
         </div>
       </div>
     </div>

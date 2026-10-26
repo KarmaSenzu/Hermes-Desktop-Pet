@@ -145,7 +145,12 @@ const api = {
     const handler = (_event, payload) => callback(payload)
     ipcRenderer.on('avatar:web-prompt', handler)
     return () => ipcRenderer.removeListener('avatar:web-prompt', handler)
-  }
+  },
+
+  // Pemeriksa pembaruan rilis aplikasi (GitHub Releases)
+  checkAppUpdate: () => ipcRenderer.invoke('avatar:check-update'),
+  getAppVersion: () => ipcRenderer.invoke('avatar:get-app-version'),
+  openExternalUrl: (url) => ipcRenderer.invoke('avatar:open-external-url', url)
 }
 
 contextBridge.exposeInMainWorld('hermesAvatar', api)
