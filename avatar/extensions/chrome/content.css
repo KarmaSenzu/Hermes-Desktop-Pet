@@ -1,0 +1,47 @@
+/* content.css — Styling untuk floating quick-ask tooltip Hermes di web */
+#hermes-quick-tooltip {
+  position: absolute;
+  z-index: 2147483647;
+  display: none;
+  opacity: 0;
+  transform: translateY(4px);
+  transition: opacity 0.16s ease, transform 0.16s ease;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+#hermes-quick-tooltip.visible {
+  display: block;
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.hermes-tooltip-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  background: #18181b;
+  color: #f4f4f5;
+  border: 1px solid rgba(99, 102, 241, 0.4);
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35), 0 0 8px rgba(99, 102, 241, 0.2);
+  user-select: none;
+  transition: background 0.14s ease, transform 0.12s ease, border-color 0.14s ease;
+}
+
+.hermes-tooltip-btn:hover {
+  background: #27272a;
+  border-color: #6366f1;
+  transform: scale(1.04);
+}
+
+.hermes-tooltip-icon {
+  font-size: 13px;
+}
+
+.hermes-tooltip-label {
+  letter-spacing: 0.2px;
+}

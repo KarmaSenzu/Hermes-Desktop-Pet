@@ -15,7 +15,7 @@
 import { spawn, execFile, execSync } from 'child_process'
 import net from 'net'
 import { readFileSync, writeFileSync, mkdirSync, existsSync, cpSync } from 'fs'
-import { join } from 'path'
+import { join, dirname } from 'path'
 import { homedir } from 'os'
 import { fileURLToPath } from 'url'
 
@@ -321,11 +321,13 @@ async function startKokoro() {
   try {
     const scriptFromMeta = fileURLToPath(new URL('../../../scripts/kokoro_server.py', import.meta.url))
     const candidates = [
+      process.resourcesPath ? join(process.resourcesPath, 'scripts', 'kokoro_server.py') : null,
+      join(homedir(), '.hermes-avatar', 'scripts', 'kokoro_server.py'),
       scriptFromMeta,
       join(process.cwd(), 'scripts', 'kokoro_server.py'),
       join(process.cwd(), '..', 'scripts', 'kokoro_server.py'),
       join(process.cwd(), '..', '..', 'scripts', 'kokoro_server.py')
-    ]
+    ].filter(Boolean)
     const validScript = candidates.find((c) => existsSync(c))
     if (!validScript) {
       console.warn('[ServiceManager] kokoro_server.py tidak ditemukan')
@@ -334,7 +336,7 @@ async function startKokoro() {
 
     const pyInfo = await resolvePythonCmd()
     const pyCmd = pyInfo.cmd
-    const scriptDir = join(validScript, '..', '..')
+    const scriptDir = dirname(validScript)
     const quotedScript = process.platform === 'win32' ? `"${validScript}"` : validScript
     const child = spawn(pyCmd, [quotedScript], {
       cwd: scriptDir,
@@ -382,10 +384,13 @@ function ensureDefaultSkills() {
       ]
       const rootSkill = fileURLToPath(new URL(`../../../skills/${skillName}`, import.meta.url))
       const assetSkill = fileURLToPath(new URL(`../../assets/default-skills/${skillName}`, import.meta.url))
+      const resourcesSkill = process.resourcesPath ? join(process.resourcesPath, 'skills', skillName) : null
       const cwdSkill = join(process.cwd(), 'skills', skillName)
       const cwdAssetSkill = join(process.cwd(), 'assets', 'default-skills', skillName)
 
-      const sourceDir = existsSync(rootSkill)
+      const sourceDir = (resourcesSkill && existsSync(resourcesSkill))
+        ? resourcesSkill
+        : existsSync(rootSkill)
         ? rootSkill
         : existsSync(assetSkill)
         ? assetSkill

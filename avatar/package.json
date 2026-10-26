@@ -1,6 +1,6 @@
 {
   "name": "hermes-desktop-pet",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Hermes Desktop Pet — Interactive AI Companion (Electron, Pixi.js, Live2D & Three.js)",
   "homepage": "https://github.com/KarmaSenzu/Hermes-Desktop-Pet",
   "repository": {
@@ -48,6 +48,17 @@
       "assets/**/*",
       "build/**/*",
       "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "scripts",
+        "to": "scripts",
+        "filter": ["*.py"]
+      },
+      {
+        "from": "extensions",
+        "to": "extensions"
+      }
     ],
     "win": {
       "icon": "build/icon.ico",

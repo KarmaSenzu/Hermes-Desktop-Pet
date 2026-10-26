@@ -731,7 +731,9 @@ function bindPackageActions() {
         const res = await window.hermesAvatar.openPackageFolder('kokoro')
         if (res.ok) {
           showToast('Membuka Folder Paket 📁', res.path, 'info', '📂')
-          if (pkgKokoroLog) pkgKokoroLog.innerHTML = `📂 Folder paket dibuka: <code>${escapeHtml(res.path)}</code>`
+          if (pkgKokoroLog) {
+            pkgKokoroLog.innerHTML = `📂 Folder paket dibuka: <code>${escapeHtml(res.path)}</code><br><span style="font-size:11px; color:var(--text-secondary);">💡 Model suara (<code>kokoro-v1.0.onnx</code> ~340MB) akan otomatis diunduh ke folder ini saat server pertama kali dijalankan.</span>`
+          }
         }
       } catch (err) {
         showToast('Gagal Buka Folder', err.message, 'error', '❌')
@@ -799,13 +801,31 @@ function bindPackageActions() {
         if (res.ok) {
           showToast('Membuka Folder Ekstensi 📂', res.path, 'info', '📂')
           if (pkgBridgeLog) {
-            pkgBridgeLog.innerHTML = `📂 Folder ekstensi dibuka: <code>${escapeHtml(res.path)}</code><br>👉 Di Chrome/Edge, klik <strong>"Load unpacked"</strong> lalu pilih folder tersebut.`
+            pkgBridgeLog.innerHTML = `📂 Folder ekstensi dibuka: <code>${escapeHtml(res.path)}</code><br>👉 Di Chrome/Edge, klik <strong>"Load unpacked"</strong> lalu pilih folder <strong>chrome</strong> ini.`
           }
         } else {
           showToast('Gagal Buka Folder', res.error, 'error', '❌')
         }
       } catch (err) {
         showToast('Error', err.message, 'error', '❌')
+      }
+    })
+  }
+
+  const pkgCopyExtensionPathBtn = document.getElementById('pkg-copy-extension-path-btn')
+  if (pkgCopyExtensionPathBtn) {
+    pkgCopyExtensionPathBtn.addEventListener('click', async () => {
+      try {
+        const res = await window.hermesAvatar.openPackageFolder('chrome-extension')
+        if (res.ok && res.path) {
+          await navigator.clipboard.writeText(res.path)
+          showToast('Path Ekstensi Disalin! 📋', res.path, 'success', '📋')
+          if (pkgBridgeLog) {
+            pkgBridgeLog.innerHTML = `📋 Path folder ekstensi disalin ke clipboard: <code>${escapeHtml(res.path)}</code><br>💡 Di jendela pemilih file Chrome (macOS), tekan <strong>Cmd + Shift + G</strong> lalu paste!`
+          }
+        }
+      } catch (err) {
+        showToast('Gagal Salin Path', err.message, 'error', '❌')
       }
     })
   }

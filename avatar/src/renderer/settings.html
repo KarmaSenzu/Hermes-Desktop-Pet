@@ -548,14 +548,21 @@
                   <div class="install-step-item">
                     <span class="step-num">3</span>
                     <div class="step-desc">
-                      Klik tombol <strong>"Load unpacked"</strong> (Muat yang belum dibongkar), lalu pilih folder ekstensi di bawah:
+                      Klik tombol <strong>"Load unpacked"</strong> (Muat yang belum dibongkar) di Chrome/Edge, lalu arahkan dan pilih folder <code>chrome</code> (folder ekstensi) dan klik tombol <strong>"Select" / "Pilih"</strong>.
+                      <div class="tip-box" style="margin-top:8px; font-size:12px; background:rgba(6,182,212,0.08); border:1px solid rgba(6,182,212,0.25); padding:8px 12px; border-radius:6px; line-height:1.5;">
+                        💡 <strong>Panduan Memuat di macOS & Windows:</strong><br>
+                        • <strong>Pilih Foldernya Langsung:</strong> Browser hanya meminta Anda memilih satu <em>folder</em> (jangan buka atau seret file satuan di dalamnya). Klik folder <code>chrome</code> lalu klik tombol <strong>"Select" / "Pilih" / "Buka"</strong> di jendela file picker browser.<br>
+                        • <strong>Shortcut macOS:</strong> Saat jendela pemilih file browser terbuka, tekan <kbd>Cmd</kbd> + <kbd>Shift</kbd> + <kbd>G</kbd>, lalu tempel (paste) path yang disalin dari tombol di bawah.
+                      </div>
                     </div>
                   </div>
                 </div>
 
                 <div style="display:flex; gap:8px; margin: 10px 0 6px; flex-wrap:wrap;">
                   <button type="button" id="pkg-open-extension-folder-btn" class="terminal-action-btn">📂 Buka Folder Ekstensi di Explorer / Finder</button>
+                  <button type="button" id="pkg-copy-extension-path-btn" class="mini-btn copy-cmd-btn">📋 Salin Path Folder Ekstensi</button>
                 </div>
+                <div id="pkg-bridge-log" class="package-log muted" style="margin-top: 8px;"></div>
               </div>
 
               <!-- Sub-panel Manage -->

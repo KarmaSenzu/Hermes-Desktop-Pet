@@ -1,7 +1,7 @@
 import { app, BrowserWindow, ipcMain, protocol, dialog, screen, safeStorage, shell, Menu } from 'electron'
 import { join, extname, isAbsolute } from 'path'
 import { readFile, writeFile, mkdir, rm } from 'fs/promises'
-import { existsSync, statSync, readdirSync } from 'fs'
+import { existsSync, statSync, readdirSync, cpSync, mkdirSync } from 'fs'
 import { homedir } from 'os'
 import http from 'http'
 import https from 'https'
@@ -48,6 +48,78 @@ function getAppIconPath() {
     join(app.getAppPath(), 'build/icon.png')
   ]
   return candidates.find((p) => existsSync(p)) || null
+}
+
+/**
+ * Pastikan script pendukung (Kokoro TTS, App Launcher) dan ekstensi browser
+ * (Hermes Web Companion) tersalin ke ~/.hermes-avatar/ agar dapat diakses tanpa batasan ASAR.
+ */
+export function ensureDeployedCompanionAndScripts() {
+  try {
+    const userBase = join(homedir(), '.hermes-avatar')
+    const userScriptsDir = join(userBase, 'scripts')
+    const userExtDir = join(userBase, 'extensions', 'chrome')
+
+    // 1. Cari source folder scripts
+    const candidateScriptSources = [
+      process.resourcesPath ? join(process.resourcesPath, 'scripts') : null,
+      join(app.getAppPath(), '..', 'scripts'),
+      join(app.getAppPath(), 'scripts'),
+      join(__dirname, '../../../scripts'),
+      join(__dirname, '../../scripts'),
+      join(process.cwd(), 'scripts'),
+      join(process.cwd(), '..', 'scripts')
+    ].filter(Boolean)
+
+    const validScriptSource = candidateScriptSources.find((p) => existsSync(join(p, 'kokoro_server.py')))
+    if (validScriptSource) {
+      mkdirSync(userScriptsDir, { recursive: true })
+      for (const f of ['kokoro_server.py', 'app_launcher.py']) {
+        const srcFile = join(validScriptSource, f)
+        const dstFile = join(userScriptsDir, f)
+        if (existsSync(srcFile)) {
+          if (!existsSync(dstFile) || statSync(srcFile).size !== statSync(dstFile).size) {
+            cpSync(srcFile, dstFile)
+          }
+        }
+      }
+    }
+
+    // 2. Cari source folder ekstensi Chrome
+    const candidateExtSources = [
+      process.resourcesPath ? join(process.resourcesPath, 'extensions', 'chrome') : null,
+      join(app.getAppPath(), '..', 'extensions', 'chrome'),
+      join(app.getAppPath(), 'extensions', 'chrome'),
+      join(__dirname, '../../../extensions/chrome'),
+      join(__dirname, '../../extensions/chrome'),
+      join(process.cwd(), 'extensions', 'chrome'),
+      join(process.cwd(), '..', 'extensions', 'chrome')
+    ].filter(Boolean)
+
+    const validExtSource = candidateExtSources.find((p) => existsSync(join(p, 'manifest.json')))
+    if (validExtSource) {
+      mkdirSync(userExtDir, { recursive: true })
+      const dstManifest = join(userExtDir, 'manifest.json')
+      if (!existsSync(dstManifest)) {
+        cpSync(validExtSource, userExtDir, { recursive: true })
+      } else {
+        for (const item of ['background.js', 'content.js', 'content.css', 'popup.html', 'popup.css', 'popup.js', 'manifest.json', 'README.md']) {
+          const s = join(validExtSource, item)
+          const d = join(userExtDir, item)
+          if (existsSync(s) && (!existsSync(d) || statSync(s).size !== statSync(d).size)) {
+            cpSync(s, d)
+          }
+        }
+        const sIcons = join(validExtSource, 'icons')
+        const dIcons = join(userExtDir, 'icons')
+        if (existsSync(sIcons) && !existsSync(dIcons)) {
+          cpSync(sIcons, dIcons, { recursive: true })
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('[Assets Deployer] Info sinkronisasi script/ekstensi:', err?.message || err)
+  }
 }
 
 /**
@@ -452,11 +524,14 @@ ipcMain.handle('avatar:window-maximize', (event) => {
 // IPC: jalankan perintah di terminal sistem baru (PowerShell di Windows, Terminal.app di macOS via AppleScript)
 ipcMain.handle('avatar:run-in-terminal', async (_event, cmd, workingDir) => {
   try {
+    ensureDeployedCompanionAndScripts()
     const candidateRoots = [
+      process.resourcesPath,
+      join(homedir(), '.hermes-avatar'),
       join(app.getAppPath(), '..'),
       join(process.cwd(), '..'),
       process.cwd()
-    ]
+    ].filter(Boolean)
     const repoRoot = candidateRoots.find((dir) => existsSync(join(dir, 'scripts', 'kokoro_server.py'))) || candidateRoots[0]
     const cwd = workingDir || repoRoot
 
@@ -700,14 +775,16 @@ ipcMain.handle('avatar:open-package-folder', async (_event, pkgName = 'kokoro') 
     if (pkgName === 'hermes') targetDir = join(homedir(), '.hermes')
     if (pkgName === 'packages-root') targetDir = join(homedir(), '.hermes-avatar', 'packages')
     if (pkgName === 'chrome-extension' || pkgName === 'companion') {
+      ensureDeployedCompanionAndScripts()
+      const userExtDir = join(homedir(), '.hermes-avatar', 'extensions', 'chrome')
       const candidates = [
-        join(__dirname, '../../../extensions/chrome'),
+        userExtDir,
+        process.resourcesPath ? join(process.resourcesPath, 'extensions', 'chrome') : null,
         join(app.getAppPath(), '..', 'extensions', 'chrome'),
         join(app.getAppPath(), 'extensions', 'chrome'),
-        join(process.resourcesPath, 'extensions', 'chrome'),
-        join(homedir(), '.hermes-avatar', 'extensions', 'chrome')
-      ]
-      targetDir = candidates.find((p) => existsSync(p)) || candidates[0]
+        join(__dirname, '../../../extensions/chrome')
+      ].filter(Boolean)
+      targetDir = candidates.find((p) => existsSync(join(p, 'manifest.json'))) || userExtDir
     }
     await mkdir(targetDir, { recursive: true })
     await shell.openPath(targetDir)
@@ -1673,6 +1750,7 @@ function registerModelProtocol() {
 app.whenReady().then(() => {
   Menu.setApplicationMenu(null)
   registerModelProtocol()
+  ensureDeployedCompanionAndScripts()
 
   // Set icon Dock di macOS ke personal companion profile avatar
   if (process.platform === 'darwin' && app.dock) {
