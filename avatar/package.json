@@ -40,20 +40,24 @@
     "appId": "com.karmasenzu.hermesdesktoppet",
     "productName": "Hermes Desktop Pet",
     "directories": {
-      "output": "dist"
+      "output": "dist",
+      "buildResources": "build"
     },
     "files": [
       "out/**/*",
       "assets/**/*",
+      "build/**/*",
       "package.json"
     ],
     "win": {
+      "icon": "build/icon.ico",
       "target": [
         "nsis",
         "zip"
       ]
     },
     "mac": {
+      "icon": "build/icon.icns",
       "target": [
         "dmg",
         "zip"
@@ -61,7 +65,7 @@
       "category": "public.app-category.entertainment"
     },
     "linux": {
-      "icon": "assets/live2d/mother/preview.png",
+      "icon": "build/icon.png",
       "target": [
         "AppImage",
         "tar.gz"

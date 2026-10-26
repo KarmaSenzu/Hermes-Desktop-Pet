@@ -28,6 +28,28 @@ import { startBridgeServer, stopBridgeServer, BRIDGE_PORT } from './bridge-serve
 // Inisialisasi perbaikan PATH untuk macOS/Windows sedini mungkin
 fixSystemPath()
 
+// Tangkap exception unhandled agar tidak pernah muncul dialog pop-up crash Electron
+process.on('uncaughtException', (err) => {
+  console.warn('[Main Process] Uncaught Exception ditangani dengan aman:', err?.message || err)
+})
+process.on('unhandledRejection', (reason) => {
+  console.warn('[Main Process] Unhandled Rejection ditangani dengan aman:', reason)
+})
+
+function getAppIconPath() {
+  const isWin = process.platform === 'win32'
+  const isMac = process.platform === 'darwin'
+  const candidates = [
+    join(__dirname, isWin ? '../../build/icon.ico' : (isMac ? '../../build/icon.icns' : '../../build/icon.png')),
+    join(__dirname, '../../build/icon.png'),
+    join(__dirname, '../../assets/icons/icon.png'),
+    join(process.resourcesPath, 'build/icon.png'),
+    join(process.resourcesPath, 'assets/icons/icon.png'),
+    join(app.getAppPath(), 'build/icon.png')
+  ]
+  return candidates.find((p) => existsSync(p)) || null
+}
+
 /**
  * Main process — Hermes 3D Avatar
  * Membuat window desktop pet: transparan, always-on-top, frameless.
@@ -98,7 +120,9 @@ function stopAutoDodge() {
 
 function createLauncherWindow() {
   const isMac = process.platform === 'darwin'
+  const appIcon = getAppIconPath()
   launcherWindow = new BrowserWindow({
+    ...(appIcon ? { icon: appIcon } : {}),
     width: 960,
     height: 640,
     minWidth: 780,
@@ -153,8 +177,10 @@ function showLauncherWindow() {
 function createAvatarWindow(modelPath) {
   const primaryDisplay = screen.getPrimaryDisplay()
   const { x, y, width, height } = primaryDisplay.bounds
+  const appIcon = getAppIconPath()
 
   avatarWindow = new BrowserWindow({
+    ...(appIcon ? { icon: appIcon } : {}),
     x,
     y,
     width,
@@ -1647,6 +1673,19 @@ function registerModelProtocol() {
 app.whenReady().then(() => {
   Menu.setApplicationMenu(null)
   registerModelProtocol()
+
+  // Set icon Dock di macOS ke personal companion profile avatar
+  if (process.platform === 'darwin' && app.dock) {
+    const dockIcon = getAppIconPath()
+    if (dockIcon) {
+      try {
+        app.dock.setIcon(dockIcon)
+      } catch (err) {
+        console.warn('[Dock Icon] Gagal set icon dock:', err?.message || err)
+      }
+    }
+  }
+
   createLauncherWindow()
   registerGlobalShortcuts()
 

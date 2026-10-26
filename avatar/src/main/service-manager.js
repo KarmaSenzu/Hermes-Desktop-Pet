@@ -12,7 +12,7 @@
  *     -> mencegah token mismatch dengan hermes serve yang sudah jalan
  */
 
-import { spawn, execFile } from 'child_process'
+import { spawn, execFile, execSync } from 'child_process'
 import net from 'net'
 import { readFileSync, writeFileSync, mkdirSync, existsSync, cpSync } from 'fs'
 import { join } from 'path'
@@ -37,6 +37,22 @@ function fixSystemPath() {
   const currentPath = process.env.PATH || ''
   const currentParts = currentPath.split(delimiter)
   const home = homedir()
+
+  // Di macOS, coba ambil PATH dari interactive login shell (zsh) bila diluncurkan via Finder/Dock
+  if (process.platform === 'darwin' && (!process.env.PATH || !process.env.PATH.includes('/opt/homebrew'))) {
+    try {
+      const shellPath = execSync('/bin/zsh -ilc "echo -n \\$PATH"', { timeout: 1500, encoding: 'utf8' })
+      if (shellPath && shellPath.includes('/')) {
+        for (const p of shellPath.split(':')) {
+          if (p && existsSync(p) && !currentParts.includes(p)) {
+            currentParts.unshift(p)
+          }
+        }
+      }
+    } catch {
+      // Abaikan bila shell zsh timeout
+    }
+  }
 
   const additionalPaths = process.platform === 'win32'
     ? [
@@ -94,12 +110,29 @@ function resolveHermesCmd() {
         join(home, '.hermes-agent', 'venv', 'bin', 'hermes'),
         '/opt/homebrew/bin/hermes',
         '/usr/local/bin/hermes',
-        '/usr/bin/hermes'
+        join(home, 'Library', 'Python', '3.12', 'bin', 'hermes'),
+        join(home, 'Library', 'Python', '3.11', 'bin', 'hermes'),
+        join(home, 'Library', 'Python', '3.10', 'bin', 'hermes'),
+        join(home, '.cargo', 'bin', 'hermes'),
+        '/opt/homebrew/sbin/hermes',
+        '/usr/bin/hermes',
+        '/bin/hermes'
       ]
   for (const p of candidatePaths) {
     if (existsSync(p)) return p
   }
-  return process.platform === 'win32' ? 'hermes.exe' : 'hermes'
+
+  // Cek apakah binary hermes ada di PATH aktif sistem
+  const defaultCmd = process.platform === 'win32' ? 'hermes.exe' : 'hermes'
+  const pathDirs = (process.env.PATH || '').split(process.platform === 'win32' ? ';' : ':')
+  for (const dir of pathDirs) {
+    if (!dir) continue
+    const full = join(dir, defaultCmd)
+    if (existsSync(full)) return full
+  }
+
+  // Jika tidak ditemukan di disk, kembalikan null agar caller tidak memicu spawn ENOENT crash
+  return null
 }
 
 function resolveHermesConfigPath() {
@@ -187,31 +220,48 @@ async function checkRouter() {
  * Jalankan hermes serve jika belum jalan di port 9119.
  * Token PERSISTEN di-inject agar cocok dengan avatar.
  */
-/**
- * Jalankan hermes serve jika belum jalan di port 9119.
- * Token PERSISTEN di-inject agar cocok dengan avatar.
- */
 async function startHermes() {
   if (await isPortOpen(HERMES_PORT)) {
     return { already: true, ok: true }
   }
   const cmd = resolveHermesCmd()
+  if (!cmd) {
+    console.warn('[ServiceManager] Hermes CLI tidak ditemukan di sistem.')
+    return { already: false, ok: false, error: 'Hermes CLI belum terpasang atau tidak ditemukan di PATH' }
+  }
+
   console.log(`[ServiceManager] Starting Hermes daemon via: ${cmd}`)
-  const child = spawn(
-    cmd,
-    ['serve', '--host', HERMES_HOST, '--port', String(HERMES_PORT)],
-    {
-      stdio: 'ignore',
-      shell: process.platform === 'win32',
-      env: {
-        ...process.env,
-        HERMES_DASHBOARD_SESSION_TOKEN: SESSION_TOKEN
+  try {
+    let spawnError = null
+    const child = spawn(
+      cmd,
+      ['serve', '--host', HERMES_HOST, '--port', String(HERMES_PORT)],
+      {
+        stdio: 'ignore',
+        shell: process.platform === 'win32',
+        env: {
+          ...process.env,
+          HERMES_DASHBOARD_SESSION_TOKEN: SESSION_TOKEN
+        }
       }
+    )
+
+    // Tangkap event error pada child process agar tidak menjadi uncaught exception
+    child.on('error', (err) => {
+      console.warn('[ServiceManager] Hermes spawn error:', err.message)
+      spawnError = err
+    })
+
+    children.push({ name: 'hermes', child })
+    const ok = await waitForPort(HERMES_PORT, 12000)
+    if (!ok && spawnError) {
+      return { already: false, ok: false, error: spawnError.message }
     }
-  )
-  children.push({ name: 'hermes', child })
-  const ok = await waitForPort(HERMES_PORT, 12000)
-  return { already: false, ok, child }
+    return { already: false, ok, child }
+  } catch (err) {
+    console.warn('[ServiceManager] Gagal spawn hermes:', err.message)
+    return { already: false, ok: false, error: err.message }
+  }
 }
 
 /**
@@ -292,6 +342,9 @@ async function startKokoro() {
       stdio: 'ignore',
       shell: true,
       env: process.env
+    })
+    child.on('error', (err) => {
+      console.warn('[ServiceManager] Kokoro server spawn error:', err.message)
     })
     child.unref()
     children.push({ name: 'kokoro', child })
