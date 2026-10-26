@@ -65,6 +65,7 @@ const api = {
 
   // Status service (9Router, hermes, kokoro, python) untuk settings panel & Package Hub.
   getServiceStatus: () => ipcRenderer.invoke('avatar:service-status'),
+  startHermesServer: () => ipcRenderer.invoke('avatar:start-hermes-server'),
   startKokoroServer: () => ipcRenderer.invoke('avatar:start-kokoro-server'),
   installKokoroDeps: () => ipcRenderer.invoke('avatar:install-kokoro-deps'),
   uninstallKokoroDeps: () => ipcRenderer.invoke('avatar:uninstall-kokoro-deps'),

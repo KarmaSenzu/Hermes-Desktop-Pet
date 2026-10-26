@@ -207,9 +207,22 @@ function initThemeSwitcher() {
   }
 }
 
-// --- Status service & Package Hub ---
+// --- Status service & Package Hub & Home Prerequisites ---
 const homeSetupAlert = document.getElementById('home-setup-alert')
 const alertOpenPkgBtn = document.getElementById('alert-open-pkg-btn')
+const homePrereqBadge = document.getElementById('home-prereq-badge')
+const homeStartHermesBtn = document.getElementById('home-start-hermes-btn')
+const homeCharDesc = document.getElementById('home-char-desc')
+const homeTtsStatus = document.getElementById('home-tts-status')
+const homeTtsDesc = document.getElementById('home-tts-desc')
+
+const prereqModal = document.getElementById('prerequisite-modal')
+const prereqModalList = document.getElementById('prereq-modal-list')
+const prereqCancelBtn = document.getElementById('prereq-cancel-btn')
+const prereqHubBtn = document.getElementById('prereq-hub-btn')
+const prereqAutoBtn = document.getElementById('prereq-auto-btn')
+const prereqForceBtn = document.getElementById('prereq-force-btn')
+
 const pkgStatusHermes = document.getElementById('pkg-status-hermes')
 const pkgStatusRouter = document.getElementById('pkg-status-router')
 const pkgStatusKokoro = document.getElementById('pkg-status-kokoro')
@@ -306,6 +319,134 @@ alertOpenPkgBtn?.addEventListener('click', () => {
   navigateToSection('package')
 })
 
+// Handler tombol Nyalakan Hermes di kartu Prasyarat Home
+homeStartHermesBtn?.addEventListener('click', async () => {
+  homeStartHermesBtn.disabled = true
+  homeStartHermesBtn.textContent = 'Menyalakan…'
+  showToast('Menyalakan Hermes AI...', 'Memulai daemon hermes serve di port 9119', 'running', '⚡')
+  try {
+    const res = await window.hermesAvatar.startHermesServer()
+    if (res?.ok || res?.already) {
+      showToast('Hermes Aktif! ✅', 'Daemon AI siap di port 9119', 'success', '⚡')
+    } else {
+      showToast('Gagal Menyalakan Hermes', res?.error || 'Pastikan Hermes CLI sudah terpasang', 'error', '❌')
+    }
+    await refreshServiceStatus()
+  } catch (err) {
+    showToast('Gagal Menyalakan Hermes', err?.message || err, 'error', '❌')
+  } finally {
+    homeStartHermesBtn.disabled = false
+    homeStartHermesBtn.textContent = 'Nyalakan ⚡'
+  }
+})
+
+// Prerequisite Modal Actions
+prereqCancelBtn?.addEventListener('click', () => {
+  if (prereqModal) prereqModal.hidden = true
+})
+
+prereqHubBtn?.addEventListener('click', () => {
+  if (prereqModal) prereqModal.hidden = true
+  navigateToSection('package')
+})
+
+prereqAutoBtn?.addEventListener('click', async () => {
+  prereqAutoBtn.disabled = true
+  prereqAutoBtn.textContent = '⏳ Menyiapkan…'
+  showToast('Menyiapkan Layanan Otomatis...', 'Menjalankan Hermes & Kokoro...', 'running', '⚡')
+  try {
+    await window.hermesAvatar.startHermesServer()
+    await window.hermesAvatar.startKokoroServer()
+    await new Promise(r => setTimeout(r, 1800))
+    await refreshServiceStatus()
+
+    const active = (settings.characters || []).find((c) => c.active)
+    const s = await window.hermesAvatar.getServiceStatus()
+    if (s.hermes && active) {
+      if (prereqModal) prereqModal.hidden = true
+      showToast('Prasyarat Siap! 🚀', 'Memulai avatar ke desktop...', 'success', '✨')
+      await launchAvatarDirect(active.path)
+    } else {
+      showToast('Layanan Masih Perlu Penyiapan', 'Buka menu Package Hub untuk instalasi paket', 'info', 'ℹ️')
+      renderPrereqModalItems(s, active)
+    }
+  } catch (err) {
+    showToast('Gagal Menyiapkan', err.message, 'error', '❌')
+  } finally {
+    prereqAutoBtn.disabled = false
+    prereqAutoBtn.textContent = '⚡ Nyalakan Otomatis'
+  }
+})
+
+prereqForceBtn?.addEventListener('click', async () => {
+  if (prereqModal) prereqModal.hidden = true
+  const active = (settings.characters || []).find((c) => c.active)
+  if (active) {
+    showToast('Memulai Mode Tampilan Saja 🎮', 'Avatar tampil di desktop tanpa koneksi AI', 'info', '🎮')
+    await launchAvatarDirect(active.path)
+  }
+})
+
+function renderPrereqModalItems(s, active) {
+  if (!prereqModalList) return
+  const isCharOk = !!active
+  const isHermesOk = !!s.hermes
+  const isRouterOk = !!s.router
+  const isTtsOk = !!(s.kokoro || settings.tts?.provider === 'edge')
+
+  prereqModalList.innerHTML = `
+    <div class="prereq-card">
+      <div class="prereq-card-left">
+        <span class="prereq-card-icon">🎭</span>
+        <div class="prereq-card-texts">
+          <span class="prereq-card-title">Model Karakter Visual</span>
+          <span class="prereq-card-desc">${isCharOk ? escapeHtml(active.name) : 'Belum ada model aktif terpilih'}</span>
+        </div>
+      </div>
+      <span class="prereq-pill ${isCharOk ? 'ready' : 'missing'}">${isCharOk ? 'Siap ✅' : 'Belum Dipilih ❌'}</span>
+    </div>
+
+    <div class="prereq-card">
+      <div class="prereq-card-left">
+        <span class="prereq-card-icon">🧠</span>
+        <div class="prereq-card-texts">
+          <span class="prereq-card-title">Otak AI Hermes (Port 9119)</span>
+          <span class="prereq-card-desc">Layanan utama berpikir, memori & tools</span>
+        </div>
+      </div>
+      <span class="prereq-pill ${isHermesOk ? 'ready' : 'missing'}">${isHermesOk ? 'Aktif ✅' : 'Belum Aktif ⚠️'}</span>
+    </div>
+
+    <div class="prereq-card">
+      <div class="prereq-card-left">
+        <span class="prereq-card-icon">🌐</span>
+        <div class="prereq-card-texts">
+          <span class="prereq-card-title">Proxy Model 9Router (Port 20128)</span>
+          <span class="prereq-card-desc">Proxy LLM multi-model lokal</span>
+        </div>
+      </div>
+      <span class="prereq-pill ${isRouterOk ? 'ready' : 'warning'}">${isRouterOk ? 'Aktif ✅' : 'Offline (Opsional)'}</span>
+    </div>
+
+    <div class="prereq-card">
+      <div class="prereq-card-left">
+        <span class="prereq-card-icon">🔊</span>
+        <div class="prereq-card-texts">
+          <span class="prereq-card-title">Mesin Suara Avatar (TTS)</span>
+          <span class="prereq-card-desc">${settings.tts?.provider === 'kokoro' ? 'Kokoro-TTS Lokal (:8880)' : 'Edge-TTS Cloud Online'}</span>
+        </div>
+      </div>
+      <span class="prereq-pill ${isTtsOk ? 'ready' : 'warning'}">${isTtsOk ? 'Siap ✅' : 'Belum Siap ⚠️'}</span>
+    </div>
+  `
+}
+
+function showPrerequisitesModal(s) {
+  const active = (settings.characters || []).find((c) => c.active)
+  renderPrereqModalItems(s, active)
+  if (prereqModal) prereqModal.hidden = false
+}
+
 async function refreshServiceStatus() {
   try {
     const s = await window.hermesAvatar.getServiceStatus()
@@ -341,8 +482,48 @@ async function refreshServiceStatus() {
       pkgKokoroLocation.textContent = s.packagePath
     }
 
+    // Update Kartu Prasyarat di Home
+    const active = (settings.characters || []).find((c) => c.active)
+    const isCharOk = !!active
+    const isHermesOk = !!s.hermes
+    const isRouterOk = !!s.router
+    const isTtsOk = !!(s.kokoro || settings.tts?.provider === 'edge')
+
+    let readyCount = 0
+    if (isCharOk) readyCount++
+    if (isHermesOk) readyCount++
+    if (isRouterOk) readyCount++
+    if (isTtsOk) readyCount++
+
+    if (homePrereqBadge) {
+      if (readyCount === 4) {
+        homePrereqBadge.textContent = '4/4 Siap Memulai ✅'
+        homePrereqBadge.className = 'badge ready'
+      } else {
+        homePrereqBadge.textContent = `${readyCount}/4 Prasyarat Terpenuhi`
+        homePrereqBadge.className = 'badge warning'
+      }
+    }
+
+    if (homeStartHermesBtn) {
+      homeStartHermesBtn.style.display = s.hermes ? 'none' : 'inline-block'
+    }
+
+    if (homeCharDesc) {
+      homeCharDesc.textContent = active ? `${active.name} (${active.format || 'Live2D / 3D'})` : 'Pilih karakter aktif di menu Karakter'
+    }
+
+    if (homeTtsStatus) {
+      if (settings.tts?.provider === 'kokoro') {
+        setBadge(homeTtsStatus, s.kokoro, 'Aktif (Kokoro :8880)', 'Belum Aktif (:8880)')
+      } else {
+        homeTtsStatus.textContent = 'Aktif (Edge Cloud) ✅'
+        homeTtsStatus.className = 'badge ready'
+      }
+    }
+
     // Tampilkan alert banner di Home bila ada service inti yang belum jalan
-    const allReady = s.hermes && s.router && (s.kokoro || settings.tts?.provider === 'edge')
+    const allReady = s.hermes && s.router && isTtsOk
     if (homeSetupAlert) {
       homeSetupAlert.classList.toggle('hidden', allReady)
     }
@@ -866,27 +1047,73 @@ backToFormats.addEventListener('click', () => {
   renderFormatList()
 })
 
-// --- Tombol Mulai (pakai karakter aktif) ---
+// Helper langsung menjalankan window avatar
+async function launchAvatarDirect(path) {
+  startBtn.disabled = true
+  statusEl.textContent = 'Memulai…'
+  showToast('Memulai Avatar... 🚀', 'Menyiapkan window desktop pet', 'running', '🚀')
+  try {
+    const res = await window.hermesAvatar.startAvatar(path)
+    if (res && res.ok === false) {
+      throw new Error(res.error || 'Gagal memulai avatar')
+    }
+    startBtn.disabled = false
+    statusEl.textContent = ''
+    showToast('Avatar Aktif! ✨', 'Model siap berinteraksi di desktop', 'success', '✨')
+  } catch (err) {
+    statusEl.textContent = `Gagal: ${err.message}`
+    startBtn.disabled = false
+    showToast('Gagal Memulai Avatar', err.message, 'error', '❌')
+  }
+}
+
+// --- Tombol Mulai (dengan pemeriksaan Prerequisites & Alert Modal) ---
 startBtn.addEventListener('click', async () => {
   const active = (settings.characters || []).find((c) => c.active)
   if (!active) {
     statusEl.textContent = '⚠️ Pilih karakter aktif dulu (sidebar Karakter).'
     showToast('Karakter Belum Dipilih', 'Pilih karakter aktif di menu Karakter & Model', 'error', '⚠️')
+    showPrerequisitesModal({ hermes: false, router: false, kokoro: false })
     return
   }
 
-  startBtn.disabled = true
-  statusEl.textContent = 'Memulai…'
-  showToast('Memulai Avatar... 🚀', `Menyiapkan model ${active.name}`, 'running', '🚀')
-
+  // Validasi file karakter pada disk
   try {
-    await window.hermesAvatar.startAvatar(active.path)
-    startBtn.disabled = false
-    statusEl.textContent = ''
-    showToast('Avatar Aktif! ✨', `${active.name} siap berinteraksi di desktop`, 'success', '✨')
+    const checkFile = await window.hermesAvatar.readModel(active.path)
+    if (checkFile && checkFile.ok === false) {
+      statusEl.textContent = `File model tidak ditemukan: ${active.path}`
+      showToast('File Model Hilang / Rusak', `File tidak ada di: ${active.path}`, 'error', '❌')
+      const s = await window.hermesAvatar.getServiceStatus()
+      showPrerequisitesModal(s)
+      return
+    }
+  } catch (err) {
+    showToast('File Model Bermasalah', err.message, 'error', '❌')
+    return
+  }
+
+  // Cek kesiapan service inti (Prerequisites)
+  try {
+    let s = await window.hermesAvatar.getServiceStatus()
+
+    // Bila Hermes belum aktif, coba nyalakan otomatis dulu
+    if (!s.hermes) {
+      showToast('Menghubungkan Otak AI...', 'Mencoba mengaktifkan daemon Hermes...', 'running', '🧠')
+      await window.hermesAvatar.startHermesServer()
+      await new Promise((r) => setTimeout(r, 1400))
+      s = await window.hermesAvatar.getServiceStatus()
+    }
+
+    // Jika Hermes masih belum aktif, tampilkan popup modal Prasyarat
+    if (!s.hermes) {
+      showPrerequisitesModal(s)
+      return
+    }
+
+    // Semua prasyarat kritis terpenuhi -> mulai avatar langsung
+    await launchAvatarDirect(active.path)
   } catch (err) {
     statusEl.textContent = `Gagal: ${err.message}`
-    startBtn.disabled = false
     showToast('Gagal Memulai Avatar', err.message, 'error', '❌')
   }
 })
@@ -2779,6 +3006,41 @@ llmSwitchBtn.addEventListener('click', async () => {
   }
 })
 
+function adaptPlatformCommands() {
+  const isMac = (window.hermesAvatar?.platform === 'darwin') ||
+    navigator.userAgent.includes('Macintosh') ||
+    (navigator.platform && navigator.platform.toUpperCase().indexOf('MAC') >= 0)
+  const isWin = window.hermesAvatar?.platform === 'win32'
+
+  if (isMac || !isWin) {
+    document.querySelectorAll('code').forEach((el) => {
+      if (el.textContent.includes('py -m pip install')) {
+        el.textContent = 'python3 -m pip install kokoro-onnx soundfile --break-system-packages'
+      } else if (el.textContent.includes('py scripts/kokoro_server.py')) {
+        el.textContent = 'python3 scripts/kokoro_server.py'
+      }
+    })
+
+    document.querySelectorAll('[data-terminal-cmd]').forEach((btn) => {
+      let cmd = btn.getAttribute('data-terminal-cmd')
+      if (cmd && cmd.startsWith('py -m pip install')) {
+        btn.setAttribute('data-terminal-cmd', 'python3 -m pip install kokoro-onnx soundfile --break-system-packages')
+      } else if (cmd && cmd.startsWith('py scripts/')) {
+        btn.setAttribute('data-terminal-cmd', 'python3 scripts/kokoro_server.py')
+      }
+    })
+
+    document.querySelectorAll('[data-copy]').forEach((btn) => {
+      let cmd = btn.getAttribute('data-copy')
+      if (cmd && cmd.startsWith('py -m pip install')) {
+        btn.setAttribute('data-copy', 'python3 -m pip install kokoro-onnx soundfile --break-system-packages')
+      } else if (cmd && cmd.startsWith('py scripts/')) {
+        btn.setAttribute('data-copy', 'python3 scripts/kokoro_server.py')
+      }
+    })
+  }
+}
+
 function detectPlatform() {
   const isMac = (window.hermesAvatar?.platform === 'darwin') ||
     navigator.userAgent.includes('Macintosh') ||
@@ -2791,6 +3053,7 @@ function detectPlatform() {
 
 function init() {
   detectPlatform()
+  adaptPlatformCommands()
   initThemeSwitcher()
   initWindowControls()
   initHistoryControls()

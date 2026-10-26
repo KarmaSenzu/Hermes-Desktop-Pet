@@ -95,8 +95,45 @@
             <button type="button" id="alert-open-pkg-btn" class="mini-btn primary">Buka Package Hub</button>
           </div>
 
-          <div class="group-header">Status Sistem & Service</div>
+          <div class="group-header" style="display:flex; justify-content:space-between; align-items:center;">
+            <span>Kondisi Prasyarat Memulai (Checklist)</span>
+            <span id="home-prereq-badge" class="badge" style="font-size:11px;">Pengecekan…</span>
+          </div>
           <div class="card">
+            <!-- 1. Karakter Avatar -->
+            <div class="settings-row">
+              <div class="format-emblem theme-emerald">
+                <svg class="lucide-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="5"/><path d="M20 21a8 8 0 0 0-16 0"/></svg>
+              </div>
+              <div class="format-info-col">
+                <div class="format-title-line">
+                  <span class="format-title">Model Karakter Visual</span>
+                </div>
+                <p class="format-desc-text" id="home-char-desc">Model avatar 2D / 3D aktif</p>
+              </div>
+              <div class="row-control">
+                <div id="active-char" class="active-char"></div>
+              </div>
+            </div>
+
+            <!-- 2. Hermes Daemon -->
+            <div class="settings-row">
+              <div class="format-emblem theme-indigo">
+                <svg class="lucide-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z"/><path d="M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z"/><path d="M12 2v2"/><path d="M12 12v2"/><path d="M12 20v2"/></svg>
+              </div>
+              <div class="format-info-col">
+                <div class="format-title-line">
+                  <span class="format-title">Hermes Daemon (Otak AI)</span>
+                </div>
+                <p class="format-desc-text">WebSocket JSON-RPC daemon di port 9119</p>
+              </div>
+              <div class="row-control" style="display:flex; align-items:center; gap:8px;">
+                <span id="hermes-status" class="badge">…</span>
+                <button type="button" id="home-start-hermes-btn" class="mini-btn use" style="display:none;" title="Jalankan Hermes serve otomatis">Nyalakan ⚡</button>
+              </div>
+            </div>
+
+            <!-- 3. 9Router -->
             <div class="settings-row">
               <div class="format-emblem theme-blue">
                 <svg class="lucide-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg>
@@ -111,24 +148,8 @@
                 <input id="router-check" type="checkbox" class="mac-switch" />
               </div>
             </div>
-            <div class="settings-row">
-              <div class="format-emblem theme-indigo">
-                <svg class="lucide-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z"/><path d="M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z"/><path d="M12 2v2"/><path d="M12 12v2"/><path d="M12 20v2"/></svg>
-              </div>
-              <div class="format-info-col">
-                <div class="format-title-line">
-                  <span class="format-title">Hermes Daemon (Otak AI)</span>
-                </div>
-                <p class="format-desc-text">WebSocket JSON-RPC daemon di port 9119</p>
-              </div>
-              <div class="row-control">
-                <span id="hermes-status" class="badge">…</span>
-              </div>
-            </div>
-          </div>
 
-          <div class="group-header">Konfigurasi Aktif Saat Ini</div>
-          <div class="card">
+            <!-- 4. Model LLM Aktif -->
             <div class="settings-row">
               <div class="format-emblem theme-purple">
                 <svg class="lucide-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/></svg>
@@ -143,18 +164,20 @@
                 <div id="home-model" class="llm-active"></div>
               </div>
             </div>
+
+            <!-- 5. Status TTS Suara -->
             <div class="settings-row">
-              <div class="format-emblem theme-emerald">
-                <svg class="lucide-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="5"/><path d="M20 21a8 8 0 0 0-16 0"/></svg>
+              <div class="format-emblem theme-amber">
+                <svg class="lucide-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H2v6h4l5 4V5z"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>
               </div>
               <div class="format-info-col">
                 <div class="format-title-line">
-                  <span class="format-title">Karakter Avatar</span>
+                  <span class="format-title">Mesin Suara Avatar (TTS)</span>
                 </div>
-                <p class="format-desc-text">Model visual 2D / 3D yang dimuat</p>
+                <p class="format-desc-text" id="home-tts-desc">Penyedia suara untuk respons audio</p>
               </div>
               <div class="row-control">
-                <div id="active-char" class="active-char"></div>
+                <span id="home-tts-status" class="badge">…</span>
               </div>
             </div>
           </div>
@@ -1007,6 +1030,36 @@
         <div class="modal-actions">
           <button id="confirm-cancel" class="modal-btn secondary">Batal</button>
           <button id="confirm-ok" class="modal-btn danger">Hapus</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal Peringatan Prasyarat Memulai Avatar (FTUE Alert) -->
+    <div id="prerequisite-modal" class="modal-overlay" hidden>
+      <div class="modal prerequisite-modal-box" role="dialog" aria-modal="true" aria-labelledby="prereq-modal-title">
+        <div style="display:flex; align-items:flex-start; gap:12px; margin-bottom:14px;">
+          <div class="format-emblem theme-amber" style="width:40px; height:40px; font-size:20px; flex-shrink:0;">⚠️</div>
+          <div>
+            <h2 id="prereq-modal-title" class="modal-title" style="margin:0 0 4px; font-size:16px;">Prasyarat Sistem Belum Siap</h2>
+            <div style="font-size:12.5px; color:var(--text-secondary); line-height:1.4;">
+              Beberapa komponen belum aktif sebelum avatar dimulai:
+            </div>
+          </div>
+        </div>
+
+        <div id="prereq-modal-list" class="prereq-modal-list" style="display:flex; flex-direction:column; gap:8px; margin-bottom:16px;">
+          <!-- Dynamically populated checklist -->
+        </div>
+
+        <p class="modal-message" style="margin:0 0 18px; font-size:12.5px; line-height:1.45; color:var(--text-secondary);">
+          Pilih salah satu opsi di bawah untuk menyalakan otomatis, membuka Package Hub, atau tetap menjalankan avatar dalam mode visual tampilan saja.
+        </p>
+
+        <div class="modal-actions" style="display:flex; flex-wrap:wrap; justify-content:flex-end; gap:8px;">
+          <button type="button" id="prereq-cancel-btn" class="modal-btn secondary">Batal</button>
+          <button type="button" id="prereq-hub-btn" class="modal-btn secondary">Buka Package Hub</button>
+          <button type="button" id="prereq-auto-btn" class="modal-btn primary" style="background:var(--accent,#3b82f6); color:#fff;">⚡ Nyalakan Otomatis</button>
+          <button type="button" id="prereq-force-btn" class="modal-btn" style="background:rgba(255,255,255,0.06); color:var(--text); border:1px solid var(--border);">Tetap Mulai Saja</button>
         </div>
       </div>
     </div>

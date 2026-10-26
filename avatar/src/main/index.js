@@ -6,9 +6,26 @@ import { homedir } from 'os'
 import http from 'http'
 import https from 'https'
 import { execFile, spawn } from 'child_process'
-import { startAllServices, stopAllServices, SESSION_TOKEN, isPortOpen, ROUTER_PORT, HERMES_PORT, KOKORO_PORT, startKokoro } from './service-manager.js'
+import {
+  startAllServices,
+  stopAllServices,
+  SESSION_TOKEN,
+  isPortOpen,
+  ROUTER_PORT,
+  HERMES_PORT,
+  KOKORO_PORT,
+  startKokoro,
+  startHermes,
+  resolvePythonCmd,
+  resolveHermesCmd,
+  resolveHermesConfigPath,
+  fixSystemPath
+} from './service-manager.js'
 import { connectGateway, disconnectGateway, request as gatewayRequest, isGatewayConnected } from './hermes-gateway.js'
 import { registerShortcuts, unregisterShortcuts, getShortcutList, updateShortcut } from './shortcuts.js'
+
+// Inisialisasi perbaikan PATH untuk macOS/Windows sedini mungkin
+fixSystemPath()
 
 /**
  * Main process — Hermes 3D Avatar
@@ -272,6 +289,10 @@ ipcMain.handle('avatar:start', (_event, modelPath) => {
     ? (isAbsolute(modelPath) ? modelPath : join(__dirname, '../../', modelPath))
     : defaultPath
 
+  if (!existsSync(resolvedPath)) {
+    return { ok: false, error: `File model tidak ditemukan di disk: ${resolvedPath}` }
+  }
+
   if (avatarWindow && !avatarWindow.isDestroyed()) {
     avatarWindow.focus()
     avatarWindow.webContents.send('avatar:load-model', resolvedPath)
@@ -280,6 +301,16 @@ ipcMain.handle('avatar:start', (_event, modelPath) => {
   createAvatarWindow(resolvedPath)
   if (launcherWindow) launcherWindow.hide()
   return { ok: true, reused: false }
+})
+
+// IPC: jalankan daemon Hermes AI (port 9119) secara on-demand
+ipcMain.handle('avatar:start-hermes-server', async () => {
+  try {
+    const res = await startHermes()
+    return res
+  } catch (err) {
+    return { ok: false, error: err?.message || String(err) }
+  }
 })
 
 // IPC: avatar window bisa minta fokus/drag via OS-native (drag region).
@@ -361,7 +392,7 @@ ipcMain.handle('avatar:window-maximize', (event) => {
   return { ok: true }
 })
 
-// IPC: jalankan perintah di terminal sistem baru (PowerShell transparan untuk instalasi/service)
+// IPC: jalankan perintah di terminal sistem baru (PowerShell di Windows, Terminal.app di macOS via AppleScript)
 ipcMain.handle('avatar:run-in-terminal', async (_event, cmd, workingDir) => {
   try {
     const candidateRoots = [
@@ -381,8 +412,26 @@ ipcMain.handle('avatar:run-in-terminal', async (_event, cmd, workingDir) => {
         stdio: 'ignore'
       })
       child.unref()
+    } else if (process.platform === 'darwin') {
+      // macOS: Buka Terminal.app interaktif sungguhan via osascript
+      let macCmd = cmd.replace(/^py\s+/, 'python3 ')
+      if (macCmd.includes('pip install') && !macCmd.includes('--break-system-packages')) {
+        macCmd += ' --break-system-packages'
+      }
+      const safeMacCmd = macCmd.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
+      const safeCwd = cwd.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
+      const appleScript = `tell application "Terminal"
+        activate
+        do script "cd \\"${safeCwd}\\" && ${safeMacCmd}"
+      end tell`
+      const child = spawn('osascript', ['-e', appleScript], {
+        detached: true,
+        stdio: 'ignore'
+      })
+      child.unref()
     } else {
-      const child = spawn('bash', ['-c', `cd "${cwd}" && ${cmd}`], {
+      let linuxCmd = cmd.replace(/^py\s+/, 'python3 ')
+      const child = spawn('bash', ['-c', `cd "${cwd}" && ${linuxCmd}`], {
         cwd,
         detached: true,
         stdio: 'ignore'
@@ -461,39 +510,22 @@ ipcMain.handle('avatar:hermes-config', () => {
 ipcMain.handle('avatar:service-status', async () => {
   const router = await isPortOpen(ROUTER_PORT)
   const hermes = await isPortOpen(HERMES_PORT)
-  const kokoro = await isPortOpen(8880)
+  const kokoro = await isPortOpen(KOKORO_PORT)
 
-  // Cek deteksi Python di sistem
-  let pythonOk = false
-  let pythonVersion = ''
-  try {
-    const pyOut = await new Promise((res, rej) => {
-      execFile('py', ['--version'], { timeout: 3000 }, (err, stdout) => {
-        if (!err && stdout) return res(stdout.trim())
-        execFile('python', ['--version'], { timeout: 3000 }, (err2, stdout2) => {
-          if (!err2 && stdout2) return res(stdout2.trim())
-          rej(err2 || err)
-        })
-      })
-    })
-    pythonOk = true
-    pythonVersion = pyOut
-  } catch {
-    pythonOk = false
-    pythonVersion = 'Belum terpasang'
-  }
+  // Cek deteksi Python di sistem menggunakan resolver cross-platform
+  const pyInfo = await resolvePythonCmd()
+  const pythonOk = pyInfo.ok
+  const pythonVersion = pyInfo.version
+  const pyCmd = pyInfo.cmd
 
   // Cek apakah paket python kokoro-onnx & soundfile terpasang di environment
   let kokoroInstalled = false
   if (pythonOk) {
     try {
       await new Promise((res, rej) => {
-        execFile('py', ['-c', 'import kokoro_onnx, soundfile; print("ok")'], { timeout: 4000 }, (err, stdout) => {
+        execFile(pyCmd, ['-c', 'import kokoro_onnx, soundfile; print("ok")'], { timeout: 4000, env: process.env }, (err, stdout) => {
           if (!err && stdout && stdout.includes('ok')) return res(true)
-          execFile('python', ['-c', 'import kokoro_onnx, soundfile; print("ok")'], { timeout: 4000 }, (err2, stdout2) => {
-            if (!err2 && stdout2 && stdout2.includes('ok')) return res(true)
-            rej(err2 || err)
-          })
+          rej(err || new Error('Module import failed'))
         })
       })
       kokoroInstalled = true
@@ -541,22 +573,34 @@ ipcMain.handle('avatar:start-kokoro-server', async () => {
   }
 })
 
-// IPC: install dependensi Kokoro via pip
+// IPC: install dependensi Kokoro via pip (mendukung Windows, macOS & Linux termasuk flag --break-system-packages bila diperlukan)
 ipcMain.handle('avatar:install-kokoro-deps', async () => {
   try {
-    const out = await new Promise((res, rej) => {
-      execFile('py', ['-m', 'pip', 'install', 'kokoro-onnx', 'soundfile'], { timeout: 180000 }, (err, stdout, stderr) => {
-        if (err) {
-          execFile('python', ['-m', 'pip', 'install', 'kokoro-onnx', 'soundfile'], { timeout: 180000 }, (err2, stdout2, stderr2) => {
-            if (err2) return rej(new Error(stderr2 || stdout2 || err2.message))
-            res(stdout2 || 'Berhasil terpasang')
-          })
-          return
-        }
+    const pyInfo = await resolvePythonCmd()
+    const pyCmd = pyInfo.cmd
+
+    const runPip = (extraArgs = []) => new Promise((res, rej) => {
+      execFile(pyCmd, ['-m', 'pip', 'install', 'kokoro-onnx', 'soundfile', ...extraArgs], { timeout: 180000, env: process.env }, (err, stdout, stderr) => {
+        if (err) return rej(new Error(stderr || stdout || err.message))
         res(stdout || 'Berhasil terpasang')
       })
     })
-    return { ok: true, output: out }
+
+    try {
+      const out = await runPip()
+      return { ok: true, output: out }
+    } catch (err) {
+      // Fallback untuk macOS Homebrew Python PEP 668 externally managed environment
+      if (err.message?.includes('externally-managed-environment') || process.platform !== 'win32') {
+        try {
+          const out = await runPip(['--break-system-packages'])
+          return { ok: true, output: out }
+        } catch (err2) {
+          throw err2
+        }
+      }
+      throw err
+    }
   } catch (err) {
     return { ok: false, error: err?.message || String(err) }
   }
@@ -565,19 +609,26 @@ ipcMain.handle('avatar:install-kokoro-deps', async () => {
 // IPC: uninstall dependensi Kokoro via pip
 ipcMain.handle('avatar:uninstall-kokoro-deps', async () => {
   try {
-    const out = await new Promise((res, rej) => {
-      execFile('py', ['-m', 'pip', 'uninstall', '-y', 'kokoro-onnx', 'soundfile'], { timeout: 60000 }, (err, stdout, stderr) => {
-        if (err) {
-          execFile('python', ['-m', 'pip', 'uninstall', '-y', 'kokoro-onnx', 'soundfile'], { timeout: 60000 }, (err2, stdout2, stderr2) => {
-            if (err2) return rej(new Error(stderr2 || stdout2 || err2.message))
-            res(stdout2 || 'Berhasil dicopot')
-          })
-          return
-        }
+    const pyInfo = await resolvePythonCmd()
+    const pyCmd = pyInfo.cmd
+
+    const runUninstall = (extraArgs = []) => new Promise((res, rej) => {
+      execFile(pyCmd, ['-m', 'pip', 'uninstall', '-y', 'kokoro-onnx', 'soundfile', ...extraArgs], { timeout: 60000, env: process.env }, (err, stdout, stderr) => {
+        if (err) return rej(new Error(stderr || stdout || err.message))
         res(stdout || 'Berhasil dicopot')
       })
     })
-    return { ok: true, output: out }
+
+    try {
+      const out = await runUninstall()
+      return { ok: true, output: out }
+    } catch (err) {
+      if (process.platform !== 'win32') {
+        const out = await runUninstall(['--break-system-packages'])
+        return { ok: true, output: out }
+      }
+      throw err
+    }
   } catch (err) {
     return { ok: false, error: err?.message || String(err) }
   }
@@ -727,23 +778,85 @@ ipcMain.handle('avatar:test-connection', async (_event, url, model, apiKey) => {
 
 // Helper: jalankan `hermes` CLI via execFile (dipakai set-model & install-skill).
 function runHermes(args, timeout = 30000) {
-  const hermesCmd = process.platform === 'win32' ? 'hermes.cmd' : 'hermes'
+  const hermesCmd = resolveHermesCmd()
   return new Promise((resolve, reject) => {
-    execFile(hermesCmd, args, { timeout }, (err, stdout, stderr) => {
+    execFile(hermesCmd, args, { timeout, shell: process.platform === 'win32', env: process.env }, (err, stdout, stderr) => {
       if (err) reject(new Error(stderr?.trim() || err.message))
       else resolve(stdout?.trim() || '')
     })
   })
 }
 
-// IPC: set model aktif via `hermes config set` (mekanisme resmi, pasti benar).
+// Helper: tulis update model langsung ke config.yaml bila CLI / RPC tidak tersedia
+async function updateModelConfigYaml(modelName) {
+  try {
+    const cfgPath = resolveHermesConfigPath()
+    let cfg = ''
+    if (existsSync(cfgPath)) {
+      cfg = await readFile(cfgPath, 'utf8')
+    } else {
+      await mkdir(join(cfgPath, '..'), { recursive: true })
+    }
+
+    if (/^model:\s*$/m.test(cfg)) {
+      if (/^\s+default:/m.test(cfg)) {
+        cfg = cfg.replace(/^(\s+default:\s*).*$/m, `$1${modelName}`)
+      } else {
+        cfg = cfg.replace(/^(model:\s*)$/m, `$1\n  default: ${modelName}`)
+      }
+      if (/^\s+provider:/m.test(cfg)) {
+        cfg = cfg.replace(/^(\s+provider:\s*).*$/m, `$1custom`)
+      } else {
+        cfg = cfg.replace(/^(model:\s*)$/m, `$1\n  provider: custom`)
+      }
+    } else {
+      cfg += `\nmodel:\n  default: ${modelName}\n  provider: custom\n`
+    }
+
+    await writeFile(cfgPath, cfg, 'utf8')
+    return true
+  } catch (err) {
+    console.warn('[updateModelConfigYaml] failed:', err?.message || err)
+    return false
+  }
+}
+
+// IPC: set model aktif via 3-layer (RPC gateway -> hermes CLI -> config.yaml fallback).
 ipcMain.handle('avatar:set-model', async (_event, model) => {
   try {
     const modelName = String(model || '').trim()
     if (!modelName) return { ok: false, error: 'Model kosong.' }
 
-    await runHermes(['config', 'set', 'model.default', modelName])
-    await runHermes(['config', 'set', 'model.provider', 'custom'])
+    let anySuccess = false
+    let lastErr = null
+
+    // Layer 1: RPC gateway bila Hermes serve sedang connect
+    try {
+      if (isGatewayConnected()) {
+        await gatewayRequest('config.set', { key: 'model.default', value: modelName })
+        await gatewayRequest('config.set', { key: 'model.provider', value: 'custom' })
+        anySuccess = true
+      }
+    } catch (e) {
+      lastErr = e
+    }
+
+    // Layer 2: Hermes CLI
+    try {
+      await runHermes(['config', 'set', 'model.default', modelName])
+      await runHermes(['config', 'set', 'model.provider', 'custom'])
+      anySuccess = true
+    } catch (e) {
+      if (!lastErr) lastErr = e
+    }
+
+    // Layer 3: Tulis langsung ke config.yaml
+    const fileOk = await updateModelConfigYaml(modelName)
+    if (fileOk) anySuccess = true
+
+    if (!anySuccess) {
+      throw lastErr || new Error('Gagal menerapkan konfigurasi model')
+    }
 
     return { ok: true, model: modelName }
   } catch (err) {
@@ -752,20 +865,22 @@ ipcMain.handle('avatar:set-model', async (_event, model) => {
 })
 
 // IPC: set TTS config (voice) ke Hermes — tulis config.yaml langsung.
-// Catatan Hermes: `config.set` RPC TIDAK dukung key tts.*, jadi edit file langsung.
 ipcMain.handle('avatar:set-tts-config', async (_event, { voice }) => {
   try {
     if (!voice) return { ok: true }
 
-    const cfgPath = join(homedir(), '.hermes', 'config.yaml')
-    let cfg = await readFile(cfgPath, 'utf8')
+    const cfgPath = resolveHermesConfigPath()
+    let cfg = ''
+    if (existsSync(cfgPath)) {
+      cfg = await readFile(cfgPath, 'utf8')
+    } else {
+      await mkdir(join(cfgPath, '..'), { recursive: true })
+    }
 
     // Pastikan blok tts.edge.voice ada (update atau sisipkan).
     if (/^tts:\s*$/m.test(cfg)) {
-      // Update/replace tts.edge.voice dalam blok tts.
       cfg = updateYamlNested(cfg, 'tts', 'edge', 'voice', voice)
     } else {
-      // Tambah blok tts di akhir.
       cfg += `\ntts:\n  edge:\n    voice: ${voice}\n`
     }
 
@@ -779,8 +894,13 @@ ipcMain.handle('avatar:set-tts-config', async (_event, { voice }) => {
 // IPC: set STT config (model + bahasa) — tulis config.yaml langsung.
 ipcMain.handle('avatar:set-stt-config', async (_event, { model, language }) => {
   try {
-    const cfgPath = join(homedir(), '.hermes', 'config.yaml')
-    let cfg = await readFile(cfgPath, 'utf8')
+    const cfgPath = resolveHermesConfigPath()
+    let cfg = ''
+    if (existsSync(cfgPath)) {
+      cfg = await readFile(cfgPath, 'utf8')
+    } else {
+      await mkdir(join(cfgPath, '..'), { recursive: true })
+    }
 
     if (!/^stt:\s*$/m.test(cfg)) {
       cfg += '\nstt:\n  local:\n    model: base\n    language: ""\n'

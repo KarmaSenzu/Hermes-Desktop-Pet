@@ -28,24 +28,95 @@ const HERMES_HOST = '127.0.0.1'
 const STATE_DIR = join(homedir(), '.hermes-avatar')
 const TOKEN_FILE = join(STATE_DIR, 'session-token')
 
+/**
+ * Pastikan process.env.PATH memiliki direktori umum binary (terutama di macOS GUI app
+ * yang biasanya tidak mewarisi PATH terminal Homebrew/pyenv, serta Windows Python Scripts).
+ */
+function fixSystemPath() {
+  const delimiter = process.platform === 'win32' ? ';' : ':'
+  const currentPath = process.env.PATH || ''
+  const currentParts = currentPath.split(delimiter)
+  const home = homedir()
+
+  const additionalPaths = process.platform === 'win32'
+    ? [
+        join(home, 'AppData', 'Local', 'hermes', 'hermes-agent', 'venv', 'Scripts'),
+        join(home, 'AppData', 'Local', 'hermes', 'venv', 'Scripts'),
+        join(home, '.hermes', 'venv', 'Scripts'),
+        join(home, 'AppData', 'Local', 'Programs', 'Python', 'Launcher'),
+        join(home, 'AppData', 'Local', 'Programs', 'Python', 'Python313', 'Scripts'),
+        join(home, 'AppData', 'Local', 'Programs', 'Python', 'Python312', 'Scripts'),
+        join(home, 'AppData', 'Local', 'Programs', 'Python', 'Python311', 'Scripts'),
+        join(home, 'AppData', 'Local', 'Programs', 'Python', 'Python310', 'Scripts')
+      ]
+    : [
+        '/opt/homebrew/bin',
+        '/opt/homebrew/sbin',
+        '/usr/local/bin',
+        '/usr/local/sbin',
+        join(home, '.local', 'bin'),
+        join(home, '.hermes', 'venv', 'bin'),
+        join(home, '.hermes-agent', 'venv', 'bin'),
+        join(home, '.cargo', 'bin'),
+        join(home, 'Library', 'Python', '3.12', 'bin'),
+        join(home, 'Library', 'Python', '3.11', 'bin'),
+        join(home, 'Library', 'Python', '3.10', 'bin'),
+        '/Library/Frameworks/Python.framework/Versions/Current/bin'
+      ]
+
+  const newParts = [...currentParts]
+  for (const p of additionalPaths) {
+    if (existsSync(p) && !newParts.includes(p)) {
+      newParts.unshift(p)
+    }
+  }
+  process.env.PATH = newParts.join(delimiter)
+}
+
+// Jalankan perbaikan PATH di awal modul
+fixSystemPath()
+
 function resolveHermesCmd() {
   if (process.env['HERMES_BIN'] && existsSync(process.env['HERMES_BIN'])) {
     return process.env['HERMES_BIN']
   }
-  const candidatePaths = [
-    join(homedir(), 'AppData', 'Local', 'hermes', 'hermes-agent', 'venv', 'Scripts', 'hermes.exe'),
-    join(homedir(), 'AppData', 'Local', 'hermes', 'venv', 'Scripts', 'hermes.exe'),
-    join(homedir(), '.hermes', 'venv', 'Scripts', 'hermes.exe'),
-    join(homedir(), 'AppData', 'Local', 'Programs', 'hermes', 'hermes.exe')
-  ]
+  const home = homedir()
+  const candidatePaths = process.platform === 'win32'
+    ? [
+        join(home, 'AppData', 'Local', 'hermes', 'hermes-agent', 'venv', 'Scripts', 'hermes.exe'),
+        join(home, 'AppData', 'Local', 'hermes', 'venv', 'Scripts', 'hermes.exe'),
+        join(home, '.hermes', 'venv', 'Scripts', 'hermes.exe'),
+        join(home, 'AppData', 'Local', 'Programs', 'hermes', 'hermes.exe')
+      ]
+    : [
+        join(home, '.local', 'bin', 'hermes'),
+        join(home, '.hermes', 'venv', 'bin', 'hermes'),
+        join(home, '.hermes-agent', 'venv', 'bin', 'hermes'),
+        '/opt/homebrew/bin/hermes',
+        '/usr/local/bin/hermes',
+        '/usr/bin/hermes'
+      ]
   for (const p of candidatePaths) {
     if (existsSync(p)) return p
   }
-  return 'hermes'
+  return process.platform === 'win32' ? 'hermes.exe' : 'hermes'
 }
 
-// Command hermes — prioritaskan binary di folder instalasi spesifik pengguna Windows
-const HERMES_CMD = resolveHermesCmd()
+function resolveHermesConfigPath() {
+  const home = homedir()
+  const candidates = [
+    join(home, '.hermes', 'config.yaml'),
+    join(home, 'AppData', 'Local', 'hermes', 'config.yaml'),
+    join(home, '.config', 'hermes', 'config.yaml')
+  ]
+  for (const c of candidates) {
+    if (existsSync(c)) return c
+  }
+  if (process.platform === 'win32' && existsSync(join(home, 'AppData', 'Local', 'hermes'))) {
+    return join(home, 'AppData', 'Local', 'hermes', 'config.yaml')
+  }
+  return join(home, '.hermes', 'config.yaml')
+}
 
 // Token persisten: reuse token lama bila ada, agar konsisten antar sesi.
 const SESSION_TOKEN = loadOrCreateToken()
@@ -116,16 +187,21 @@ async function checkRouter() {
  * Jalankan hermes serve jika belum jalan di port 9119.
  * Token PERSISTEN di-inject agar cocok dengan avatar.
  */
+/**
+ * Jalankan hermes serve jika belum jalan di port 9119.
+ * Token PERSISTEN di-inject agar cocok dengan avatar.
+ */
 async function startHermes() {
   if (await isPortOpen(HERMES_PORT)) {
     return { already: true, ok: true }
   }
+  const cmd = resolveHermesCmd()
+  console.log(`[ServiceManager] Starting Hermes daemon via: ${cmd}`)
   const child = spawn(
-    HERMES_CMD,
+    cmd,
     ['serve', '--host', HERMES_HOST, '--port', String(HERMES_PORT)],
     {
       stdio: 'ignore',
-      // Windows: spawn .cmd butuh shell; Linux/macOS tidak.
       shell: process.platform === 'win32',
       env: {
         ...process.env,
@@ -134,21 +210,55 @@ async function startHermes() {
     }
   )
   children.push({ name: 'hermes', child })
-  const ok = await waitForPort(HERMES_PORT)
+  const ok = await waitForPort(HERMES_PORT, 12000)
   return { already: false, ok, child }
 }
 
-function resolvePythonCmd() {
-  return new Promise((res) => {
-    if (process.platform !== 'win32') return res('python3')
-    execFile('py', ['--version'], { timeout: 1500 }, (err) => {
-      if (!err) return res('py')
-      execFile('python', ['--version'], { timeout: 1500 }, (err2) => {
-        if (!err2) return res('python')
-        res('py')
+/**
+ * Deteksi dan verifikasi binary Python yang aktif di sistem.
+ * Mengembalikan objek { cmd, version, ok }.
+ */
+async function resolvePythonCmd() {
+  const home = homedir()
+  const candidates = process.platform === 'win32'
+    ? [
+        'py',
+        'python',
+        join(home, 'AppData', 'Local', 'Programs', 'Python', 'Python313', 'python.exe'),
+        join(home, 'AppData', 'Local', 'Programs', 'Python', 'Python312', 'python.exe'),
+        join(home, 'AppData', 'Local', 'Programs', 'Python', 'Python311', 'python.exe'),
+        join(home, 'AppData', 'Local', 'Programs', 'Python', 'Python310', 'python.exe')
+      ]
+    : [
+        'python3',
+        '/opt/homebrew/bin/python3',
+        '/usr/local/bin/python3',
+        join(home, '.local', 'bin', 'python3'),
+        join(home, '.hermes', 'venv', 'bin', 'python3'),
+        join(home, '.hermes', 'venv', 'bin', 'python'),
+        '/usr/bin/python3',
+        'python'
+      ]
+
+  for (const cmd of candidates) {
+    if (cmd.includes('/') || cmd.includes('\\')) {
+      if (!existsSync(cmd)) continue
+    }
+    const ver = await new Promise((res) => {
+      execFile(cmd, ['--version'], { timeout: 2000, env: process.env }, (err, stdout, stderr) => {
+        if (!err && (stdout || stderr)) {
+          const v = (stdout || stderr).trim()
+          if (/Python\s+\d+/i.test(v)) return res(v)
+        }
+        res(null)
       })
     })
-  })
+    if (ver) {
+      return { cmd, version: ver, ok: true }
+    }
+  }
+
+  return { cmd: process.platform === 'win32' ? 'py' : 'python3', version: 'Belum terpasang', ok: false }
 }
 
 /**
@@ -172,14 +282,16 @@ async function startKokoro() {
       return { ok: false, error: 'Script kokoro_server.py tidak ditemukan' }
     }
 
-    const pyCmd = await resolvePythonCmd()
+    const pyInfo = await resolvePythonCmd()
+    const pyCmd = pyInfo.cmd
     const scriptDir = join(validScript, '..', '..')
     const quotedScript = process.platform === 'win32' ? `"${validScript}"` : validScript
     const child = spawn(pyCmd, [quotedScript], {
       cwd: scriptDir,
       detached: true,
       stdio: 'ignore',
-      shell: true
+      shell: true,
+      env: process.env
     })
     child.unref()
     children.push({ name: 'kokoro', child })
@@ -269,4 +381,16 @@ export function stopAllServices() {
   children.length = 0
 }
 
-export { SESSION_TOKEN, HERMES_PORT, ROUTER_PORT, KOKORO_PORT, isPortOpen, startKokoro }
+export {
+  SESSION_TOKEN,
+  HERMES_PORT,
+  ROUTER_PORT,
+  KOKORO_PORT,
+  isPortOpen,
+  startHermes,
+  startKokoro,
+  resolvePythonCmd,
+  resolveHermesCmd,
+  resolveHermesConfigPath,
+  fixSystemPath
+}
