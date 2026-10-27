@@ -33,6 +33,7 @@ import {
 import { connectGateway, disconnectGateway, request as gatewayRequest, isGatewayConnected } from './hermes-gateway.js'
 import { registerShortcuts, unregisterShortcuts, getShortcutList, updateShortcut } from './shortcuts.js'
 import { startBridgeServer, stopBridgeServer, BRIDGE_PORT } from './bridge-server.js'
+import { loadOrCreateBridgeToken, BRIDGE_TOKEN_FILE } from './bridge-token.js'
 
 // Inisialisasi perbaikan PATH untuk macOS/Windows sedini mungkin
 fixSystemPath()
@@ -2509,9 +2510,10 @@ app.whenReady().then(() => {
   registerGlobalShortcuts()
 
   // Jalankan bridge server untuk Web Companion (Chrome & Edge Extension) di port 9124
+  console.log('[Bridge Server] Token file:', BRIDGE_TOKEN_FILE)
   startBridgeServer((payload) => {
     handleIncomingWebPrompt(payload)
-  })
+  }, loadOrCreateBridgeToken())
 
   // Jalankan service (9Router + hermes serve) secara otomatis di background.
   startAllServices()

@@ -17,7 +17,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   const btnSubmit = document.getElementById('btn-submit')
   const statusToast = document.getElementById('status-toast')
   const linkOpenDocs = document.getElementById('link-open-docs')
+  const bridgeTokenInput = document.getElementById('bridge-token-input')
+  const btnSaveToken = document.getElementById('btn-save-token')
+  const tokenStatusHint = document.getElementById('token-status-hint')
 
+  const MASKED_TOKEN = '****************'
   let activeTab = null
   let isAvatarOnline = false
 
@@ -34,10 +38,64 @@ document.addEventListener('DOMContentLoaded', async () => {
     console.error(err)
   }
 
+  // Muat status token bridge dari chrome.storage.local (hanya ditampilkan dalam bentuk bintang)
+  async function loadTokenState() {
+    try {
+      const data = await chrome.storage.local.get('bridgeToken')
+      if (data?.bridgeToken) {
+        bridgeTokenInput.value = MASKED_TOKEN
+        if (tokenStatusHint) tokenStatusHint.textContent = 'Tersimpan (••••••••)'
+      } else {
+        bridgeTokenInput.value = ''
+        if (tokenStatusHint) tokenStatusHint.textContent = 'Belum diset'
+      }
+    } catch {
+      bridgeTokenInput.value = ''
+    }
+  }
+
+  bridgeTokenInput?.addEventListener('focus', () => {
+    if (bridgeTokenInput.value === MASKED_TOKEN) {
+      bridgeTokenInput.value = ''
+    }
+  })
+
+  bridgeTokenInput?.addEventListener('blur', async () => {
+    if (!bridgeTokenInput.value.trim()) {
+      const data = await chrome.storage.local.get('bridgeToken')
+      if (data?.bridgeToken) {
+        bridgeTokenInput.value = MASKED_TOKEN
+      }
+    }
+  })
+
+  btnSaveToken?.addEventListener('click', async () => {
+    const val = (bridgeTokenInput.value || '').trim()
+    if (!val) {
+      showToast('Token bridge tidak boleh kosong!', true)
+      return
+    }
+    if (val === MASKED_TOKEN) {
+      showToast('Token tidak berubah.')
+      return
+    }
+    await chrome.storage.local.set({ bridgeToken: val })
+    bridgeTokenInput.value = MASKED_TOKEN
+    if (tokenStatusHint) tokenStatusHint.textContent = 'Tersimpan (••••••••)'
+    showToast('Token bridge berhasil disimpan!')
+    await checkConnection()
+  })
+
   // 2. Periksa status koneksi ke Desktop Pet
   async function checkConnection() {
     try {
       const response = await chrome.runtime.sendMessage({ action: 'PING_AVATAR' })
+      if (response?.authError) {
+        isAvatarOnline = false
+        updateBadge(false, 'Token bridge belum diset / salah')
+        showToast('Token bridge belum diset / salah', true)
+        return
+      }
       isAvatarOnline = !!(response && response.online)
       updateBadge(isAvatarOnline)
     } catch {
@@ -46,7 +104,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
 
-  function updateBadge(online) {
+  function updateBadge(online, customMsg = null) {
+    if (customMsg) {
+      connBadge.className = 'conn-badge offline'
+      connText.textContent = 'Auth Error 🔒'
+      connBadge.title = customMsg
+      return
+    }
     connBadge.className = 'conn-badge ' + (online ? 'online' : 'offline')
     connText.textContent = online ? 'Terhubung 🟢' : 'Avatar Mati 🔴'
     connBadge.title = online
@@ -62,6 +126,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       statusToast.classList.add('hidden')
     }, 4500)
   }
+
+  await loadTokenState()
 
   // 3. Ambil teks artikel dari tab aktif
   async function getTabContent() {

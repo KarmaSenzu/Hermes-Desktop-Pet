@@ -39,7 +39,26 @@ Ekstensi akan langsung terpasang dan icon Hermes 🤖 akan muncul di toolbar bro
 
 ---
 
+## 🔑 Autentikasi & Token Bridge
+
+Demi keamanan dan mencegah eksploitasi dari situs web asing (CORS/DNS Rebinding), komunikasi ke bridge server `127.0.0.1:9124` dilindungi token autentikasi 64-karakter unik.
+
+Token ini di-generate otomatis oleh aplikasi desktop dan tersimpan di file:
+- **Windows:** `%USERPROFILE%\.hermes-avatar\bridge-token`
+- **macOS / Linux:** `~/.hermes-avatar/bridge-token`
+
+### Cara Menghubungkan Ekstensi:
+1. Buka file `%USERPROFILE%\.hermes-avatar\bridge-token` dengan text editor (misalnya Notepad).
+2. Salin (copy) string token 64-karakter di dalam file tersebut.
+3. Buka pop-up ekstensi Hermes di browser, tempelkan ke kolom **"Token Bridge"**, lalu klik **"Simpan"**.
+4. Status akan berubah menjadi **Terhubung 🟢**. Token disimpan di `chrome.storage.local` browser Anda dan hanya ditampilkan dalam bentuk bertanda bintang (`••••••••`).
+
+---
+
 ## 🔒 Privasi & Keamanan
 
 - **100% Localhost:** Seluruh komunikasi berjalan langsung secara lokal di komputer Anda melalui port `127.0.0.1:9124`.
+- **Wajib Token & Origin Check:** Request wajib menyertakan token bridge dan dicek agar hanya ekstensi browser sah yang dapat mengirim prompt.
+- **Konfirmasi Manual di Avatar:** Setiap prompt web yang masuk memerlukan klik tombol konfirmasi pengguna di jendela chat desktop sebelum diteruskan ke LLM.
 - Tidak ada data yang dikirim ke server pihak ketiga atau server cloud eksternal selain model LLM yang sudah Anda konfigurasikan di Hermes CLI (`~/.hermes/config.yaml`).
+
