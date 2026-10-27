@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, protocol, dialog, screen, safeStorage, shell, Menu } from 'electron'
+import { app, BrowserWindow, ipcMain, protocol, dialog, screen, safeStorage, shell, Menu, session } from 'electron'
 import { join, extname, isAbsolute, basename, dirname } from 'path'
 import { readFile, writeFile, mkdir, rm } from 'fs/promises'
 import { existsSync, statSync, readdirSync, cpSync, mkdirSync, createWriteStream } from 'fs'
@@ -2488,7 +2488,21 @@ function registerModelProtocol() {
   })
 }
 
+app.on('web-contents-created', (_e, wc) => {
+  wc.setWindowOpenHandler(({ url }) => {
+    if (/^https?:\/\//i.test(url)) shell.openExternal(url)
+    return { action: 'deny' }
+  })
+  wc.on('will-navigate', (e, url) => {
+    const dev = process.env['ELECTRON_RENDERER_URL']
+    if (!(url.startsWith('file://') || (dev && url.startsWith(dev)))) e.preventDefault()
+  })
+  wc.on('will-attach-webview', (e) => e.preventDefault())
+})
+
 app.whenReady().then(() => {
+  session.defaultSession.setPermissionRequestHandler((_wc, permission, cb) => cb(permission === 'media'))
+  session.defaultSession.setPermissionCheckHandler((_wc, permission) => permission === 'media')
   Menu.setApplicationMenu(null)
   registerModelProtocol()
   ensureDeployedCompanionAndScripts()

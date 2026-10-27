@@ -13,6 +13,7 @@
  */
 
 import { spawn, execFile, execSync } from 'child_process'
+import { randomBytes } from 'node:crypto'
 import net from 'net'
 import { readFileSync, writeFileSync, mkdirSync, existsSync, cpSync } from 'fs'
 import { join, dirname } from 'path'
@@ -127,10 +128,10 @@ function loadOrCreateToken() {
   } catch {
     // ignore
   }
-  const token = 'avatar-' + Math.random().toString(36).slice(2) + Date.now().toString(36)
+  const token = 'avatar-' + randomBytes(24).toString('hex')
   try {
     mkdirSync(STATE_DIR, { recursive: true })
-    writeFileSync(TOKEN_FILE, token, 'utf8')
+    writeFileSync(TOKEN_FILE, token, { encoding: 'utf8', mode: 0o600 })
   } catch {
     // ignore (hanya cache)
   }
@@ -230,18 +231,47 @@ async function startHermes() {
  */
 async function restartHermes() {
   const existing = children.find((c) => c.name === 'hermes')
-  if (existing && existing.child) {
-    try { existing.child.kill('SIGTERM') } catch (_) {}
-    const idx = children.indexOf(existing)
-    if (idx >= 0) children.splice(idx, 1)
-  }
-  try {
-    const { execSync } = await import('child_process')
-    if (process.platform === 'win32') {
-      execSync('powershell -NoProfile -Command "Get-Process -Name hermes -ErrorAction SilentlyContinue | Stop-Process -Force"', { stdio: 'ignore' })
+  if (!existing || !existing.child || typeof existing.child.pid !== 'number') {
+    return {
+      ok: false,
+      already: true,
+      error: 'Hermes dijalankan di luar aplikasi. Restart manual diperlukan agar konfigurasi baru terbaca.'
     }
-  } catch (_) {}
-  await new Promise((r) => setTimeout(r, 600))
+  }
+
+  const child = existing.child
+  const pid = child.pid
+
+  const idx = children.indexOf(existing)
+  if (idx >= 0) children.splice(idx, 1)
+
+  await new Promise((resolve) => {
+    let timer = null
+    const onExit = () => {
+      if (timer) clearTimeout(timer)
+      resolve()
+    }
+    timer = setTimeout(() => {
+      child.removeListener('exit', onExit)
+      resolve()
+    }, 5000)
+
+    if (child.exitCode !== null || child.killed) {
+      clearTimeout(timer)
+      return resolve()
+    }
+
+    child.once('exit', onExit)
+
+    if (process.platform === 'win32') {
+      execFile('taskkill', ['/PID', String(pid), '/T', '/F'], () => {})
+    } else {
+      try {
+        child.kill('SIGTERM')
+      } catch (_) {}
+    }
+  })
+
   return await startHermes()
 }
 
