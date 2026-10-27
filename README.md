@@ -230,6 +230,23 @@ curl -fsSL https://raw.githubusercontent.com/KarmaSenzu/Hermes-Desktop-Pet/main/
 
 ---
 
+### 🔄 Pembaruan Cepat Tanpa Unduh Ulang (Seamless Auto-Updater)
+
+Bila Anda sudah menginstal aplikasi dan ingin memperbarui ke rilis terbaru tanpa perlu unduh ulang secara manual di browser:
+
+* **Di macOS & Linux (Terminal Bash):**
+  ```bash
+  curl -fsSL https://raw.githubusercontent.com/KarmaSenzu/Hermes-Desktop-Pet/main/update.sh | bash
+  ```
+* **Di Windows (PowerShell):**
+  ```powershell
+  irm https://raw.githubusercontent.com/KarmaSenzu/Hermes-Desktop-Pet/main/update.ps1 | iex
+  ```
+* **Atau Langsung dari Aplikasi:**
+  Buka menu **Home** di aplikasi Hermes Desktop Pet, klik tombol **"Update Sekarang ⚡"** pada banner notifikasi rilis. Aplikasi akan mengunduh paket secara online di background, menampilkan bilah kemajuan (*progress bar*), dan memasang pembaruan otomatis begitu selesai!
+
+---
+
 ### 📦 Metode 2: Panduan Instalasi Manual Per Sistem Operasi
 
 Bagi Anda yang memilih mengunduh installer biner secara manual dari browser tanpa terminal:

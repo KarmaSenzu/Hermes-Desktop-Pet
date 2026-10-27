@@ -51,14 +51,24 @@ if [ "${HTTP_STATUS}" -eq 200 ] && [ -f /tmp/hermes_release.json ]; then
     curl -fL --progress-bar -o "${TARGET_FILE}" "${DOWNLOAD_URL}"
     
     if [ "${OS}" = "darwin" ]; then
-      echo -e "  ${GREEN}✓${NC} Berkas .dmg terunduh. Membuka jendela installer..."
-      hdiutil attach "${TARGET_FILE}" || true
-      echo -e "\n${GREEN}${BOLD}✓ Berkas installer DMG berhasil dibuka!${NC}"
-      echo -e "Silakan seret ikon ${BOLD}Hermes Desktop Pet${NC} ke folder ${BOLD}Applications${NC} di jendela yang terbuka."
-      echo -e "\n${YELLOW}💡 CATATAN PENTING MACOS (Gatekeeper):${NC}"
-      echo -e "Jika saat dibuka muncul peringatan: ${YELLOW}'Aplikasi rusak dan tidak dapat dibuka'${NC},"
-      echo -e "cukup jalankan perintah ini di Terminal Mac Anda:"
-      echo -e "  ${BOLD}${CYAN}xattr -cr \"/Applications/Hermes Desktop Pet.app\"${NC}\n"
+      echo -e "  ${GREEN}✓${NC} Berkas .dmg terunduh. Memasang langsung ke /Applications..."
+      MOUNT_DIR=$(mktemp -d /tmp/hermes_mount_XXXXXX)
+      hdiutil attach -nobrowse -readonly "${TARGET_FILE}" -mountpoint "${MOUNT_DIR}" > /dev/null 2>&1
+      
+      if [ -d "${MOUNT_DIR}/Hermes Desktop Pet.app" ]; then
+        rm -rf "/Applications/Hermes Desktop Pet.app" 2>/dev/null || true
+        cp -R "${MOUNT_DIR}/Hermes Desktop Pet.app" "/Applications/"
+      fi
+      
+      hdiutil detach "${MOUNT_DIR}" -force > /dev/null 2>&1 || true
+      rm -rf "${MOUNT_DIR}" "${TARGET_FILE}" /tmp/hermes_release.json 2>/dev/null || true
+
+      echo -e "  ${CYAN}🛡${NC} Membersihkan atribut karantina macOS (xattr)..."
+      xattr -cr "/Applications/Hermes Desktop Pet.app" 2>/dev/null || true
+
+      echo -e "\n${GREEN}${BOLD}✓ Hermes Desktop Pet berhasil dipasang di /Applications!${NC}"
+      echo -e "${CYAN}🚀 Membuka aplikasi...${NC}\n"
+      open "/Applications/Hermes Desktop Pet.app"
       exit 0
     elif [ "${OS}" = "linux" ]; then
       mv "${TARGET_FILE}" "${BIN_DIR}/hermes-desktop-pet"

@@ -3202,12 +3202,105 @@ async function checkAppUpdates(interactive = false) {
   }
 }
 
+let isUpdating = false
+let updateReadyToRestart = false
+
+async function triggerOtaUpdate() {
+  if (updateReadyToRestart) {
+    showToast('Memulai Ulang Aplikasi... 🔄', 'Menerapkan pembaruan versi terbaru...', 'running', '🚀')
+    setTimeout(() => {
+      window.hermesAvatar?.relaunchApp?.()
+    }, 600)
+    return
+  }
+
+  if (isUpdating) return
+  if (!cachedUpdateInfo || !cachedUpdateInfo.downloadUrl) {
+    showToast('URL Unduhan Tidak Ditemukan', 'Membuka halaman rilis di browser...', 'warning', '🌐')
+    window.hermesAvatar?.openExternalUrl?.(cachedUpdateInfo?.releaseUrl || 'https://github.com/KarmaSenzu/Hermes-Desktop-Pet/releases')
+    return
+  }
+
+  isUpdating = true
+
+  const bannerBtn = document.getElementById('update-download-btn')
+  const modalBtn = document.getElementById('modal-download-btn')
+  const bannerProgressWrap = document.getElementById('banner-progress-wrap')
+  const bannerProgressBar = document.getElementById('banner-progress-bar')
+  const bannerProgressStatus = document.getElementById('banner-progress-status')
+  const bannerProgressPercent = document.getElementById('banner-progress-percent')
+
+  const modalProgressWrap = document.getElementById('modal-progress-wrap')
+  const modalProgressBar = document.getElementById('modal-progress-bar')
+  const modalProgressStatus = document.getElementById('modal-progress-status')
+  const modalProgressPercent = document.getElementById('modal-progress-percent')
+
+  if (bannerBtn) {
+    bannerBtn.disabled = true
+    bannerBtn.textContent = 'Mengunduh… ⏳'
+  }
+  if (modalBtn) {
+    modalBtn.disabled = true
+    modalBtn.textContent = 'Mengunduh… ⏳'
+  }
+
+  if (bannerProgressWrap) bannerProgressWrap.classList.remove('hidden')
+  if (modalProgressWrap) modalProgressWrap.classList.remove('hidden')
+
+  showToast('Mengunduh Pembaruan ⚡', `Mengunduh rilis ${cachedUpdateInfo.latestVersion}...`, 'info', '⬇')
+
+  try {
+    const res = await window.hermesAvatar?.downloadAndApplyUpdate?.(cachedUpdateInfo.downloadUrl, cachedUpdateInfo.assetName)
+    if (res && res.ok) {
+      updateReadyToRestart = true
+      isUpdating = false
+
+      if (bannerProgressBar) bannerProgressBar.style.width = '100%'
+      if (modalProgressBar) modalProgressBar.style.width = '100%'
+
+      if (bannerProgressStatus) bannerProgressStatus.textContent = 'Pembaruan siap diterapkan! ✅'
+      if (modalProgressStatus) modalProgressStatus.textContent = 'Pembaruan siap diterapkan! ✅'
+
+      if (bannerProgressPercent) bannerProgressPercent.textContent = '100%'
+      if (modalProgressPercent) modalProgressPercent.textContent = '100%'
+
+      if (bannerBtn) {
+        bannerBtn.disabled = false
+        bannerBtn.textContent = 'Mulai Ulang & Terapkan 🔄'
+        bannerBtn.style.background = '#10b981'
+      }
+      if (modalBtn) {
+        modalBtn.disabled = false
+        modalBtn.textContent = 'Mulai Ulang & Terapkan 🔄'
+        modalBtn.style.background = '#10b981'
+      }
+
+      showToast('Pembaruan Berhasil Dipasang! 🎉', 'Klik tombol "Mulai Ulang" untuk membuka versi terbaru.', 'success', '✨', 8000)
+    } else {
+      throw new Error(res?.error || 'Gagal menerapkan pembaruan')
+    }
+  } catch (err) {
+    isUpdating = false
+    if (bannerBtn) {
+      bannerBtn.disabled = false
+      bannerBtn.textContent = 'Coba Lagi / Unduh Manual 📥'
+    }
+    if (modalBtn) {
+      modalBtn.disabled = false
+      modalBtn.textContent = 'Unduh Manual di Browser 🌐'
+    }
+    showToast('Gagal Memasang Update', `${err.message}. Membuka browser...`, 'error', '❌')
+    window.hermesAvatar?.openExternalUrl?.(cachedUpdateInfo.downloadUrl || cachedUpdateInfo.releaseUrl)
+  }
+}
+
 function showUpdateModal() {
   const modal = document.getElementById('update-modal')
   const curVerEl = document.getElementById('modal-current-ver')
   const latVerEl = document.getElementById('modal-latest-ver')
   const dateEl = document.getElementById('modal-release-date')
   const changelogEl = document.getElementById('modal-changelog-content')
+  const cliCmdEl = document.getElementById('modal-cli-cmd')
 
   if (!modal) return
 
@@ -3220,6 +3313,13 @@ function showUpdateModal() {
   if (latVerEl) latVerEl.textContent = lat.startsWith('v') ? lat : `v${lat}`
   if (dateEl) dateEl.textContent = date
   if (changelogEl) changelogEl.textContent = changelog
+
+  if (cliCmdEl) {
+    const isWin = window.hermesAvatar?.platform === 'win32'
+    cliCmdEl.textContent = isWin
+      ? 'irm https://raw.githubusercontent.com/KarmaSenzu/Hermes-Desktop-Pet/main/update.ps1 | iex'
+      : 'curl -fsSL https://raw.githubusercontent.com/KarmaSenzu/Hermes-Desktop-Pet/main/update.sh | bash'
+  }
 
   modal.hidden = false
 }
@@ -3241,6 +3341,8 @@ function initAppUpdateChecker() {
   const modalCancel = document.getElementById('modal-cancel-btn')
   const modalGithub = document.getElementById('modal-github-btn')
   const modalDownload = document.getElementById('modal-download-btn')
+  const modalCopyCli = document.getElementById('modal-copy-cli-btn')
+  const modalCliCmd = document.getElementById('modal-cli-cmd')
 
   setTimeout(() => {
     checkAppUpdates(false)
@@ -3266,10 +3368,14 @@ function initAppUpdateChecker() {
     }
   })
 
+  // Tombol update instan di banner (OTA in-app)
   downloadBtn?.addEventListener('click', () => {
-    const url = cachedUpdateInfo?.downloadUrl || cachedUpdateInfo?.releaseUrl || 'https://github.com/KarmaSenzu/Hermes-Desktop-Pet/releases'
-    window.hermesAvatar?.openExternalUrl?.(url)
-    showToast('Membuka Browser Unduhan 📥', 'Mengunduh file paket instalasi rilis terbaru...', 'info', '🌐')
+    triggerOtaUpdate()
+  })
+
+  // Tombol update instan di modal (OTA in-app)
+  modalDownload?.addEventListener('click', () => {
+    triggerOtaUpdate()
   })
 
   modalClose?.addEventListener('click', hideUpdateModal)
@@ -3278,11 +3384,38 @@ function initAppUpdateChecker() {
     const url = cachedUpdateInfo?.releaseUrl || 'https://github.com/KarmaSenzu/Hermes-Desktop-Pet/releases'
     window.hermesAvatar?.openExternalUrl?.(url)
   })
-  modalDownload?.addEventListener('click', () => {
-    const url = cachedUpdateInfo?.downloadUrl || cachedUpdateInfo?.releaseUrl || 'https://github.com/KarmaSenzu/Hermes-Desktop-Pet/releases'
-    window.hermesAvatar?.openExternalUrl?.(url)
-    showToast('Membuka Browser Unduhan 📥', 'Mengunduh installer rilis terbaru...', 'info', '🌐')
-    hideUpdateModal()
+
+  // Salin perintah 1-baris CLI
+  modalCopyCli?.addEventListener('click', () => {
+    const cmd = modalCliCmd?.textContent || 'curl -fsSL https://raw.githubusercontent.com/KarmaSenzu/Hermes-Desktop-Pet/main/update.sh | bash'
+    navigator.clipboard?.writeText(cmd)
+    modalCopyCli.textContent = 'Tersalin! ✅'
+    showToast('Perintah Tersalin! 📋', 'Tempel dan jalankan di Terminal untuk update kilat.', 'success', '📋')
+    setTimeout(() => {
+      modalCopyCli.textContent = 'Salin 📋'
+    }, 2000)
+  })
+
+  // Listener kemajuan unduhan real-time dari main process
+  window.hermesAvatar?.onUpdateProgress?.((info) => {
+    const p = `${info.percent}%`
+    const desc = `Mengunduh: ${info.transferredMb || 0} MB / ${info.totalMb || 0} MB (${p})`
+
+    const bannerProgressBar = document.getElementById('banner-progress-bar')
+    const bannerProgressStatus = document.getElementById('banner-progress-status')
+    const bannerProgressPercent = document.getElementById('banner-progress-percent')
+
+    const modalProgressBar = document.getElementById('modal-progress-bar')
+    const modalProgressStatus = document.getElementById('modal-progress-status')
+    const modalProgressPercent = document.getElementById('modal-progress-percent')
+
+    if (bannerProgressBar) bannerProgressBar.style.width = p
+    if (bannerProgressPercent) bannerProgressPercent.textContent = p
+    if (bannerProgressStatus) bannerProgressStatus.textContent = desc
+
+    if (modalProgressBar) modalProgressBar.style.width = p
+    if (modalProgressPercent) modalProgressPercent.textContent = p
+    if (modalProgressStatus) modalProgressStatus.textContent = desc
   })
 }
 

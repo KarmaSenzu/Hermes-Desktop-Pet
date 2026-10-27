@@ -1486,6 +1486,50 @@ Dokumen ini mencatat setiap perubahan, penambahan, dan penghapusan kode secara t
    - `npm run build` berhasil 100% (semua bundle SSR dan renderer ter-compile bersih).
    - `npm run doctor` 5/5 lulus (semua dependensi, model, skill, dan port dalam kondisi prima).
 
+---
+
+### [2026-10-27 17:45] — Audit Entry #041: Implementasi Seamless In-App OTA Auto-Updater & Skrip CLI Update Otomatis
+
+* **Tipe Perubahan:** Feature / Auto-Update Engine / CLI Tooling
+* **Pelapor:** User
+  - Permintaan: Pembaruan aplikasi ke depan tidak perlu unduh ulang installer secara manual di browser; bisa dilakukan langsung dari internet secara otomatis layaknya launcher game atau cukup melalui 1 baris perintah terminal (*bash*).
+* **Status:** ✅ Selesai & Terverifikasi (`npm run build` lulus 100%, 0 error; `npm run doctor` lulus 5/5)
+
+#### Rincian Implementasi Teknis:
+
+1. **In-App OTA (Over-The-Air) Downloader & Auto-Installer (`main/index.js` & `settings.js`):**
+   - Menambahkan IPC handler `avatar:download-and-apply-update`:
+     - Mengunduh paket rilis biner dari GitHub Releases via Node.js native streaming fetch.
+     - Mengirim event kemajuan real-time `avatar:update-download-progress` (persentase, transferred MB, total MB) ke UI renderer.
+     - Di macOS (`darwin`): Memasang DMG / ZIP otomatis langsung ke `/Applications/Hermes Desktop Pet.app` dan membersihkan atribut Gatekeeper `xattr -cr`.
+     - Di Windows (`win32`): Menyiapkan silent installer `/S` untuk dieksekusi secara otomatis saat restart.
+     - Di Linux (`linux`): Memperbarui executable AppImage dan permissions `chmod +x`.
+   - Menambahkan IPC handler `avatar:relaunch-app` untuk me-restart aplikasi secara otomatis ke versi baru.
+   - Mengintegrasikan bilah kemajuan (*progress bar*) interaktif pada banner Home dan modal Info Rilis di `settings.html`.
+   - Tombol "Unduh Update" diubah menjadi alur cerdas 2-fase:
+     - Fase 1: Klik "Update Sekarang ⚡" -> mengunduh dan memasang di background.
+     - Fase 2: Tombol berubah hijau menjadi "Mulai Ulang & Terapkan 🔄" -> klik untuk me-restart aplikasi seketika.
+
+2. **One-Liner Terminal Auto-Updater Scripts (`update.sh` & `update.ps1`):**
+   - Dibuat skrip `update.sh` (macOS & Linux):
+     ```bash
+     curl -fsSL https://raw.githubusercontent.com/KarmaSenzu/Hermes-Desktop-Pet/main/update.sh | bash
+     ```
+     - Memeriksa versi rilis terbaru dari GitHub API.
+     - Mengunduh paket biner biner macOS DMG/ZIP atau Linux AppImage.
+     - Menutup aplikasi lama jika sedang berjalan, mengganti berkas di `/Applications/Hermes Desktop Pet.app`, menjalankan `xattr -cr`, dan membuka kembali aplikasi secara otomatis.
+   - Dibuat skrip `update.ps1` (Windows PowerShell):
+     ```powershell
+     irm https://raw.githubusercontent.com/KarmaSenzu/Hermes-Desktop-Pet/main/update.ps1 | iex
+     ```
+   - Skrip `install.sh` disempurnakan agar instalasi macOS langsung terpasang ke `/Applications/` tanpa memerlukan drag-and-drop manual dari jendela DMG.
+   - Dokumentasi lengkap ditambahkan ke `README.md`.
+
+3. **Verifikasi:**
+   - `npm run build`: Berhasil 100% tanpa error (*out/main/index.js 82.44 kB, out/preload/index.mjs 7.69 kB, out/renderer 170 modules transformed*).
+   - `npm run doctor`: 5/5 LULUS.
+
+
 
 
 

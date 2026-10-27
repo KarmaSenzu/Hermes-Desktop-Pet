@@ -1,7 +1,7 @@
 import { app, BrowserWindow, ipcMain, protocol, dialog, screen, safeStorage, shell, Menu } from 'electron'
 import { join, extname, isAbsolute } from 'path'
 import { readFile, writeFile, mkdir, rm } from 'fs/promises'
-import { existsSync, statSync, readdirSync, cpSync, mkdirSync } from 'fs'
+import { existsSync, statSync, readdirSync, cpSync, mkdirSync, createWriteStream } from 'fs'
 import { homedir } from 'os'
 import http from 'http'
 import https from 'https'
@@ -27,6 +27,9 @@ import { startBridgeServer, stopBridgeServer, BRIDGE_PORT } from './bridge-serve
 
 // Inisialisasi perbaikan PATH untuk macOS/Windows sedini mungkin
 fixSystemPath()
+
+// Variabel penyimpan berkas installer sementara jika di Windows
+let pendingWindowsInstaller = null
 
 // Tangkap exception unhandled agar tidak pernah muncul dialog pop-up crash Electron
 process.on('uncaughtException', (err) => {
@@ -973,6 +976,120 @@ ipcMain.handle('avatar:open-external-url', async (_event, url) => {
   } catch (err) {
     return { ok: false, error: err?.message || String(err) }
   }
+})
+
+// IPC: Unduh dan pasang update secara in-app (OTA Seamless Auto-Update)
+ipcMain.handle('avatar:download-and-apply-update', async (event, downloadUrl, assetName) => {
+  try {
+    if (!downloadUrl) return { ok: false, error: 'URL unduhan tidak ditemukan' }
+
+    const filename = assetName || downloadUrl.split('/').pop() || 'hermes-update-pkg'
+    const tempDir = join(app.getPath('temp'), `hermes_ota_${Date.now()}`)
+    await mkdir(tempDir, { recursive: true })
+    const targetFilePath = join(tempDir, filename)
+
+    // Streaming unduh via fetch bawaan Node.js
+    const resp = await fetch(downloadUrl, {
+      headers: {
+        'User-Agent': 'Hermes-Desktop-Pet-App'
+      }
+    })
+
+    if (!resp.ok) {
+      throw new Error(`Gagal mengunduh paket update: HTTP ${resp.status} ${resp.statusText}`)
+    }
+
+    const totalBytes = parseInt(resp.headers.get('content-length') || '0', 10)
+    let transferredBytes = 0
+
+    const fileStream = createWriteStream(targetFilePath)
+    const reader = resp.body.getReader()
+
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      fileStream.write(value)
+      transferredBytes += value.length
+      if (totalBytes > 0) {
+        const percent = Math.min(100, Math.round((transferredBytes / totalBytes) * 100))
+        const transferredMb = (transferredBytes / (1024 * 1024)).toFixed(1)
+        const totalMb = (totalBytes / (1024 * 1024)).toFixed(1)
+        event.sender.send('avatar:update-download-progress', { percent, transferredMb, totalMb })
+      }
+    }
+    await new Promise((resolve) => fileStream.end(resolve))
+
+    // Terapkan instalasi berdasarkan platform
+    if (process.platform === 'darwin') {
+      if (filename.endsWith('.dmg')) {
+        const mountDir = join(tempDir, 'mount')
+        await mkdir(mountDir, { recursive: true })
+
+        await new Promise((resolve, reject) => {
+          execFile('hdiutil', ['attach', '-nobrowse', '-readonly', targetFilePath, '-mountpoint', mountDir], (err) => {
+            if (err) return reject(err)
+            resolve()
+          })
+        })
+
+        const appSource = join(mountDir, 'Hermes Desktop Pet.app')
+        if (existsSync(appSource)) {
+          await new Promise((resolve, reject) => {
+            execFile('cp', ['-R', appSource, '/Applications/'], (err) => {
+              if (err) return reject(err)
+              resolve()
+            })
+          })
+          execFile('xattr', ['-cr', '/Applications/Hermes Desktop Pet.app'], () => {})
+        }
+
+        execFile('hdiutil', ['detach', mountDir, '-force'], () => {})
+      } else if (filename.endsWith('.zip')) {
+        await new Promise((resolve, reject) => {
+          execFile('unzip', ['-q', '-o', targetFilePath, '-d', '/Applications/'], (err) => {
+            if (err) return reject(err)
+            resolve()
+          })
+        })
+        execFile('xattr', ['-cr', '/Applications/Hermes Desktop Pet.app'], () => {})
+      }
+      return { ok: true, readyToRestart: true, message: 'Update berhasil dipasang di /Applications!' }
+    } else if (process.platform === 'win32') {
+      if (filename.endsWith('.exe')) {
+        pendingWindowsInstaller = targetFilePath
+        return { ok: true, readyToRestart: true, message: 'Installer update siap dipasang saat restart!' }
+      } else if (filename.endsWith('.zip')) {
+        const destDir = join(process.env.LOCALAPPDATA || homedir(), 'Programs', 'Hermes Desktop Pet')
+        execFile('powershell', ['-NoProfile', '-Command', `Expand-Archive -Path '${targetFilePath}' -DestinationPath '${destDir}' -Force`], () => {})
+        return { ok: true, readyToRestart: true }
+      }
+    } else {
+      // Linux AppImage
+      if (filename.endsWith('.AppImage')) {
+        const binDest = join(homedir(), '.local', 'bin', 'hermes-desktop-pet')
+        await mkdir(join(homedir(), '.local', 'bin'), { recursive: true })
+        execFile('chmod', ['+x', targetFilePath], () => {})
+        execFile('cp', [targetFilePath, binDest], () => {})
+        execFile('chmod', ['+x', binDest], () => {})
+        return { ok: true, readyToRestart: true }
+      }
+    }
+
+    return { ok: true, readyToRestart: true }
+  } catch (err) {
+    return { ok: false, error: err?.message || String(err) }
+  }
+})
+
+// IPC: Relaunch aplikasi untuk menerapkan update
+ipcMain.handle('avatar:relaunch-app', () => {
+  if (process.platform === 'win32' && pendingWindowsInstaller) {
+    spawn(pendingWindowsInstaller, ['/S'], { detached: true, stdio: 'ignore' }).unref()
+    app.exit(0)
+    return
+  }
+  app.relaunch()
+  app.exit(0)
 })
 
 // IPC: RPC config/model ke Hermes (shared gateway) — untuk LLM section.

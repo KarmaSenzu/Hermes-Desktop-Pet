@@ -147,10 +147,17 @@ const api = {
     return () => ipcRenderer.removeListener('avatar:web-prompt', handler)
   },
 
-  // Pemeriksa pembaruan rilis aplikasi (GitHub Releases)
+  // Pemeriksa & pengunduh pembaruan rilis aplikasi (OTA Auto-Update)
   checkAppUpdate: () => ipcRenderer.invoke('avatar:check-update'),
   getAppVersion: () => ipcRenderer.invoke('avatar:get-app-version'),
-  openExternalUrl: (url) => ipcRenderer.invoke('avatar:open-external-url', url)
+  openExternalUrl: (url) => ipcRenderer.invoke('avatar:open-external-url', url),
+  downloadAndApplyUpdate: (downloadUrl, assetName) => ipcRenderer.invoke('avatar:download-and-apply-update', downloadUrl, assetName),
+  onUpdateProgress: (callback) => {
+    const handler = (_event, info) => callback(info)
+    ipcRenderer.on('avatar:update-download-progress', handler)
+    return () => ipcRenderer.removeListener('avatar:update-download-progress', handler)
+  },
+  relaunchApp: () => ipcRenderer.invoke('avatar:relaunch-app')
 }
 
 contextBridge.exposeInMainWorld('hermesAvatar', api)
