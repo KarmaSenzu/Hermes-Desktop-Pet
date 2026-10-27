@@ -1,6 +1,6 @@
 import { app, BrowserWindow, ipcMain, protocol, dialog, screen, safeStorage, shell, Menu } from 'electron'
 import { join, extname, isAbsolute, basename, dirname } from 'path'
-import { readFile, writeFile, mkdir, rm } from 'fs/promises'
+import { readFile, writeFile, mkdir, rm, copyFile, rename, readdir } from 'fs/promises'
 import { existsSync, statSync, readdirSync, cpSync, mkdirSync, createWriteStream } from 'fs'
 import { homedir } from 'os'
 import http from 'http'
@@ -33,6 +33,8 @@ import {
 import { connectGateway, disconnectGateway, request as gatewayRequest, isGatewayConnected } from './hermes-gateway.js'
 import { registerShortcuts, unregisterShortcuts, getShortcutList, updateShortcut } from './shortcuts.js'
 import { startBridgeServer, stopBridgeServer, BRIDGE_PORT } from './bridge-server.js'
+import { applyProviderConfig, setEnvVar } from './hermes-config.js'
+import YAML from 'yaml'
 
 // Inisialisasi perbaikan PATH untuk macOS/Windows sedini mungkin
 fixSystemPath()
@@ -1407,9 +1409,48 @@ function runHermes(args, timeout = 30000) {
   })
 }
 
-// Helper komprehensif: sinkronisasi konfigurasi LLM Provider ke config.yaml dan .env
+// Helper: backup file ke .bak-YYYYMMDD-HHMMSS (simpan maksimal maxBackups terbaru)
+async function backupConfigFile(filePath, maxBackups = 5) {
+  if (!existsSync(filePath)) return
+  const now = new Date()
+  const pad = (n) => String(n).padStart(2, '0')
+  const timestamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`
+  const dir = dirname(filePath)
+  const base = basename(filePath)
+  const backupPath = join(dir, `${base}.bak-${timestamp}`)
+
+  try {
+    await copyFile(filePath, backupPath)
+    const files = await readdir(dir)
+    const prefix = `${base}.bak-`
+    const matching = files.filter((f) => f.startsWith(prefix)).sort()
+    if (matching.length > maxBackups) {
+      const toDelete = matching.slice(0, matching.length - maxBackups)
+      for (const oldFile of toDelete) {
+        try { await rm(join(dir, oldFile)) } catch {}
+      }
+    }
+  } catch (err) {
+    console.warn(`[backupConfigFile] Gagal backup ${base}:`, err?.message || err)
+  }
+}
+
+// Helper: tulis file secara atomik (.tmp lalu rename)
+async function writeAtomicFile(filePath, content) {
+  const dir = dirname(filePath)
+  await mkdir(dir, { recursive: true })
+  const tmpPath = join(dir, `${basename(filePath)}.${Date.now()}.${Math.random().toString(36).slice(2)}.tmp`)
+  await writeFile(tmpPath, content, 'utf8')
+  try {
+    await rename(tmpPath, filePath)
+  } catch {
+    await copyFile(tmpPath, filePath)
+    await rm(tmpPath).catch(() => {})
+  }
+}
+
+// Helper komprehensif: sinkronisasi konfigurasi LLM Provider ke config.yaml dan .env secara non-destruktif
 async function updateHermesProviderConfig({ name, baseUrl, apiKey, model }) {
-  const modelName = String(model || '').trim()
   const cfgPath = resolveHermesConfigPath()
   let cfg = ''
   if (existsSync(cfgPath)) {
@@ -1418,36 +1459,35 @@ async function updateHermesProviderConfig({ name, baseUrl, apiKey, model }) {
     await mkdir(dirname(cfgPath), { recursive: true })
   }
 
-  // 1. Tentukan model efektif
-  let effectiveModel = modelName
-  if (!effectiveModel) {
-    const mMatch = cfg.match(/^\s+default:\s*([^\r\n#]+)/m) || cfg.match(/^model:\s*([^\r\n#]+)/m)
-    if (mMatch && mMatch[1]) {
-      effectiveModel = mMatch[1].trim()
-    } else if (process.env.HERMES_INFERENCE_MODEL) {
-      effectiveModel = process.env.HERMES_INFERENCE_MODEL.trim()
-    }
-  }
+  const doc = YAML.parseDocument(cfg || '')
 
-  // 2. Tentukan baseUrl efektif
+  // 1. Tentukan model efektif (pakai doc.getIn bila kosong)
+  let effectiveModel = String(model || '').trim()
+  if (!effectiveModel) {
+    const fromDoc = doc.getIn(['model', 'default'])
+    if (fromDoc) effectiveModel = String(fromDoc).trim()
+    else if (process.env.HERMES_INFERENCE_MODEL) effectiveModel = process.env.HERMES_INFERENCE_MODEL.trim()
+  }
+  if (!effectiveModel) effectiveModel = 'default'
+
+  // 2. Tentukan baseUrl efektif (pakai doc.getIn bila kosong)
   let provUrl = String(baseUrl || '').trim()
   if (!provUrl) {
-    const uMatch = cfg.match(/^\s+base_url:\s*([^\r\n#]+)/m)
-    if (uMatch && uMatch[1]) {
-      provUrl = uMatch[1].trim()
-    } else {
-      provUrl = 'http://localhost:20128/v1'
-    }
+    const fromDoc = doc.getIn(['model', 'base_url'])
+    if (fromDoc) provUrl = String(fromDoc).trim()
+    else provUrl = 'http://localhost:20128/v1'
   }
 
-  // 3. Tentukan nama provider efektif
+  // 3. Tentukan nama provider efektif (pakai doc.getIn bila kosong)
   let provName = String(name || '').trim()
   if (!provName) {
-    const pMatch = cfg.match(/^\s+name:\s*['"]?([^'"\r\n#]+)['"]?/m)
-    if (pMatch && pMatch[1]) {
-      provName = pMatch[1].trim()
+    const fromDoc = doc.getIn(['model', 'provider'])
+    if (fromDoc && String(fromDoc).trim() !== 'custom') {
+      provName = String(fromDoc).trim()
     } else {
-      provName = 'custom'
+      const jsProviders = doc.toJS()?.providers || {}
+      const firstSaved = Object.values(jsProviders)[0]?.name
+      provName = firstSaved ? String(firstSaved).trim() : 'custom'
     }
   }
 
@@ -1472,9 +1512,10 @@ async function updateHermesProviderConfig({ name, baseUrl, apiKey, model }) {
     if (process.env.OPENAI_API_KEY && process.env.OPENAI_API_KEY !== 'no-key-required') {
       keyVal = process.env.OPENAI_API_KEY
     } else {
-      const curKeyMatch = cfg.match(/^\s*api_key:\s*([^\r\n#]+)/m)
-      if (curKeyMatch && curKeyMatch[1] && curKeyMatch[1].trim() !== 'no-key-required') {
-        keyVal = curKeyMatch[1].trim()
+      const safeName = provName.replace(/[^a-zA-Z0-9_-]/g, '_') || 'custom'
+      const curKey = doc.getIn(['providers', safeName, 'api_key'])
+      if (curKey && String(curKey).trim() !== 'no-key-required') {
+        keyVal = String(curKey).trim()
       }
     }
   }
@@ -1483,70 +1524,31 @@ async function updateHermesProviderConfig({ name, baseUrl, apiKey, model }) {
     keyVal = 'no-key-required'
   }
 
-  // 5. Update blok model di config.yaml
-  if (/^model:\s*$/m.test(cfg)) {
-    if (/^\s+default:/m.test(cfg)) {
-      cfg = cfg.replace(/^(\s+default:\s*).*$/m, `$1${effectiveModel}`)
-    } else {
-      cfg = cfg.replace(/^(model:\s*)$/m, `$1\n  default: ${effectiveModel}`)
-    }
-    if (/^\s+provider:/m.test(cfg)) {
-      cfg = cfg.replace(/^(\s+provider:\s*).*$/m, `$1custom`)
-    } else {
-      cfg = cfg.replace(/^(model:\s*)$/m, `$1\n  provider: custom`)
-    }
-    if (/^\s+base_url:/m.test(cfg)) {
-      cfg = cfg.replace(/^(\s+base_url:\s*).*$/m, `$1${provUrl}`)
-    } else {
-      cfg = cfg.replace(/^(model:\s*)$/m, `$1\n  base_url: ${provUrl}`)
-    }
-  } else {
-    cfg += `\nmodel:\n  default: ${effectiveModel}\n  provider: custom\n  base_url: ${provUrl}\n`
-  }
+  // 5. Update config.yaml secara non-destruktif
+  const updatedCfg = applyProviderConfig(cfg, {
+    name: provName,
+    baseUrl: provUrl,
+    apiKey: keyVal,
+    model: effectiveModel
+  })
 
-  // 6. Format blok providers & custom_providers
-  const safeName = provName.replace(/[^a-zA-Z0-9_-]/g, '_') || 'custom'
-  const provSection = `providers:\n  '${safeName}':\n    name: '${provName}'\n    base_url: ${provUrl}\n    api_key: ${keyVal}\n    default_model: ${effectiveModel}\n`
-  const customProvSection = `custom_providers:\n- name: '${provName}'\n  base_url: ${provUrl}\n  api_key: ${keyVal}\n  model: ${effectiveModel}\n`
+  // Backup config.yaml (maksimal 5 backup terbaru) lalu tulis secara atomik
+  await backupConfigFile(cfgPath, 5)
+  await writeAtomicFile(cfgPath, updatedCfg)
 
-  if (/^providers:\s*(\n\s+.*)*/m.test(cfg)) {
-    cfg = cfg.replace(/^providers:\s*(\n(\s+[^\n]*|\s*))*/m, provSection)
-  } else {
-    cfg += `\n${provSection}`
-  }
-
-  if (/^custom_providers:\s*(\n\s+.*)*/m.test(cfg)) {
-    cfg = cfg.replace(/^custom_providers:\s*(\n(\s+-[^\n]*|\s+[^\n]*|\s*))*/m, customProvSection)
-  } else {
-    cfg += `\n${customProvSection}`
-  }
-
-  await writeFile(cfgPath, cfg, 'utf8')
-
-  // 7. Update .env (garansi mutlak bagi runtime Python agar tidak 'No LLM provider configured')
+  // 6. Update .env secara atomik via setEnvVar
   const envPath = join(dirname(cfgPath), '.env')
   let env = ''
   if (existsSync(envPath)) {
     env = await readFile(envPath, 'utf8')
   }
-  if (/^OPENAI_BASE_URL=.*$/m.test(env)) {
-    env = env.replace(/^OPENAI_BASE_URL=.*$/m, `OPENAI_BASE_URL=${provUrl}`)
-  } else {
-    env += `\nOPENAI_BASE_URL=${provUrl}\n`
-  }
-  if (/^OPENAI_API_KEY=.*$/m.test(env)) {
-    env = env.replace(/^OPENAI_API_KEY=.*$/m, `OPENAI_API_KEY=${keyVal}`)
-  } else {
-    env += `OPENAI_API_KEY=${keyVal}\n`
-  }
-  if (/^HERMES_INFERENCE_MODEL=.*$/m.test(env)) {
-    env = env.replace(/^HERMES_INFERENCE_MODEL=.*$/m, `HERMES_INFERENCE_MODEL=${effectiveModel}`)
-  } else {
-    env += `HERMES_INFERENCE_MODEL=${effectiveModel}\n`
-  }
-  await writeFile(envPath, env, 'utf8')
+  env = setEnvVar(env, 'OPENAI_BASE_URL', provUrl)
+  env = setEnvVar(env, 'OPENAI_API_KEY', keyVal)
+  env = setEnvVar(env, 'HERMES_INFERENCE_MODEL', effectiveModel)
 
-  // 8. Update process.env lokal
+  await writeAtomicFile(envPath, env)
+
+  // 7. Update process.env lokal
   process.env.OPENAI_BASE_URL = provUrl
   process.env.OPENAI_API_KEY = keyVal
   process.env.HERMES_INFERENCE_MODEL = effectiveModel
