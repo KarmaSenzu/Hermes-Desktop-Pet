@@ -51,32 +51,71 @@ if (-not (Test-Path $TargetFile)) {
     Invoke-WebRequest -Uri $DownloadUrl -OutFile $TargetFile
 }
 
-# 3. Tutup aplikasi yang sedang berjalan
+# 3. Tutup aplikasi yang sedang berjalan secara tuntas
 Write-Host "⚡ Menutup aplikasi Hermes Desktop Pet jika sedang terbuka..." -ForegroundColor Cyan
-Get-Process "Hermes Desktop Pet" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-Start-Sleep -Seconds 1
+try { taskkill /F /IM "Hermes Desktop Pet.exe" /T 2>$null } catch {}
+Get-Process -Name "*Hermes Desktop Pet*" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+Start-Sleep -Seconds 2
 
-# 4. Terapkan pembaruan langsung
-Write-Host "📦 Menerapkan pembaruan..." -ForegroundColor Cyan
-$DestDir = Join-Path $env:LOCALAPPDATA "Programs\Hermes Desktop Pet"
-if (-not (Test-Path $DestDir)) {
-    New-Item -ItemType Directory -Path $DestDir -Force | Out-Null
+# 4. Tentukan folder target instalasi
+$DestCandidates = @(
+    (Join-Path $env:LOCALAPPDATA "Programs\hermes-desktop-pet"),
+    (Join-Path $env:LOCALAPPDATA "Programs\Hermes Desktop Pet")
+)
+
+# Cek target shortcut Desktop bila ada
+$DesktopLnk = Join-Path ([System.Environment]::GetFolderPath('Desktop')) 'Hermes Desktop Pet.lnk'
+if (Test-Path $DesktopLnk) {
+    try {
+        $w = New-Object -ComObject WScript.Shell
+        $scTarget = $w.CreateShortcut($DesktopLnk).TargetPath
+        if ($scTarget) {
+            $scDir = Split-Path $scTarget
+            if ($scDir -and (Test-Path $scDir)) {
+                $DestCandidates = @($scDir) + $DestCandidates
+            }
+        }
+    } catch {}
 }
 
+# 5. Terapkan pembaruan langsung
+Write-Host "📦 Menerapkan pembaruan..." -ForegroundColor Cyan
+
+$TargetApps = @()
 if ($TargetFile.EndsWith(".zip")) {
     $ExtractTemp = Join-Path $TempDir "extracted"
     Expand-Archive -Path $TargetFile -DestinationPath $ExtractTemp -Force
     $InnerDir = Get-ChildItem -Path $ExtractTemp | Where-Object { $_.PSIsContainer -and (Test-Path (Join-Path $_.FullName "Hermes Desktop Pet.exe")) } | Select-Object -First 1
     $SourceDir = if ($InnerDir) { $InnerDir.FullName } else { $ExtractTemp }
-    Copy-Item -Path "$SourceDir\*" -Destination $DestDir -Recurse -Force
+
+    $uniqueDirs = $DestCandidates | Select-Object -Unique
+    $updatedCount = 0
+    foreach ($d in $uniqueDirs) {
+        if (Test-Path $d) {
+            Copy-Item -Path "$SourceDir\*" -Destination $d -Recurse -Force
+            $TargetApps += (Join-Path $d "Hermes Desktop Pet.exe")
+            $updatedCount++
+        }
+    }
+
+    if ($updatedCount -eq 0) {
+        $defaultDir = Join-Path $env:LOCALAPPDATA "Programs\hermes-desktop-pet"
+        New-Item -ItemType Directory -Path $defaultDir -Force | Out-Null
+        Copy-Item -Path "$SourceDir\*" -Destination $defaultDir -Recurse -Force
+        $TargetApps += (Join-Path $defaultDir "Hermes Desktop Pet.exe")
+    }
 } else {
     Start-Process -FilePath $TargetFile -ArgumentList "/S" -Wait
+    $TargetApps += (Join-Path $env:LOCALAPPDATA "Programs\hermes-desktop-pet\Hermes Desktop Pet.exe")
 }
 
 Write-Host "`n✓ PEMBARUAN BERHASIL DIPASANG! Versi $LatestTag aktif." -ForegroundColor Green
 Write-Host "🚀 Membuka Hermes Desktop Pet..." -ForegroundColor Cyan
 
-$AppPath = Join-Path $env:LOCALAPPDATA "Programs\Hermes Desktop Pet\Hermes Desktop Pet.exe"
+$AppPath = $TargetApps | Where-Object { Test-Path $_ } | Select-Object -First 1
+if (-not $AppPath) {
+    $AppPath = Join-Path $env:LOCALAPPDATA "Programs\hermes-desktop-pet\Hermes Desktop Pet.exe"
+}
 if (Test-Path $AppPath) {
     Start-Process -FilePath $AppPath
 }

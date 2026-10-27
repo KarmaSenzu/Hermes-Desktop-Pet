@@ -239,6 +239,7 @@ async function startHermes() {
       {
         stdio: 'ignore',
         shell: process.platform === 'win32',
+        windowsHide: true,
         env: {
           ...process.env,
           HERMES_DASHBOARD_SESSION_TOKEN: SESSION_TOKEN
@@ -343,6 +344,7 @@ async function startKokoro() {
       detached: true,
       stdio: 'ignore',
       shell: true,
+      windowsHide: true,
       env: process.env
     })
     child.on('error', (err) => {
