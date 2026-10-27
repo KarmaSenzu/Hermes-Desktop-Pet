@@ -1578,6 +1578,47 @@ Dokumen ini mencatat setiap perubahan, penambahan, dan penghapusan kode secara t
 6. **Verifikasi:**
    - `npm run build` berhasil 100% (173 modules transformed, out/main/index.js 83.05 kB, out/renderer 353.94 kB).
 
+---
+
+### [2026-10-27 20:05] 🎵 Audit Entry #043: Implementasi Ruang Penyimpanan Permanen Pustaka Musik & Playlist Favorit di Perangkat
+
+* **Tipe Perubahan:** Feature / Persistent Local Storage / Music Library Management
+* **Pelapor:** User
+  - Permintaan: Lagu streaming/YouTube dan daftar lagu favorit yang sudah dimasukkan tidak boleh hilang saat aplikasi dibuka kembali di masing-masing perangkat; sediakan ruang penyimpanan lokal khusus untuk menyimpan lagu-lagu tersebut secara permanen.
+* **Status:** ✅ Selesai & Terverifikasi Penuh (`npm run build` 100% lulus, 173 modul ter-bundle tanpa peringatan)
+
+#### Rincian Implementasi Teknis:
+
+1. **Penyimpanan Permanen Berbasis Berkas Lokal (`~/.hermes-avatar/music_library.json`):**
+   - **Akar Masalah:** Sebelumnya, data lagu kustom dan status favorit disimpan hanya di `localStorage` peramban jendela avatar. Data rentan hilang jika jendela berjalan di port dev berbeda, cache dibersihkan, atau aplikasi diperbarui.
+   - **Solusi:**
+     - Menetapkan lokasi berkas penyimpanan permanen lintas-sesi di `~/.hermes-avatar/music_library.json` pada profil perangkat masing-masing pengguna.
+     - Berkas menyimpan struktur data JSON lengkap: `{ onlineTracks, localTracks, favorites, volume, updatedAt }`.
+     - Data terlindungi secara permanen dari pembersihan cache browser dan tetap utuh saat aplikasi diperbarui ke versi baru.
+
+2. **IPC Handlers di Main Process (`avatar/src/main/index.js` & `preload/index.js`):**
+   - `avatar:music-load-library`: Membaca berkas `~/.hermes-avatar/music_library.json` secara aman saat startup.
+   - `avatar:music-save-library`: Menyimpan pembaruan daftar lagu stream, file lokal, status favorit, dan volume audio ke disk lokal.
+   - `avatar:music-library-info`: Mengembalikan statistik ukuran berkas dan waktu modifikasi terakhir untuk keperluan monitoring di antarmuka Pengaturan.
+   - `avatar:music-open-folder`: Membuka folder konfigurasi `~/.hermes-avatar/` langsung di Windows Explorer / macOS Finder.
+
+3. **Penyempurnaan Music Player (`avatar/src/renderer/js/music-player.js` & `main.css`):**
+   - Menambahkan method `loadLibraryFromDisk()` yang otomatis memuat pustaka dari berkas lokal, dengan fallback migrasi otomatis dari `localStorage` jika berkas belum ada.
+   - Menambahkan method `rebuildTracklist()` untuk menggabungkan preset bawaan offline, stasiun online kurasi, stream kustom pengguna, dan file musik lokal.
+   - Menambahkan tombol hapus (`🗑️`) di samping tombol favorit (`❤️`) pada setiap lagu kustom untuk memudahkan pengguna mengelola pustaka musiknya.
+   - Menambahkan listener `storage` dan event kustom `hermes:music-library-updated` untuk sinkronisasi real-time antar jendela aplikasi.
+
+4. **Kartu Manajemen Pustaka Musik di Menu Pengaturan (`settings.html` & `settings.js`):**
+   - Menambahkan sub-bagian **Pustaka Musik & Playlist Favorit (Penyimpanan Permanen)** di menu **Pengaturan ➔ Suara & TTS**:
+     - Indikator status berkas penyimpanan: `~/.hermes-avatar/music_library.json`.
+     - Tombol **Buka Folder 📂** untuk mengakses folder penyimpanan secara langsung di komputer.
+     - Ringkasan statistik jumlah lagu stream web, file audio lokal, dan jumlah lagu favorit tersimpan.
+     - Formulir cepat untuk menambahkan URL link YouTube / web stream baru langsung ke ruang penyimpanan permanen.
+
+5. **Verifikasi:**
+   - `npm run build` sukses 100% (173 modules transformed, out/main/index.js 84.64 kB, out/renderer 354.21 kB).
+
+
 
 
 

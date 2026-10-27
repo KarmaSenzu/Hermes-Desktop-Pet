@@ -374,6 +374,8 @@ export class MusicPlayer {
     this.bindEvents()
     this.renderTracklist()
     this.updateCurrentTrackDisplay()
+    this.loadLibraryFromDisk()
+    this.listenToExternalUpdates()
   }
 
   initYouTubeApi() {
@@ -555,6 +557,51 @@ export class MusicPlayer {
     }
   }
 
+  rebuildTracklist() {
+    this.tracks = [
+      ...BUILTIN_TRACKS,
+      ...ONLINE_CURATED_STATIONS,
+      ...this.onlineTracks,
+      ...this.localTracks
+    ]
+  }
+
+  async loadLibraryFromDisk() {
+    try {
+      if (window.hermesAvatar?.loadMusicLibrary) {
+        const res = await window.hermesAvatar.loadMusicLibrary()
+        if (res?.ok && res.data) {
+          const { onlineTracks, localTracks, favorites, volume } = res.data
+          if (Array.isArray(onlineTracks)) {
+            this.onlineTracks = onlineTracks
+          }
+          if (Array.isArray(localTracks)) {
+            this.localTracks = localTracks
+          }
+          if (Array.isArray(favorites)) {
+            this.favorites = new Set(favorites)
+          }
+          if (typeof volume === 'number') {
+            this.volume = Math.max(0, Math.min(1, volume))
+          }
+          this.rebuildTracklist()
+          this.renderTracklist()
+          this.updateCurrentTrackDisplay()
+          return
+        }
+      }
+    } catch (err) {
+      console.warn('[MusicPlayer] Gagal memuat pustaka musik dari disk:', err)
+    }
+
+    // Fallback ke localStorage jika file disk belum ada
+    this.loadPersistedData()
+    // Jika ada data di localStorage, migrasikan langsung ke file disk!
+    if (this.onlineTracks.length > 0 || this.localTracks.length > 0 || this.favorites.size > 0) {
+      this.savePersistedData()
+    }
+  }
+
   loadPersistedData() {
     try {
       const savedFavs = localStorage.getItem('hermes-music-favorites')
@@ -572,12 +619,7 @@ export class MusicPlayer {
         this.onlineTracks = JSON.parse(savedOnline)
       }
 
-      this.tracks = [
-        ...BUILTIN_TRACKS,
-        ...ONLINE_CURATED_STATIONS,
-        ...this.onlineTracks,
-        ...this.localTracks
-      ]
+      this.rebuildTracklist()
 
       const savedVol = localStorage.getItem('hermes-music-volume')
       if (savedVol !== null) {
@@ -589,6 +631,22 @@ export class MusicPlayer {
   }
 
   savePersistedData() {
+    const payload = {
+      favorites: [...this.favorites],
+      localTracks: this.localTracks,
+      onlineTracks: this.onlineTracks,
+      volume: this.volume,
+      updatedAt: new Date().toISOString()
+    }
+
+    // 1. Simpan ke berkas permanen di ~/.hermes-avatar/music_library.json
+    if (window.hermesAvatar?.saveMusicLibrary) {
+      window.hermesAvatar.saveMusicLibrary(payload).catch((err) => {
+        console.warn('[MusicPlayer] Gagal simpan ke file disk:', err)
+      })
+    }
+
+    // 2. Redundansi ke localStorage browser
     try {
       localStorage.setItem('hermes-music-favorites', JSON.stringify([...this.favorites]))
       localStorage.setItem('hermes-music-local-tracks', JSON.stringify(this.localTracks))
@@ -597,6 +655,33 @@ export class MusicPlayer {
     } catch (err) {
       console.warn('[MusicPlayer] Gagal menyimpan data:', err)
     }
+  }
+
+  listenToExternalUpdates() {
+    window.addEventListener('storage', (e) => {
+      if (e.key === 'hermes-music-online-tracks' || e.key === 'hermes-music-favorites') {
+        this.loadLibraryFromDisk()
+      }
+    })
+    window.addEventListener('hermes:music-library-updated', () => {
+      this.loadLibraryFromDisk()
+    })
+  }
+
+  removeCustomTrack(trackId) {
+    this.onlineTracks = this.onlineTracks.filter((t) => t.id !== trackId)
+    this.localTracks = this.localTracks.filter((t) => t.id !== trackId)
+    this.favorites.delete(trackId)
+    this.rebuildTracklist()
+    this.savePersistedData()
+
+    if (this.getCurrentTrack()?.id === trackId) {
+      this.pause()
+      this.currentTrackIndex = 0
+    }
+
+    this.updateCurrentTrackDisplay()
+    this.renderTracklist()
   }
 
   bindEvents() {
@@ -792,7 +877,7 @@ export class MusicPlayer {
     }
 
     this.onlineTracks.push(newTrack)
-    this.tracks.push(newTrack)
+    this.rebuildTracklist()
     this.savePersistedData()
     this.setCategory('online')
 
@@ -1207,6 +1292,7 @@ export class MusicPlayer {
       .map((track) => {
         const isCur = this.getCurrentTrack()?.id === track.id
         const isFav = this.favorites.has(track.id)
+        const canDelete = track.id.startsWith('online-') || track.id.startsWith('local-')
         const durText =
           track.type === 'youtube'
             ? 'YouTube'
@@ -1215,6 +1301,10 @@ export class MusicPlayer {
               : track.duration
                 ? this.formatTime(track.duration)
                 : '∞'
+
+        const delBtn = canDelete
+          ? `<button class="track-del-mini" data-del-id="${track.id}" title="Hapus dari Penyimpanan Permanen">🗑️</button>`
+          : ''
 
         return `
           <div class="music-track-item ${isCur ? 'active' : ''}" data-id="${track.id}">
@@ -1227,9 +1317,10 @@ export class MusicPlayer {
             </div>
             <div class="track-right">
               <span class="track-dur">${durText}</span>
-              <button class="track-fav-mini ${isFav ? 'active' : ''}" data-fav-id="${track.id}" title="Favorit">
+              <button class="track-fav-mini ${isFav ? 'active' : ''}" data-fav-id="${track.id}" title="${isFav ? 'Hapus dari Favorit' : 'Simpan ke Favorit ❤️'}">
                 ${isFav ? '❤️' : '🤍'}
               </button>
+              ${delBtn}
             </div>
           </div>
         `
@@ -1238,7 +1329,7 @@ export class MusicPlayer {
 
     this.dom.tracklist.querySelectorAll('.music-track-item').forEach((item) => {
       item.addEventListener('click', (e) => {
-        if (e.target.closest('.track-fav-mini')) return
+        if (e.target.closest('.track-fav-mini') || e.target.closest('.track-del-mini')) return
         const id = item.getAttribute('data-id')
         const fullIndex = this.tracks.findIndex((t) => t.id === id)
         if (fullIndex !== -1) {
@@ -1253,6 +1344,16 @@ export class MusicPlayer {
         const id = btn.getAttribute('data-fav-id')
         if (id) {
           this.toggleFavorite(id)
+        }
+      })
+    })
+
+    this.dom.tracklist.querySelectorAll('.track-del-mini').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation()
+        const id = btn.getAttribute('data-del-id')
+        if (id) {
+          this.removeCustomTrack(id)
         }
       })
     })
@@ -1290,7 +1391,7 @@ export class MusicPlayer {
       }
 
       this.localTracks.push(...newTracks)
-      this.tracks.push(...newTracks)
+      this.rebuildTracklist()
       this.savePersistedData()
 
       this.setCategory('local')

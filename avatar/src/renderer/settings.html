@@ -916,6 +916,52 @@
               </div>
             </div>
           </div>
+
+          <div class="group-header">Pustaka Musik & Playlist Favorit (Penyimpanan Permanen)</div>
+          <div class="card">
+            <div class="settings-row">
+              <div class="format-emblem theme-emerald">
+                <svg class="lucide-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+              </div>
+              <div class="format-info-col">
+                <div class="format-title-line">
+                  <span class="format-title">Ruang Penyimpanan Pustaka Musik</span>
+                  <span id="music-storage-badge" class="package-badge badge on">Tersimpan Permanen ✓</span>
+                </div>
+                <p class="format-desc-text" id="music-storage-desc">Berkas lokal: <code>~/.hermes-avatar/music_library.json</code></p>
+              </div>
+              <div class="row-control" style="display:flex; gap:8px;">
+                <button type="button" id="btn-open-music-folder" class="mini-btn">Buka Folder 📂</button>
+              </div>
+            </div>
+            <div class="settings-row">
+              <div class="format-emblem theme-blue">
+                <svg class="lucide-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/></svg>
+              </div>
+              <div class="format-info-col">
+                <div class="format-title-line">
+                  <span class="format-title">Status Pustaka & Playlist</span>
+                </div>
+                <p class="format-desc-text" id="music-stats-desc">Memuat status lagu stream dan favorit tersimpan...</p>
+              </div>
+              <div class="row-control">
+                <button type="button" id="btn-refresh-music-stats" class="mini-btn">Segarkan 🔄</button>
+              </div>
+            </div>
+            <div class="settings-row" style="flex-direction: column; align-items: stretch; gap: 10px;">
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <span style="font-size: 13px; font-weight: 600; color: #f1f5f9;">Tambah Link Stream / YouTube ke Penyimpanan</span>
+                <span style="font-size: 11px; color: #94a3b8;">Disimpan permanen ke perangkat Anda</span>
+              </div>
+              <div style="display: flex; gap: 8px;">
+                <input id="settings-music-url" type="url" class="mac-input" style="flex: 1;" placeholder="URL YouTube / Link Stream (https://...)" />
+                <button type="button" id="btn-settings-add-stream" class="group-action-btn primary">
+                  <span>Simpan ke Pustaka ➕</span>
+                </button>
+              </div>
+              <div id="settings-music-feedback" style="font-size: 11px; color: #10b981; display: none;"></div>
+            </div>
+          </div>
         </section>
 
         <!-- LLM -->

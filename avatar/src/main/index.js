@@ -1,5 +1,5 @@
 import { app, BrowserWindow, ipcMain, protocol, dialog, screen, safeStorage, shell, Menu } from 'electron'
-import { join, extname, isAbsolute } from 'path'
+import { join, extname, isAbsolute, basename } from 'path'
 import { readFile, writeFile, mkdir, rm } from 'fs/promises'
 import { existsSync, statSync, readdirSync, cpSync, mkdirSync, createWriteStream } from 'fs'
 import { homedir } from 'os'
@@ -675,6 +675,69 @@ ipcMain.handle('avatar:pick-audio-files', async () => {
     }
   })
 })
+
+const MUSIC_LIBRARY_FILE = join(homedir(), '.hermes-avatar', 'music_library.json')
+
+// IPC: Memuat pustaka musik permanen (~/.hermes-avatar/music_library.json)
+ipcMain.handle('avatar:music-load-library', async () => {
+  try {
+    if (!existsSync(MUSIC_LIBRARY_FILE)) {
+      return { ok: false, notFound: true, path: MUSIC_LIBRARY_FILE }
+    }
+    const raw = await readFile(MUSIC_LIBRARY_FILE, 'utf-8')
+    const data = JSON.parse(raw)
+    return { ok: true, data, path: MUSIC_LIBRARY_FILE }
+  } catch (err) {
+    console.warn('[MusicLibrary] Gagal membaca music_library.json:', err)
+    return { ok: false, error: err?.message || String(err), path: MUSIC_LIBRARY_FILE }
+  }
+})
+
+// IPC: Menyimpan pustaka musik permanen (~/.hermes-avatar/music_library.json)
+ipcMain.handle('avatar:music-save-library', async (_event, payload) => {
+  try {
+    const dir = join(homedir(), '.hermes-avatar')
+    await mkdir(dir, { recursive: true })
+    await writeFile(MUSIC_LIBRARY_FILE, JSON.stringify(payload, null, 2), 'utf-8')
+    return { ok: true, path: MUSIC_LIBRARY_FILE }
+  } catch (err) {
+    console.warn('[MusicLibrary] Gagal menulis music_library.json:', err)
+    return { ok: false, error: err?.message || String(err) }
+  }
+})
+
+// IPC: Informasi pustaka musik (lokasi berkas, keberadaan berkas, ukuran)
+ipcMain.handle('avatar:music-library-info', async () => {
+  try {
+    const exists = existsSync(MUSIC_LIBRARY_FILE)
+    let stats = null
+    if (exists) {
+      stats = statSync(MUSIC_LIBRARY_FILE)
+    }
+    return {
+      ok: true,
+      path: MUSIC_LIBRARY_FILE,
+      exists,
+      size: stats?.size || 0,
+      updatedAt: stats?.mtime || null
+    }
+  } catch (err) {
+    return { ok: false, error: err?.message || String(err) }
+  }
+})
+
+// IPC: Buka folder ~/.hermes-avatar di Explorer / Finder
+ipcMain.handle('avatar:music-open-folder', async () => {
+  try {
+    const dir = join(homedir(), '.hermes-avatar')
+    await mkdir(dir, { recursive: true })
+    await shell.openPath(dir)
+    return { ok: true }
+  } catch (err) {
+    return { ok: false, error: err?.message || String(err) }
+  }
+})
+
 
 // IPC: token Hermes gateway — pakai SESSION_TOKEN dari service-manager
 // (konsisten antara avatar & hermes serve yang di-spawn otomatis).

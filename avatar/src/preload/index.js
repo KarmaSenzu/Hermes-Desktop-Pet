@@ -60,6 +60,12 @@ const api = {
   // Buka dialog pilih file audio musik lokal (mp3, wav, ogg, flac, m4a, aac).
   pickAudioFiles: () => ipcRenderer.invoke('avatar:pick-audio-files'),
 
+  // Pustaka Musik Permanen (~/.hermes-avatar/music_library.json)
+  loadMusicLibrary: () => ipcRenderer.invoke('avatar:music-load-library'),
+  saveMusicLibrary: (data) => ipcRenderer.invoke('avatar:music-save-library', data),
+  getMusicLibraryInfo: () => ipcRenderer.invoke('avatar:music-library-info'),
+  openMusicFolder: () => ipcRenderer.invoke('avatar:music-open-folder'),
+
   // Konfigurasi Hermes gateway (WS URL + token dari env).
   getHermesConfig: () => ipcRenderer.invoke('avatar:hermes-config'),
 
