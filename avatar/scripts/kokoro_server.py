@@ -44,8 +44,9 @@ print = safe_print
 PORT = 8880
 HOST = "127.0.0.1"
 
-# Folder penyimpanan model Kokoro (disimpan di ~/.hermes-avatar/packages/kokoro/ agar terpusat dan mudah dikelola)
-PACKAGE_DIR = os.path.join(os.path.expanduser("~"), ".hermes-avatar", "packages", "kokoro")
+# Folder penyimpanan model Kokoro (disimpan di ~/.hermes-avatar/packages/kokoro/ atau custom KOKORO_MODEL_DIR)
+CUSTOM_MODEL_DIR = os.environ.get("KOKORO_MODEL_DIR", "").strip()
+PACKAGE_DIR = CUSTOM_MODEL_DIR if (CUSTOM_MODEL_DIR and os.path.exists(CUSTOM_MODEL_DIR)) else os.path.join(os.path.expanduser("~"), ".hermes-avatar", "packages", "kokoro")
 LEGACY_DIR = os.path.join(os.path.expanduser("~"), ".kokoro-models")
 os.makedirs(PACKAGE_DIR, exist_ok=True)
 

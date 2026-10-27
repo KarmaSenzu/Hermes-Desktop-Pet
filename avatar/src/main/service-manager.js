@@ -18,6 +18,20 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync, cpSync } from 'fs'
 import { join, dirname } from 'path'
 import { homedir } from 'os'
 import { fileURLToPath } from 'url'
+import {
+  resolveHermesBinary,
+  resolvePythonBinary,
+  resolveRouterBinary,
+  resolveRouterApiKey,
+  resolveKokoroModelDir,
+  resolveHermesConfigPath,
+  getAllDetectedPaths,
+  loadPersistedPaths,
+  savePersistedPath,
+  invalidatePathCache,
+  getLogicalDrives,
+  resolveWindowlessPythonBinary
+} from './path-resolver.js'
 
 const HERMES_PORT = 9119
 const ROUTER_PORT = 20128
@@ -93,62 +107,8 @@ function fixSystemPath() {
 fixSystemPath()
 
 function resolveHermesCmd() {
-  if (process.env['HERMES_BIN'] && existsSync(process.env['HERMES_BIN'])) {
-    return process.env['HERMES_BIN']
-  }
-  const home = homedir()
-  const candidatePaths = process.platform === 'win32'
-    ? [
-        join(home, 'AppData', 'Local', 'hermes', 'hermes-agent', 'venv', 'Scripts', 'hermes.exe'),
-        join(home, 'AppData', 'Local', 'hermes', 'venv', 'Scripts', 'hermes.exe'),
-        join(home, '.hermes', 'venv', 'Scripts', 'hermes.exe'),
-        join(home, 'AppData', 'Local', 'Programs', 'hermes', 'hermes.exe')
-      ]
-    : [
-        join(home, '.local', 'bin', 'hermes'),
-        join(home, '.hermes', 'venv', 'bin', 'hermes'),
-        join(home, '.hermes-agent', 'venv', 'bin', 'hermes'),
-        '/opt/homebrew/bin/hermes',
-        '/usr/local/bin/hermes',
-        join(home, 'Library', 'Python', '3.12', 'bin', 'hermes'),
-        join(home, 'Library', 'Python', '3.11', 'bin', 'hermes'),
-        join(home, 'Library', 'Python', '3.10', 'bin', 'hermes'),
-        join(home, '.cargo', 'bin', 'hermes'),
-        '/opt/homebrew/sbin/hermes',
-        '/usr/bin/hermes',
-        '/bin/hermes'
-      ]
-  for (const p of candidatePaths) {
-    if (existsSync(p)) return p
-  }
-
-  // Cek apakah binary hermes ada di PATH aktif sistem
-  const defaultCmd = process.platform === 'win32' ? 'hermes.exe' : 'hermes'
-  const pathDirs = (process.env.PATH || '').split(process.platform === 'win32' ? ';' : ':')
-  for (const dir of pathDirs) {
-    if (!dir) continue
-    const full = join(dir, defaultCmd)
-    if (existsSync(full)) return full
-  }
-
-  // Jika tidak ditemukan di disk, kembalikan null agar caller tidak memicu spawn ENOENT crash
-  return null
-}
-
-function resolveHermesConfigPath() {
-  const home = homedir()
-  const candidates = [
-    join(home, '.hermes', 'config.yaml'),
-    join(home, 'AppData', 'Local', 'hermes', 'config.yaml'),
-    join(home, '.config', 'hermes', 'config.yaml')
-  ]
-  for (const c of candidates) {
-    if (existsSync(c)) return c
-  }
-  if (process.platform === 'win32' && existsSync(join(home, 'AppData', 'Local', 'hermes'))) {
-    return join(home, 'AppData', 'Local', 'hermes', 'config.yaml')
-  }
-  return join(home, '.hermes', 'config.yaml')
+  const res = resolveHermesBinary()
+  return res.cmd
 }
 
 // Token persisten: reuse token lama bila ada, agar konsisten antar sesi.
@@ -266,50 +226,31 @@ async function startHermes() {
 }
 
 /**
- * Deteksi dan verifikasi binary Python yang aktif di sistem.
- * Mengembalikan objek { cmd, version, ok }.
+ * Restart Hermes server secara mulus (berguna saat ada perubahan konfigurasi LLM / endpoint).
+ */
+async function restartHermes() {
+  const existing = children.find((c) => c.name === 'hermes')
+  if (existing && existing.child) {
+    try { existing.child.kill('SIGTERM') } catch (_) {}
+    const idx = children.indexOf(existing)
+    if (idx >= 0) children.splice(idx, 1)
+  }
+  try {
+    const { execSync } = await import('child_process')
+    if (process.platform === 'win32') {
+      execSync('powershell -NoProfile -Command "Get-Process -Name hermes -ErrorAction SilentlyContinue | Stop-Process -Force"', { stdio: 'ignore' })
+    }
+  } catch (_) {}
+  await new Promise((r) => setTimeout(r, 600))
+  return await startHermes()
+}
+
+/**
+ * Deteksi dan verifikasi binary Python yang aktif di sistem via smart multi-tier discovery.
+ * Mengembalikan objek { cmd, version, ok, source }.
  */
 async function resolvePythonCmd() {
-  const home = homedir()
-  const candidates = process.platform === 'win32'
-    ? [
-        'py',
-        'python',
-        join(home, 'AppData', 'Local', 'Programs', 'Python', 'Python313', 'python.exe'),
-        join(home, 'AppData', 'Local', 'Programs', 'Python', 'Python312', 'python.exe'),
-        join(home, 'AppData', 'Local', 'Programs', 'Python', 'Python311', 'python.exe'),
-        join(home, 'AppData', 'Local', 'Programs', 'Python', 'Python310', 'python.exe')
-      ]
-    : [
-        'python3',
-        '/opt/homebrew/bin/python3',
-        '/usr/local/bin/python3',
-        join(home, '.local', 'bin', 'python3'),
-        join(home, '.hermes', 'venv', 'bin', 'python3'),
-        join(home, '.hermes', 'venv', 'bin', 'python'),
-        '/usr/bin/python3',
-        'python'
-      ]
-
-  for (const cmd of candidates) {
-    if (cmd.includes('/') || cmd.includes('\\')) {
-      if (!existsSync(cmd)) continue
-    }
-    const ver = await new Promise((res) => {
-      execFile(cmd, ['--version'], { timeout: 2000, env: process.env }, (err, stdout, stderr) => {
-        if (!err && (stdout || stderr)) {
-          const v = (stdout || stderr).trim()
-          if (/Python\s+\d+/i.test(v)) return res(v)
-        }
-        res(null)
-      })
-    })
-    if (ver) {
-      return { cmd, version: ver, ok: true }
-    }
-  }
-
-  return { cmd: process.platform === 'win32' ? 'py' : 'python3', version: 'Belum terpasang', ok: false }
+  return await resolvePythonBinary()
 }
 
 /**
@@ -335,17 +276,19 @@ async function startKokoro() {
       return { ok: false, error: 'Script kokoro_server.py tidak ditemukan' }
     }
 
-    const pyInfo = await resolvePythonCmd()
-    const pyCmd = pyInfo.cmd
+    const pyCmd = await resolveWindowlessPythonBinary()
+    const kokoroDirInfo = resolveKokoroModelDir()
     const scriptDir = dirname(validScript)
-    const quotedScript = process.platform === 'win32' ? `"${validScript}"` : validScript
-    const child = spawn(pyCmd, [quotedScript], {
+    const child = spawn(pyCmd, [validScript], {
       cwd: scriptDir,
       detached: true,
       stdio: 'ignore',
-      shell: true,
+      shell: false,
       windowsHide: true,
-      env: process.env
+      env: {
+        ...process.env,
+        KOKORO_MODEL_DIR: kokoroDirInfo.dir
+      }
     })
     child.on('error', (err) => {
       console.warn('[ServiceManager] Kokoro server spawn error:', err.message)
@@ -362,6 +305,41 @@ async function startKokoro() {
   } catch (err) {
     console.error('[ServiceManager] Gagal startKokoro:', err?.message || err)
     return { ok: false, error: err?.message || String(err) }
+  }
+}
+
+/**
+ * Jalankan 9Router daemon jika belum jalan di port 20128.
+ */
+async function startRouter() {
+  if (await isPortOpen(ROUTER_PORT)) {
+    return { already: true, ok: true }
+  }
+  const routerInfo = resolveRouterBinary()
+  if (!routerInfo.ok || !routerInfo.cmd) {
+    return { already: false, ok: false, error: 'Binary atau script 9Router belum terpasang di sistem' }
+  }
+  console.log(`[ServiceManager] Starting 9Router daemon via: ${routerInfo.cmd}`)
+  try {
+    let spawnError = null
+    const child = spawn(routerInfo.cmd, ['-n', '--skip-update'], {
+      stdio: 'ignore',
+      shell: process.platform === 'win32',
+      windowsHide: true,
+      env: process.env
+    })
+    child.on('error', (err) => {
+      console.warn('[ServiceManager] 9Router spawn error:', err.message)
+      spawnError = err
+    })
+    children.push({ name: '9router', child })
+    const ok = await waitForPort(ROUTER_PORT, 6000)
+    if (!ok && spawnError) {
+      return { already: false, ok: false, error: spawnError.message }
+    }
+    return { already: false, ok, child }
+  } catch (err) {
+    return { already: false, ok: false, error: err.message }
   }
 }
 
@@ -448,9 +426,19 @@ export {
   KOKORO_PORT,
   isPortOpen,
   startHermes,
+  restartHermes,
   startKokoro,
+  startRouter,
   resolvePythonCmd,
   resolveHermesCmd,
+  resolveRouterBinary,
+  resolveRouterApiKey,
+  resolveKokoroModelDir,
   resolveHermesConfigPath,
+  getAllDetectedPaths,
+  loadPersistedPaths,
+  savePersistedPath,
+  invalidatePathCache,
+  getLogicalDrives,
   fixSystemPath
 }

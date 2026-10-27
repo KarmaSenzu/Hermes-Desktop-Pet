@@ -2018,7 +2018,8 @@ body {
 /* ==========================================================================
    AI Assessment Tool / Multiple Choice Interactive Card
    ========================================================================== */
-.chat-log .avatar.assessment-card {
+.chat-log .avatar.assessment-card,
+.assessment-card {
   background: linear-gradient(145deg, rgba(15, 23, 42, 0.95), rgba(30, 41, 59, 0.95));
   border: 1px solid rgba(56, 189, 248, 0.45);
   box-shadow: 0 8px 28px rgba(0, 0, 0, 0.5), 0 0 18px rgba(56, 189, 248, 0.18);
@@ -2029,6 +2030,8 @@ body {
   box-sizing: border-box;
   animation: flyout-in 0.25s cubic-bezier(0.16, 1, 0.3, 1);
   color: #f1f5f9;
+  margin-top: 10px;
+  margin-bottom: 6px;
 }
 
 .assessment-card-header {

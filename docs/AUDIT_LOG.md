@@ -1618,6 +1618,70 @@ Dokumen ini mencatat setiap perubahan, penambahan, dan penghapusan kode secara t
 5. **Verifikasi:**
    - `npm run build` sukses 100% (173 modules transformed, out/main/index.js 84.64 kB, out/renderer 354.21 kB).
 
+---
+
+### [2026-10-28 02:12] — Audit Entry #045: Dynamic Contextual AI Assessment Engine & Multi-Option Interactive Clarifier
+
+* **Tipe Perubahan:** Feature Evolution / Dynamic Assessment Engine / Contextual Clarification UI / Conversational Multi-Select
+* **Pelapor:** User
+  - Kendala & Ide: Sebelumnya fitur **AI Assessment Tool** hanya muncul secara statis untuk pertanyaan *"apa saja yang kamu bisa"*. Pengguna menginginkan sistem yang cerdas dan kontekstual: jika konteks chat bersifat objektif, problem-solving, atau membutuhkan pilihan langkah/opsi terarah, sistem secara dinamis menyajikan kartu pilihan ganda interaktif dengan checkbox agar pengguna bisa memilih langkah yang ingin didalami. Sebaliknya, pada percakapan ringan, sapaan, atau pertanyaan langsung, avatar merespons to-the-point tanpa memunculkan kartu pilihan.
+* **Status:** ✅ Selesai & Terverifikasi (`npm run build` lulus 100%)
+
+#### Rincian Implementasi & Solusi Teknis:
+
+1. **Parser & Rendering Kartu Dinamis (`main.js` & `renderMarkdown`):**
+   - Menambahkan regex extractor yang mendeteksi blok tag `<assessment title="..." prompt="..."> <option id="..." title="...">...</option> </assessment>` dari balasan AI.
+   - Sembunyikan tag assessment yang belum selesai tertutup selama proses streaming sehingga teks XML mentah tidak pernah muncul / berkedip di layar pengguna.
+   - Mengonversi blok tersebut menjadi komponen interaktif `.assessment-card.dynamic-assessment-card` dengan checkbox multi-select, preset chip (*"Pilih Semua"*), dan tombol eksekusi dinamis (*"⚡ Eksekusi Pilihan (N Dipilih)"*).
+
+2. **Dua Mode Interaksi (Klik UI & Suara/Ketik Fleksibel):**
+   - **Interaksi Mouse:** Pengguna mencentang satu atau beberapa opsi pada kartu lalu menekan tombol eksekusi.
+   - **Interaksi Alami (Suara/Teks):** Fungsi `extractAssessmentChoices(text)` kini mendeteksi kartu dinamis terbaru di layar. Perintah seperti *"coba nomor 1 dan 2"*, *"jalankan no 3"*, atau *"pilih semua"* otomatis mencentang opsi pada kartu dinamis dan mengeksekusinya.
+
+3. **Pipeline Eksekusi & Umpan Balik (`handleUserChat`):**
+   - Mengekstrak fungsi `handleUserChat(promptToSend, displayLabel)` agar eksekusi dari kartu pilihan langsung terhubung ke backend Hermes tanpa duplikasi logika chat.
+   - Avatar memberikan sapaan suara dan ekspresi fokus (*"Baik, saya akan mulai memproses pilihan yang kamu tentukan"*), lalu mengirimkan instruksi terstruktur ke Hermes untuk memandu langkah-langkah yang dipilih.
+
+4. **Kecerdasan Konteks di Prompt System (`buildPrompt`):**
+   - Menambahkan panduan instruksi ke Hermes: jika pertanyaan pengguna bersifat konsultasi masalah, perencanaan, troubleshooting, atau memiliki alternatif langkah, Hermes wajib menyertakan blok `<assessment>`.
+   - **Aturan Mutlak Chat Ringan:** Untuk obrolan santai, sapaan ("halo", "hai", "lagi apa"), atau pertanyaan fakta langsung, Hermes dilarang keras memunculkan kartu assessment dan langsung menjawab to-the-point.
+
+5. **Universal Styling (`main.css`):**
+   - Menyelaraskan selector `.assessment-card` agar tampilan kartu tetap konsisten, berdesain dark glassmorphism modern dengan aksen cyan glow (`#38bdf8`), baik saat berada di root chat maupun di dalam markdown body.
+
+6. **Verifikasi:**
+   - `npm run build` sukses 100% tanpa error.
+
+---
+
+### [2026-10-28 02:24] — Audit Entry #046: Perbaikan Placeholder Collision pada Markdown Parser & Dynamic Assessment Card Rendering
+
+* **Tipe Perubahan:** Bug Fix / Markdown Parser Resilience / TTS Audio Filtering
+* **Masalah:**
+  - Saat Hermes menjawab pertanyaan objektif/konsultasi (seperti rekomendasi belajar web modern), kartu interaktif tidak muncul dan justru menampilkan teks mentah `%%DYNAMICASSESSMENT0%%` di akhir pesan chat.
+  - **Akar Masalah:**
+    1. Placeholder `%%DYNAMIC_ASSESSMENT_${cIdx}%%` mengandung sepasang garis bawah (`_ASSESSMENT_`). Aturan `formatInline()` untuk italic (`_..._`) memproses placeholder tersebut menjadi `%%DYNAMIC<em>ASSESSMENT</em>0%%`, sehingga regex restorasi `%%DYNAMIC_ASSESSMENT_(\d+)%%` gagal cocok dan teks bocor ke tampilan.
+    2. Placeholder sebelumnya tidak diidentifikasi sebagai blok HTML mayor langsung, sehingga terbungkus tag `<p>...</p>` oleh `flushParagraph()`.
+    3. `extractAssessmentChoices()` memiliki pengecekan `if (execBtn && !execBtn.disabled)` padahal tombol eksekusi sengaja berstatus `disabled` (0 pilihan) sebelum ada opsi yang dipilih, menyebabkan pemilihan nomor via chat/suara tidak berjalan langsung.
+    4. TTS normalizer (`toSpeechText`) belum menyaring tag `<assessment>...</assessment>`.
+* **Solusi & Perubahan Berkas:**
+  1. **Token Placeholder Bebas Karakter Markdown (`main.js`):**
+     - Mengubah token menjadi `@@@DYNAMICASSESSMENTCARD${cIdx}@@@` tanpa karakter `_` atau `*` agar tidak pernah terpengaruh italic/bold formatter.
+     - Menambahkan penanganan streaming di mana blok `<assessment` yang belum tertutup otomatis disembunyikan sampai tag penutup `</assessment>` tiba.
+  2. **Pengenalan Blok Mayor & Restorasi Bersih (`main.js`):**
+     - Mendaftarkan `@@@DYNAMICASSESSMENTCARD` ke `isNextMajorBlock` dan blok HTML langsung agar tidak terbungkus tag paragraf `<p>`.
+     - Mengupdate pembersih restorasi untuk mengekstrak card HTML secara utuh baik di dalam paragraf maupun sebagai blok tersendiri, dengan fallback regex untuk token lama.
+  3. **Aktivasi Pemilihan Suara/Chat (`main.js`):**
+     - Memperbaiki `extractAssessmentChoices()` agar tetap dapat mencentang opsi visual dan mengaktifkan `executeBtn` saat tombol berstatus disabled awal.
+     - Menandai kartu dengan status `.executed` setelah diklik agar tidak terjadi eksekusi ganda.
+  4. **Penyaringan Audio TTS (`speech-normalizer.js`):**
+     - Memastikan seluruh tag `<assessment>...</assessment>` dan placeholder dibersihkan dalam `toSpeechText()` sehingga suara avatar hanya mengucapkan pengantar ringkas dan tidak pernah mengeja tag XML atau opsi teknis.
+  5. **Verifikasi:**
+     - Pengujian unit simulasi berhasil membuktikan penghapusan total placeholder `%%DYNAMICASSESSMENT0%%` dan kemunculan kartu interaktif.
+     - `npm run build` sukses 100% tanpa error.
+
+
+
 
 
 

@@ -1041,6 +1041,60 @@ function renderMarkdown(md) {
     return `\n%%CODEBLOCK_${idx}%%\n`
   })
 
+  // 2.1. Proteksi & Ekstrak Dynamic AI Assessment Cards (<assessment ...>...</assessment>)
+  const dynamicAssessmentCards = []
+  raw = raw.replace(/<assessment(?:\s+title="([^"]*)")?(?:\s+prompt="([^"]*)")?[^>]*>([\s\S]*?)<\/assessment>/gi, (_, title, prompt, inner) => {
+    const cardId = 'dyn-card-' + Math.random().toString(36).slice(2, 9)
+    const options = []
+    const optRegex = /<option(?:\s+id="([^"]*)")?(?:\s+title="([^"]*)")?[^>]*>([\s\S]*?)<\/option>/gi
+    let o
+    while ((o = optRegex.exec(inner)) !== null) {
+      options.push({
+        id: o[1] || String(options.length + 1),
+        title: o[2] || `Opsi ${options.length + 1}`,
+        desc: o[3].trim()
+      })
+    }
+
+    if (options.length === 0) return ''
+
+    const cardHtml = `
+<div class="assessment-card dynamic-assessment-card" data-assessment-id="${cardId}">
+  <div class="assessment-card-header">
+    <div class="assessment-badge">🎯 ${escapeHtml((title || 'AI Assessment & Rekomendasi').toUpperCase())}</div>
+    <span class="assessment-type-pill">Multi-Select Aktif</span>
+  </div>
+  <div class="assessment-prompt-text">
+    ${escapeHtml(prompt || 'Silakan pilih satu atau beberapa langkah di bawah ini untuk saya jelaskan atau eksekusi lebih lanjut:')}
+  </div>
+  <div class="assessment-options-list">
+    ${options.map((opt) => `
+      <div class="assessment-option-item" data-id="${escapeHtml(opt.id)}" data-title="${escapeHtml(opt.title)}">
+        <div class="assessment-custom-checkbox"></div>
+        <div class="assessment-option-content">
+          <div class="assessment-option-title">${escapeHtml(opt.title)}</div>
+          <div class="assessment-option-desc">${escapeHtml(opt.desc)}</div>
+        </div>
+      </div>
+    `).join('')}
+  </div>
+  <div class="assessment-quick-presets">
+    <span style="font-size: 10px; color: #94a3b8; align-self: center;">Preset:</span>
+    <button type="button" class="assessment-preset-chip" data-preset="all">🔥 Pilih Semua</button>
+  </div>
+  <div class="assessment-footer">
+    <button type="button" class="assessment-execute-btn" disabled>⚡ Eksekusi Pilihan (0 Dipilih)</button>
+    <span class="assessment-status-text">Centang opsi lalu klik tombol eksekusi</span>
+  </div>
+</div>`
+    const cIdx = dynamicAssessmentCards.length
+    dynamicAssessmentCards.push(cardHtml)
+    return `\n@@@DYNAMICASSESSMENTCARD${cIdx}@@@\n`
+  })
+
+  // Sembunyikan tag assessment yang belum tertutup selama proses streaming agar tidak muncul teks XML mentah
+  raw = raw.replace(/<assessment[\s\S]*$/i, '')
+
   // 3. Escape HTML pada sisa teks agar aman
   let text = escapeHtml(raw)
 
@@ -1132,7 +1186,7 @@ function renderMarkdown(md) {
       if (nextNonEmptyIndex !== -1 && currentList) {
         const nextLine = rawLines[nextNonEmptyIndex].trim()
         const isNextList = /^(\d+\.|[-*+•]|- \[[ xX]\])/.test(nextLine)
-        const isNextMajorBlock = /^(\#{1,6}\s+|<hr|<div|<blockquote|%%CODEBLOCK_)/.test(nextLine)
+        const isNextMajorBlock = /^(\#{1,6}\s+|<hr|<div|<blockquote|%%CODEBLOCK_|@@@DYNAMICASSESSMENTCARD)/.test(nextLine)
 
         if (isNextMajorBlock) {
           flushList()
@@ -1151,7 +1205,8 @@ function renderMarkdown(md) {
     if (trimmed.startsWith('<div class="table-container">') ||
         trimmed.startsWith('<hr class="markdown-hr">') ||
         trimmed.startsWith('<blockquote>') ||
-        trimmed.startsWith('%%CODEBLOCK_')) {
+        trimmed.startsWith('%%CODEBLOCK_') ||
+        trimmed.startsWith('@@@DYNAMICASSESSMENTCARD')) {
       flushParagraph()
       flushList()
       blocks.push(trimmed)
@@ -1226,10 +1281,19 @@ function renderMarkdown(md) {
   flushParagraph()
   flushList()
 
-  // 8. Restore Codeblocks
+  // 8. Restore Codeblocks & Dynamic Assessment Cards
   let finalHtml = blocks.join('\n')
   finalHtml = finalHtml.replace(/%%CODEBLOCK_(\d+)%%/g, (_, idx) => {
     return codeBlocks[Number(idx)] || ''
+  })
+  finalHtml = finalHtml.replace(/<p>\s*@@@DYNAMICASSESSMENTCARD(\d+)@@@\s*<\/p>|@@@DYNAMICASSESSMENTCARD(\d+)@@@/g, (_, id1, id2) => {
+    const idx = Number(id1 !== undefined ? id1 : id2)
+    return dynamicAssessmentCards[idx] || ''
+  })
+  // Fallback pembersih jika ada variasi format token
+  finalHtml = finalHtml.replace(/<p>\s*%%DYNAMIC(?:<em>)?_?ASSESSMENT_?(?:<\/em>)?(\d+)%%\s*<\/p>|%%DYNAMIC(?:<em>)?_?ASSESSMENT_?(?:<\/em>)?(\d+)%%/gi, (_, id1, id2) => {
+    const idx = Number(id1 !== undefined ? id1 : id2)
+    return dynamicAssessmentCards[idx] || ''
   })
 
   return finalHtml
@@ -1475,6 +1539,42 @@ function extractAssessmentChoices(text) {
   if (!text) return null
   const t = text.toLowerCase().trim()
 
+  // 1. Cek apakah ada dynamic assessment card terbaru di chatLog
+  const dynCards = chatLog.querySelectorAll('.dynamic-assessment-card')
+  const latestDynCard = dynCards.length > 0 ? dynCards[dynCards.length - 1] : null
+
+  if (latestDynCard && !latestDynCard.classList.contains('executed')) {
+    const execBtn = latestDynCard.querySelector('.assessment-execute-btn')
+    if (execBtn && !execBtn.textContent.includes('Sedang Mengeksekusi')) {
+      const isAll = /\b(?:semua|all)\b/i.test(t) && /\b(?:coba|jalankan|pilih|eksekusi|demo|tes)\b/i.test(t)
+      const hasChoiceIntent =
+        /\b(?:coba|jalankan|pilih|eksekusi|nomor|no|opsi|fitur|tolong|tes|demo)\b/i.test(t) ||
+        /^[0-9,\s&dan+serta]+$/i.test(t)
+
+      if (hasChoiceIntent) {
+        const items = latestDynCard.querySelectorAll('.assessment-option-item')
+        let matched = false
+        items.forEach((it, idx) => {
+          const num = idx + 1
+          const numRegex = new RegExp(`\\b${num}\\b`)
+          const optTitle = (it.getAttribute('data-title') || '').toLowerCase()
+          if (isAll || numRegex.test(t) || (optTitle && t.includes(optTitle.slice(0, 15)))) {
+            it.classList.add('selected')
+            matched = true
+          }
+        })
+        if (matched) {
+          execBtn.disabled = false
+          execBtn.click()
+          return ['dynamic-handled']
+        }
+      }
+    }
+  }
+
+  // 2. Fallback: kartu demonstrasi statis (activeAssessmentCard)
+  if (!activeAssessmentCard) return null
+
   // Pola jika pengguna menyebut "semua" / "all"
   if (/\b(?:semua|all)\b/i.test(t) && /\b(?:coba|jalankan|pilih|eksekusi|demo|tes)\b/i.test(t)) {
     return ['weather', 'apps', 'news', 'summary']
@@ -1498,6 +1598,68 @@ function extractAssessmentChoices(text) {
   if (/\b4\b/.test(t) || /\b(?:empat|notulen|ringkasan|summary|minutes)\b/i.test(t)) selected.add('summary')
 
   return selected.size > 0 ? Array.from(selected) : null
+}
+
+// Bind interaktivitas pada Dynamic Assessment Card yang dihasilkan dari jawaban Hermes
+function bindDynamicAssessmentCards(container) {
+  if (!container) return
+  const cards = container.querySelectorAll('.dynamic-assessment-card:not([data-bound="true"])')
+  cards.forEach((card) => {
+    card.setAttribute('data-bound', 'true')
+    const optionItems = card.querySelectorAll('.assessment-option-item')
+    const executeBtn = card.querySelector('.assessment-execute-btn')
+    const presetChips = card.querySelectorAll('.assessment-preset-chip')
+
+    function updateBtn() {
+      const selected = card.querySelectorAll('.assessment-option-item.selected')
+      const count = selected.length
+      if (count === 0) {
+        executeBtn.disabled = true
+        executeBtn.textContent = '⚡ Eksekusi Pilihan (0 Dipilih)'
+      } else {
+        executeBtn.disabled = false
+        executeBtn.textContent = `⚡ Eksekusi Pilihan (${count} Dipilih)`
+      }
+    }
+
+    optionItems.forEach((item) => {
+      item.addEventListener('click', () => {
+        item.classList.toggle('selected')
+        updateBtn()
+      })
+    })
+
+    presetChips.forEach((chip) => {
+      chip.addEventListener('click', () => {
+        const preset = chip.getAttribute('data-preset')
+        if (preset === 'all') {
+          optionItems.forEach((it) => it.classList.add('selected'))
+        }
+        updateBtn()
+        executeBtn.click()
+      })
+    })
+
+    executeBtn.addEventListener('click', async () => {
+      const selected = Array.from(card.querySelectorAll('.assessment-option-item.selected'))
+      if (selected.length === 0) return
+      const chosenTitles = selected.map((it) => it.getAttribute('data-title') || it.getAttribute('data-id'))
+      executeBtn.disabled = true
+      executeBtn.textContent = '✓ Sedang Mengeksekusi...'
+      card.classList.add('executed')
+
+      controller?.setExpression('composing')
+      showSpeechBubble(`Mengeksekusi ${chosenTitles.length} langkah terpilih... ⚡`, 3500)
+      speak(`Baik, saya akan mulai memproses ${chosenTitles.length} pilihan yang kamu tentukan.`, 'happy')
+
+      const promptToSend = `Saya memilih langkah berikut:\n${chosenTitles.map((t, i) => `${i + 1}. ${t}`).join('\n')}\n\nTolong jelaskan secara detail instruksi langkah-langkahnya dan pandu saya sekarang.`
+      const displayLabel = `Memilih langkah: ${chosenTitles.join(', ')}`
+
+      setTimeout(() => {
+        handleUserChat(promptToSend, displayLabel)
+      }, 350)
+    })
+  })
 }
 
 // Tampilkan Kartu Pilihan Ganda Interaktif (AI Capability Assessment Card) di Chat
@@ -2029,6 +2191,7 @@ function log(who, text) {
     line.innerHTML = `<span class="sender-tag user-tag">Kamu:</span> ${escapeHtml(text)}`
   } else {
     line.innerHTML = `<span class="sender-tag">Hermes:</span><div class="chat-body markdown-body">${renderMarkdown(text)}</div>`
+    bindDynamicAssessmentCards(line)
   }
   chatLog.appendChild(line)
   chatLog.scrollTop = chatLog.scrollHeight
@@ -2198,6 +2361,7 @@ async function initHermes() {
       const body = streamingLine.querySelector('.chat-body')
       if (body) {
         body.innerHTML = renderMarkdown(text)
+        bindDynamicAssessmentCards(streamingLine)
       }
       chatLog.scrollTop = chatLog.scrollHeight
     })
@@ -2258,6 +2422,7 @@ async function initHermes() {
       setInputLocked(false)
       setStatus('')
       accumulatedDeltaText = ''
+      bindDynamicAssessmentCards(chatLog)
       if (isGeneratingSummary) {
         isGeneratingSummary = false
         activeNotulenCard = null
@@ -3038,43 +3203,57 @@ async function buildPrompt(text) {
 2. Jika butuh cek cuaca kota lain, jalankan: 'ddgs text -q "cuaca <kota> hari ini" -r id-id -t d -m 2'.
 3. Selalu sebutkan hari dan tanggal yang tepat (${dateStr}) dan gunakan format Markdown yang rapi.]\n`
 
-  return `${timeContext}${appCtx}${liveWeatherCtx}${liveNewsCtx}${speedHint}\n${text}`
+  const dynamicAssessmentGuideline = `[PANDUAN INTERAKTIF AI ASSESSMENT & PILIHAN TINDAKAN:
+Jika topik percakapan bersifat OBJEKTIF, KONSULTASI MASALAH, PERENCANAAN, ANALISIS, ATAU MEMILIKI BEBERAPA CABANG/LANGKAH OPSI (contoh: cara optimasi komputer, jalur belajar coding, arsitektur sistem, troubleshooting teknis, pilihan strategi, opsi menu):
+- Berikan pengantar dan ringkasan singkat terlebih dahulu (1-2 paragraf padat).
+- WAJIB lampirkan blok assessment pilihan interaktif di bagian paling akhir respon dengan format persis berikut:
+<assessment title="Judul Penilaian / Topik" prompt="Pilih satu atau beberapa langkah di bawah ini untuk saya jelaskan atau eksekusi lebih lanjut:">
+  <option id="1" title="1. [Judul Langkah/Opsi 1]">Penjelasan singkat manfaat atau cara kerja opsi 1.</option>
+  <option id="2" title="2. [Judul Langkah/Opsi 2]">Penjelasan singkat manfaat atau cara kerja opsi 2.</option>
+  <option id="3" title="3. [Judul Langkah/Opsi 3]">Penjelasan singkat manfaat atau cara kerja opsi 3.</option>
+</assessment>
+
+ATURAN MUTLAK CHAT RINGAN:
+- Untuk chat ringan, sapaan santai ("halo", "hai", "apa kabar"), pertanyaan fakta langsung/singkat ("1+1 berapa", "ibukota jepang apa"), atau instruksi spesifik to-the-point: DILARANG KERAS menyertakan tag <assessment>. Cukup jawab biasa secara natural tanpa blok assessment!]`
+
+  return `${timeContext}${appCtx}${liveWeatherCtx}${liveNewsCtx}${speedHint}${dynamicAssessmentGuideline}\n${text}`
 }
 
-form.addEventListener('submit', async (e) => {
-  e.preventDefault()
-  const text = input.value.trim()
-  if (!text) return
+async function handleUserChat(text, displayText = null) {
+  const promptText = (text || '').trim()
+  if (!promptText) return
 
   if (busy) {
     log('avatar', '(sibuk) Tunggu Hermes selesai dulu ya…')
     return
   }
 
-  log('user', text)
-  input.value = ''
+  log('user', displayText || promptText)
+  if (input) input.value = ''
 
   // Cek apakah perintah membuat notulen / ringkasan percakapan
-  if (isSummaryRequest(text)) {
+  if (isSummaryRequest(promptText)) {
     generateExecutiveSummary()
     return
   }
 
-  // Cek apakah perintah menampilkan Menu Keunggulan / Assessment Tool
-  if (isCapabilityRequest(text)) {
+  // Cek apakah perintah menampilkan Menu Keunggulan / Assessment Tool statis
+  if (isCapabilityRequest(promptText)) {
     showCapabilityAssessmentCard()
     return
   }
 
   // Cek apakah perintah memilih opsi demonstrasi assessment (misal: "coba 1 dan 3")
-  const assessmentChoices = extractAssessmentChoices(text)
+  const assessmentChoices = extractAssessmentChoices(promptText)
   if (assessmentChoices) {
-    await executeSelectedCapabilities(assessmentChoices)
+    if (!assessmentChoices.includes('dynamic-handled')) {
+      await executeSelectedCapabilities(assessmentChoices)
+    }
     return
   }
 
   // Cek Fast-Path Aplikasi terlebih dahulu (<50ms!)
-  const fastLaunched = await tryFastLaunchApp(text)
+  const fastLaunched = await tryFastLaunchApp(promptText)
   if (fastLaunched) {
     return
   }
@@ -3088,12 +3267,17 @@ form.addEventListener('submit', async (e) => {
   setInputLocked(true)
 
   try {
-    const finalPrompt = await buildPrompt(text)
+    const finalPrompt = await buildPrompt(promptText)
     await hermes.submitPrompt(finalPrompt)
   } catch (err) {
     log('avatar', `Gagal kirim: ${err.message}`)
     setInputLocked(false)
   }
+}
+
+form.addEventListener('submit', async (e) => {
+  e.preventDefault()
+  await handleUserChat(input.value)
 })
 
 // --- Tombol mic (push-to-talk via Hermes voice.record) ---

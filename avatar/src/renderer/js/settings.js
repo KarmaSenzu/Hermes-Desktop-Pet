@@ -124,6 +124,10 @@ function navigateToSection(sectionId, pushHistory = true) {
   if (titleEl) {
     titleEl.textContent = sec.label
   }
+
+  if (sectionId === 'package') {
+    loadDetectedPathsOnce(false)
+  }
 }
 
 // Kontrol Window ala macOS (traffic lights: close, minimize, maximize)
@@ -222,6 +226,7 @@ const prereqCancelBtn = document.getElementById('prereq-cancel-btn')
 const prereqHubBtn = document.getElementById('prereq-hub-btn')
 const prereqAutoBtn = document.getElementById('prereq-auto-btn')
 const prereqForceBtn = document.getElementById('prereq-force-btn')
+const prereqLlmBtn = document.getElementById('prereq-llm-btn')
 
 const pkgStatusHermes = document.getElementById('pkg-status-hermes')
 const pkgStatusRouter = document.getElementById('pkg-status-router')
@@ -244,6 +249,28 @@ const pkgBridgeStatusText = document.getElementById('pkg-bridge-status-text')
 const pkgOpenExtensionFolderBtn = document.getElementById('pkg-open-extension-folder-btn')
 const pkgTestBridgeBtn = document.getElementById('pkg-test-bridge-btn')
 const pkgBridgeLog = document.getElementById('pkg-bridge-log')
+
+// Smart Path Discovery Elements
+const pkgDrivesInfo = document.getElementById('pkg-drives-info')
+const pkgHermesLocation = document.getElementById('pkg-hermes-location')
+const pkgHermesSourceBadge = document.getElementById('pkg-hermes-source-badge')
+const pkgHermesBrowseBtn = document.getElementById('pkg-hermes-browse-btn')
+const pkgHermesResetBtn = document.getElementById('pkg-hermes-reset-btn')
+
+const pkgRouterLocation = document.getElementById('pkg-router-location')
+const pkgRouterSourceBadge = document.getElementById('pkg-router-source-badge')
+const pkgRouterBrowseBtn = document.getElementById('pkg-router-browse-btn')
+const pkgRouterStartBtn = document.getElementById('pkg-router-start-btn')
+const pkgRouterResetBtn = document.getElementById('pkg-router-reset-btn')
+
+const pkgKokoroSourceBadge = document.getElementById('pkg-kokoro-source-badge')
+const pkgKokoroBrowseBtn = document.getElementById('pkg-kokoro-browse-btn')
+const pkgKokoroResetBtn = document.getElementById('pkg-kokoro-reset-btn')
+
+const pkgPythonLocation = document.getElementById('pkg-python-location')
+const pkgPythonSourceBadge = document.getElementById('pkg-python-source-badge')
+const pkgPythonBrowseBtn = document.getElementById('pkg-python-browse-btn')
+const pkgPythonResetBtn = document.getElementById('pkg-python-reset-btn')
 
 // --- Floating Toast Alert macOS Style ---
 export function showToast(title, message = '', type = 'info', icon = null, duration = 3200) {
@@ -356,6 +383,40 @@ prereqHubBtn?.addEventListener('click', () => {
   navigateToSection('package')
 })
 
+prereqLlmBtn?.addEventListener('click', () => {
+  if (prereqModal) prereqModal.hidden = true
+  navigateToSection('llm')
+})
+
+// Cache status model LLM aktif
+let cachedLlmModelInfo = { ok: false, model: null, provider: null }
+
+async function checkActiveLlmModel() {
+  try {
+    if (window.hermesAvatar?.getCurrentModel) {
+      const res = await window.hermesAvatar.getCurrentModel()
+      if (res && res.ok && res.model) {
+        cachedLlmModelInfo = { ok: true, model: res.model, provider: res.provider || 'default' }
+        return cachedLlmModelInfo
+      }
+    }
+    // Fallback RPC config.get
+    const res = await window.hermesAvatar.rpc('config.get', { key: 'provider' })
+    if (res && res.ok && res.result) {
+      const model = (res.result.model || '').trim()
+      const provider = (res.result.provider || '').trim()
+      if (model && model !== '—' && model !== 'none' && model !== 'Tidak ada model') {
+        cachedLlmModelInfo = { ok: true, model, provider: provider || 'default' }
+        return cachedLlmModelInfo
+      }
+    }
+  } catch (err) {
+    console.warn('[checkActiveLlmModel] check error:', err)
+  }
+  cachedLlmModelInfo = { ok: false, model: null, provider: null }
+  return cachedLlmModelInfo
+}
+
 prereqAutoBtn?.addEventListener('click', async () => {
   prereqAutoBtn.disabled = true
   prereqAutoBtn.textContent = '⏳ Menyiapkan…'
@@ -368,13 +429,19 @@ prereqAutoBtn?.addEventListener('click', async () => {
 
     const active = (settings.characters || []).find((c) => c.active)
     const s = await window.hermesAvatar.getServiceStatus()
-    if (s.hermes && active) {
+    const llmInfo = await checkActiveLlmModel()
+
+    if (s.hermes && active && llmInfo.ok) {
       if (prereqModal) prereqModal.hidden = true
       showToast('Prasyarat Siap! 🚀', 'Memulai avatar ke desktop...', 'success', '✨')
       await launchAvatarDirect(active.path)
     } else {
-      showToast('Layanan Masih Perlu Penyiapan', 'Buka menu Package Hub untuk instalasi paket', 'info', 'ℹ️')
-      renderPrereqModalItems(s, active)
+      if (!llmInfo.ok) {
+        showToast('Model LLM Belum Dipilih 🤖', 'Harap klik "Pilih Model LLM 🤖" untuk memilih model AI sebelum memulai.', 'error', '⚠️', 6000)
+      } else {
+        showToast('Layanan Masih Perlu Penyiapan', 'Buka menu Package Hub untuk instalasi paket', 'info', 'ℹ️')
+      }
+      renderPrereqModalItems(s, active, llmInfo)
     }
   } catch (err) {
     showToast('Gagal Menyiapkan', err.message, 'error', '❌')
@@ -393,10 +460,12 @@ prereqForceBtn?.addEventListener('click', async () => {
   }
 })
 
-function renderPrereqModalItems(s, active) {
+function renderPrereqModalItems(s, active, llmInfo = null) {
   if (!prereqModalList) return
+  const currentLlm = llmInfo || cachedLlmModelInfo || { ok: false }
   const isCharOk = !!active
   const isHermesOk = !!s.hermes
+  const isLlmOk = !!currentLlm.ok
   const isRouterOk = !!s.router
   const isTtsOk = !!(s.kokoro || settings.tts?.provider === 'edge')
 
@@ -425,6 +494,17 @@ function renderPrereqModalItems(s, active) {
 
     <div class="prereq-card">
       <div class="prereq-card-left">
+        <span class="prereq-card-icon">🤖</span>
+        <div class="prereq-card-texts">
+          <span class="prereq-card-title">Model AI / LLM (Otak Percakapan)</span>
+          <span class="prereq-card-desc">${isLlmOk ? `${escapeHtml(currentLlm.model)} ${currentLlm.provider ? `(${escapeHtml(currentLlm.provider)})` : ''}` : 'Belum ada model AI dipilih! Wajib diatur agar avatar bisa menjawab.'}</span>
+        </div>
+      </div>
+      <span class="prereq-pill ${isLlmOk ? 'ready' : 'missing'}">${isLlmOk ? 'Siap ✅' : 'Belum Dipilih ❌'}</span>
+    </div>
+
+    <div class="prereq-card">
+      <div class="prereq-card-left">
         <span class="prereq-card-icon">🌐</span>
         <div class="prereq-card-texts">
           <span class="prereq-card-title">Proxy Model 9Router (Port 20128)</span>
@@ -447,12 +527,13 @@ function renderPrereqModalItems(s, active) {
   `
 }
 
-function showPrerequisitesModal(s) {
-  const active = (settings.characters || []).find((c) => c.active)
-  renderPrereqModalItems(s, active)
+function showPrerequisitesModal(s, active = null, llmInfo = null) {
+  const currentActive = active || (settings.characters || []).find((c) => c.active)
+  renderPrereqModalItems(s, currentActive, llmInfo)
   if (prereqModal) prereqModal.hidden = false
 }
 
+// Status service (9Router, Hermes, Kokoro, Bridge) — murni cek port via TCP non-blocking (<0.1ms, 0% CPU)
 async function refreshServiceStatus() {
   try {
     const s = await window.hermesAvatar.getServiceStatus()
@@ -462,57 +543,39 @@ async function refreshServiceStatus() {
     if (pkgStatusRouter) setBadge(pkgStatusRouter, s.router, 'Aktif (Port 20128)', 'Belum Aktif')
     if (pkgStatusKokoro) setBadge(pkgStatusKokoro, s.kokoro, 'Aktif (Port 8880)', 'Belum Aktif')
     if (pkgStatusCompanion) setBadge(pkgStatusCompanion, s.companion, 'Bridge Aktif (Port 9124)', 'Siap Digunakan')
-    if (pkgStatusPython) setBadge(pkgStatusPython, s.pythonOk, 'Terpasang', 'Belum Terpasang')
-    if (pkgPythonVersion) pkgPythonVersion.textContent = s.pythonOk ? `Versi: ${s.pythonVersion}` : 'Python 3.10+ belum terdeteksi di PATH'
 
     if (pkgBridgeStatusText) {
       pkgBridgeStatusText.textContent = s.companion ? 'Aktif di 127.0.0.1:9124 ✅' : 'Port 9124 (Menunggu Permintaan)'
       pkgBridgeStatusText.style.color = s.companion ? '#7ee787' : '#8b949e'
     }
 
-    if (pkgKokoroPipStatus) {
-      if (s.kokoroInstalled) {
-        pkgKokoroPipStatus.textContent = 'Terpasang ✅'
-        pkgKokoroPipStatus.style.color = '#7ee787'
-      } else {
-        pkgKokoroPipStatus.textContent = 'Belum Terpasang'
-        pkgKokoroPipStatus.style.color = '#ff7b72'
-      }
+    // Periksa status model LLM jika belum diketahui
+    let llmInfo = cachedLlmModelInfo
+    if (!llmInfo.model) {
+      llmInfo = await checkActiveLlmModel()
     }
 
-    if (pkgKokoroModelStatus) {
-      if (s.kokoroModelReady) {
-        pkgKokoroModelStatus.textContent = s.modelSizeMb ? `Siap di Disk (${s.modelSizeMb} MB) ✅` : 'Siap di Disk ✅'
-        pkgKokoroModelStatus.style.color = '#7ee787'
-      } else {
-        pkgKokoroModelStatus.textContent = 'Belum Diunduh (Otomatis saat start)'
-        pkgKokoroModelStatus.style.color = '#8b949e'
-      }
-    }
-
-    if (pkgKokoroLocation && s.packagePath) {
-      pkgKokoroLocation.textContent = s.packagePath
-    }
-
-    // Update Kartu Prasyarat di Home
+    // Update Kartu Prasyarat di Home (5 item lengkap)
     const active = (settings.characters || []).find((c) => c.active)
     const isCharOk = !!active
     const isHermesOk = !!s.hermes
+    const isLlmOk = !!llmInfo.ok
     const isRouterOk = !!s.router
     const isTtsOk = !!(s.kokoro || settings.tts?.provider === 'edge')
 
     let readyCount = 0
     if (isCharOk) readyCount++
     if (isHermesOk) readyCount++
+    if (isLlmOk) readyCount++
     if (isRouterOk) readyCount++
     if (isTtsOk) readyCount++
 
     if (homePrereqBadge) {
-      if (readyCount === 4) {
-        homePrereqBadge.textContent = '4/4 Siap Memulai ✅'
+      if (readyCount === 5) {
+        homePrereqBadge.textContent = '5/5 Siap Memulai ✅'
         homePrereqBadge.className = 'badge ready'
       } else {
-        homePrereqBadge.textContent = `${readyCount}/4 Prasyarat Terpenuhi`
+        homePrereqBadge.textContent = `${readyCount}/5 Prasyarat Terpenuhi`
         homePrereqBadge.className = 'badge warning'
       }
     }
@@ -551,6 +614,125 @@ async function refreshServiceStatus() {
     }
   } catch {
     if (hermesStatus) hermesStatus.textContent = '?'
+  }
+}
+
+// Pengecekan direktori & binary path — HANYA berjalan 1x saat aplikasi dibuka atau diminta tombol manual
+let pathDiscoveryLoaded = false
+
+async function loadDetectedPathsOnce(force = false) {
+  if (pathDiscoveryLoaded && !force) return
+  if (typeof window.hermesAvatar?.getDetectedPaths !== 'function') return
+
+  try {
+    let dp = null
+    if (force && typeof window.hermesAvatar?.rescanPaths === 'function') {
+      const res = await window.hermesAvatar.rescanPaths()
+      dp = res?.all || res
+    } else {
+      dp = await window.hermesAvatar.getDetectedPaths()
+    }
+    if (!dp) return
+
+    // 1. Info Logical Drives yang dipindai (C:, D:, dll)
+    if (pkgDrivesInfo && dp.drives) {
+      pkgDrivesInfo.textContent = `Drive: ${dp.drives.map((d) => d + ':').join(', ')}`
+    }
+
+    // 2. Python Status & Path
+    if (pkgStatusPython) {
+      setBadge(pkgStatusPython, dp.python?.ok, 'Terpasang', 'Belum Terpasang')
+    }
+    if (pkgPythonVersion) {
+      pkgPythonVersion.textContent = dp.python?.ok
+        ? `Versi: ${dp.python.version}`
+        : 'Python 3.10+ belum terpasang di C: atau D:'
+    }
+    if (pkgPythonLocation) {
+      pkgPythonLocation.textContent = dp.python?.ok
+        ? dp.python.cmd
+        : 'Belum terpasang di C: atau D:. Silakan pasang Python 3.10+'
+    }
+    if (pkgPythonSourceBadge) {
+      pkgPythonSourceBadge.textContent = dp.python?.ok
+        ? (dp.python.source || 'Terdeteksi')
+        : 'Belum Terpasang ❌'
+      pkgPythonSourceBadge.className = `badge ${dp.python?.ok ? (dp.python.isCustom ? 'info' : 'ready') : 'warning'}`
+    }
+    if (pkgPythonResetBtn) {
+      pkgPythonResetBtn.style.display = dp.python?.isCustom ? 'inline-block' : 'none'
+    }
+
+    // 3. Hermes Status & Path
+    if (pkgHermesLocation) {
+      pkgHermesLocation.textContent = dp.hermes?.ok
+        ? dp.hermes.cmd
+        : 'Belum terpasang di C: atau D:. Silakan pasang Hermes via terminal di bawah.'
+    }
+    if (pkgHermesSourceBadge) {
+      pkgHermesSourceBadge.textContent = dp.hermes?.ok
+        ? (dp.hermes.source || 'Terdeteksi')
+        : 'Belum Terpasang ❌'
+      pkgHermesSourceBadge.className = `badge ${dp.hermes?.ok ? (dp.hermes.isCustom ? 'info' : 'ready') : 'warning'}`
+    }
+    if (pkgHermesResetBtn) {
+      pkgHermesResetBtn.style.display = dp.hermes?.isCustom ? 'inline-block' : 'none'
+    }
+
+    // 4. 9Router Status & Path
+    if (pkgRouterLocation) {
+      pkgRouterLocation.textContent = dp.router?.ok
+        ? dp.router.cmd
+        : 'Belum terpasang di C: atau D:. Jalankan: npm i -g 9router'
+    }
+    if (pkgRouterSourceBadge) {
+      pkgRouterSourceBadge.textContent = dp.router?.ok
+        ? (dp.router.source || 'Terdeteksi')
+        : 'Belum Terpasang ❌'
+      pkgRouterSourceBadge.className = `badge ${dp.router?.ok ? (dp.router.isCustom ? 'info' : 'ready') : 'warning'}`
+    }
+    if (pkgRouterStartBtn) {
+      pkgRouterStartBtn.style.display = dp.router?.ok ? 'inline-block' : 'none'
+    }
+    if (pkgRouterResetBtn) {
+      pkgRouterResetBtn.style.display = dp.router?.isCustom ? 'inline-block' : 'none'
+    }
+
+    // 5. Kokoro Model & Pip Status
+    if (pkgKokoroPipStatus) {
+      if (dp.kokoroInstalled) {
+        pkgKokoroPipStatus.textContent = 'Terpasang ✅'
+        pkgKokoroPipStatus.style.color = '#7ee787'
+      } else {
+        pkgKokoroPipStatus.textContent = 'Belum Terpasang ❌'
+        pkgKokoroPipStatus.style.color = '#ff7b72'
+      }
+    }
+    if (pkgKokoroModelStatus) {
+      if (dp.kokoro?.modelReady) {
+        pkgKokoroModelStatus.textContent = dp.kokoro.sizeMb ? `Siap di Disk (${dp.kokoro.sizeMb} MB) ✅` : 'Siap di Disk ✅'
+        pkgKokoroModelStatus.style.color = '#7ee787'
+      } else {
+        pkgKokoroModelStatus.textContent = 'Belum Diunduh (Otomatis saat start)'
+        pkgKokoroModelStatus.style.color = '#8b949e'
+      }
+    }
+    if (pkgKokoroLocation && dp.kokoro?.dir) {
+      pkgKokoroLocation.textContent = dp.kokoro.dir
+    }
+    if (pkgKokoroSourceBadge) {
+      pkgKokoroSourceBadge.textContent = dp.kokoro?.modelReady
+        ? (dp.kokoro.source || 'Siap')
+        : 'Belum Siap ⚠️'
+      pkgKokoroSourceBadge.className = `badge ${dp.kokoro?.modelReady ? (dp.kokoro.isCustom ? 'info' : 'ready') : 'warning'}`
+    }
+    if (pkgKokoroResetBtn) {
+      pkgKokoroResetBtn.style.display = dp.kokoro?.isCustom ? 'inline-block' : 'none'
+    }
+
+    pathDiscoveryLoaded = true
+  } catch (err) {
+    console.warn('[Settings] Gagal memuat status deteksi path:', err)
   }
 }
 
@@ -653,10 +835,99 @@ function bindPackageActions() {
     })
   })
 
-  // 5. Tombol Periksa Ulang Paket
-  document.getElementById('pkg-refresh-all-btn')?.addEventListener('click', () => {
-    showToast('Memindai Sistem...', 'Memeriksa status semua port & dependensi', 'info', '🔄')
-    refreshServiceStatus()
+  // 5. Tombol Periksa & Pindai Ulang Seluruh Drive (Hanya berjalan ketika tombol diklik manual)
+  document.getElementById('pkg-refresh-all-btn')?.addEventListener('click', async () => {
+    showToast('Memindai Drive (C:, D:)...', 'Mencari direktori & binary Hermes, Python, 9Router...', 'info', '🔍', 4000)
+    await loadDetectedPathsOnce(true)
+    await refreshServiceStatus()
+    showToast('Pemeriksaan Selesai! 🎯', 'Status lokasi binary dan prasyarat berhasil diperbarui', 'success', '✅')
+  })
+
+  // 5b. Tombol Kontrol Jalur Kustom (Hermes, 9Router, Kokoro, Python)
+  pkgHermesBrowseBtn?.addEventListener('click', async () => {
+    if (typeof window.hermesAvatar?.browseCustomPath !== 'function') return
+    const res = await window.hermesAvatar.browseCustomPath('hermes_bin', 'file')
+    if (res?.ok) {
+      showToast('Jalur Hermes Diperbarui', res.path, 'success', '📂')
+      await loadDetectedPathsOnce(true)
+      await refreshServiceStatus()
+    }
+  })
+
+  pkgHermesResetBtn?.addEventListener('click', async () => {
+    await window.hermesAvatar?.setCustomPath?.('hermes_bin', null)
+    showToast('Reset Jalur Hermes', 'Mengembalikan ke deteksi otomatis sistem', 'info', '🔄')
+    await loadDetectedPathsOnce(true)
+    await refreshServiceStatus()
+  })
+
+  pkgRouterBrowseBtn?.addEventListener('click', async () => {
+    if (typeof window.hermesAvatar?.browseCustomPath !== 'function') return
+    const res = await window.hermesAvatar.browseCustomPath('router_bin', 'file')
+    if (res?.ok) {
+      showToast('Jalur 9Router Diperbarui', res.path, 'success', '📂')
+      await loadDetectedPathsOnce(true)
+      await refreshServiceStatus()
+    }
+  })
+
+  pkgRouterResetBtn?.addEventListener('click', async () => {
+    await window.hermesAvatar?.setCustomPath?.('router_bin', null)
+    showToast('Reset Jalur 9Router', 'Mengembalikan ke deteksi otomatis sistem', 'info', '🔄')
+    await loadDetectedPathsOnce(true)
+    await refreshServiceStatus()
+  })
+
+  pkgRouterStartBtn?.addEventListener('click', async () => {
+    pkgRouterStartBtn.disabled = true
+    showToast('Menyalakan 9Router...', 'Memulai daemon 9Router di port 20128...', 'running', '⚡', 7000)
+    try {
+      const res = await window.hermesAvatar?.startRouter?.()
+      if (res?.ok) {
+        showToast('9Router Aktif! 🟢', 'Port 20128 online dan siap melayani permintaan model', 'success', '⚡', 4500)
+      } else {
+        showToast('Gagal Menyalakan 9Router', res?.error || 'Port 20128 tidak aktif', 'error', '❌', 6000)
+      }
+      await refreshServiceStatus()
+    } catch (err) {
+      showToast('Error 9Router', err.message, 'error', '❌')
+    } finally {
+      pkgRouterStartBtn.disabled = false
+    }
+  })
+
+  pkgKokoroBrowseBtn?.addEventListener('click', async () => {
+    if (typeof window.hermesAvatar?.browseCustomPath !== 'function') return
+    const res = await window.hermesAvatar.browseCustomPath('kokoro_model_dir', 'dir')
+    if (res?.ok) {
+      showToast('Folder Model Kokoro Diperbarui', res.path, 'success', '📂')
+      await loadDetectedPathsOnce(true)
+      await refreshServiceStatus()
+    }
+  })
+
+  pkgKokoroResetBtn?.addEventListener('click', async () => {
+    await window.hermesAvatar?.setCustomPath?.('kokoro_model_dir', null)
+    showToast('Reset Folder Model Kokoro', 'Mengembalikan ke folder default terpusat', 'info', '🔄')
+    await loadDetectedPathsOnce(true)
+    await refreshServiceStatus()
+  })
+
+  pkgPythonBrowseBtn?.addEventListener('click', async () => {
+    if (typeof window.hermesAvatar?.browseCustomPath !== 'function') return
+    const res = await window.hermesAvatar.browseCustomPath('python_bin', 'file')
+    if (res?.ok) {
+      showToast('Jalur Python Diperbarui', res.path, 'success', '📂')
+      await loadDetectedPathsOnce(true)
+      await refreshServiceStatus()
+    }
+  })
+
+  pkgPythonResetBtn?.addEventListener('click', async () => {
+    await window.hermesAvatar?.setCustomPath?.('python_bin', null)
+    showToast('Reset Jalur Python', 'Mengembalikan ke deteksi otomatis sistem', 'info', '🔄')
+    await loadDetectedPathsOnce(true)
+    await refreshServiceStatus()
   })
 
   // 6. Kokoro Server Actions
@@ -703,6 +974,7 @@ function bindPackageActions() {
             pkgKokoroLog.innerHTML = '✅ Sukses terpasang! Sekarang Anda bisa klik <strong>"Jalankan Server Kokoro"</strong>.'
           }
           showToast('Dependensi Berhasil Terpasang! ✅', 'kokoro-onnx & soundfile siap', 'success', '🎉')
+          await loadDetectedPathsOnce(true)
           refreshServiceStatus()
         } else {
           if (pkgKokoroLog) {
@@ -755,6 +1027,7 @@ function bindPackageActions() {
         if (res.ok) {
           showToast('Cache Berhasil Dibersihkan! 🗑️', 'Ruang disk berhasil dihemat', 'success', '✅')
           if (pkgKokoroLog) pkgKokoroLog.innerHTML = '🗑️ File model dan cache berhasil dibersihkan dari disk.'
+          await loadDetectedPathsOnce(true)
           refreshServiceStatus()
         } else {
           showToast('Gagal Bersihkan Cache', res.error, 'error', '❌')
@@ -781,6 +1054,7 @@ function bindPackageActions() {
         if (res.ok) {
           showToast('Dependensi Dicopot! ✅', 'Modul python telah dihapus', 'success', '✅')
           if (pkgKokoroLog) pkgKokoroLog.innerHTML = '✅ Modul Python berhasil dicopot.'
+          await loadDetectedPathsOnce(true)
           refreshServiceStatus()
         } else {
           showToast('Gagal Uninstall', res.error, 'error', '❌')
@@ -1150,7 +1424,7 @@ startBtn.addEventListener('click', async () => {
   if (!active) {
     statusEl.textContent = '⚠️ Pilih karakter aktif dulu (sidebar Karakter).'
     showToast('Karakter Belum Dipilih', 'Pilih karakter aktif di menu Karakter & Model', 'error', '⚠️')
-    showPrerequisitesModal({ hermes: false, router: false, kokoro: false })
+    showPrerequisitesModal({ hermes: false, router: false, kokoro: false }, null, { ok: false })
     return
   }
 
@@ -1161,7 +1435,8 @@ startBtn.addEventListener('click', async () => {
       statusEl.textContent = `File model tidak ditemukan: ${active.path}`
       showToast('File Model Hilang / Rusak', `File tidak ada di: ${active.path}`, 'error', '❌')
       const s = await window.hermesAvatar.getServiceStatus()
-      showPrerequisitesModal(s)
+      const llmInfo = await checkActiveLlmModel()
+      showPrerequisitesModal(s, active, llmInfo)
       return
     }
   } catch (err) {
@@ -1189,18 +1464,28 @@ startBtn.addEventListener('click', async () => {
       s = await window.hermesAvatar.getServiceStatus()
     }
 
-    // Periksa apakah ada layanan yang belum siap
+    // Periksa status model AI / LLM (Otak Percakapan)
+    const llmInfo = await checkActiveLlmModel()
+
+    // Periksa apakah ada layanan atau model yang belum siap
     const isHermesReady = !!s.hermes
+    const isLlmReady = !!llmInfo.ok
     const isTtsReady = !!(s.kokoro || settings.tts?.provider === 'edge')
     const isRouterReady = settings.routerChecked ? !!s.router : true
 
-    // Jika ada layanan yang belum siap, tampilkan pop-up modal Prasyarat
-    if (!isHermesReady || !isTtsReady || !isRouterReady) {
-      showPrerequisitesModal(s)
+    // Jika ada layanan atau model LLM yang belum siap, tampilkan pop-up modal Prasyarat & BLOKIR masuk!
+    if (!isHermesReady || !isLlmReady || !isTtsReady || !isRouterReady) {
+      if (!isLlmReady) {
+        statusEl.textContent = '⚠️ Model LLM belum dipilih. Buka menu Model & Provider LLM.'
+        showToast('Model LLM Belum Dipilih! 🤖', 'Avatar membutuhkan model AI untuk berpikir. Silakan periksa menu Model & Provider LLM terlebih dahulu.', 'error', '⚠️', 6000)
+      } else {
+        statusEl.textContent = '⚠️ Menunggu prasyarat layanan siap...'
+      }
+      showPrerequisitesModal(s, active, llmInfo)
       return
     }
 
-    // Semua prasyarat terpenuhi -> mulai avatar langsung
+    // Semua 5 prasyarat terpenuhi -> mulai avatar langsung
     await launchAvatarDirect(active.path)
   } catch (err) {
     statusEl.textContent = `Gagal: ${err.message}`
@@ -1213,7 +1498,12 @@ window.addEventListener('focus', () => {
   startBtn.disabled = false
 })
 
-setInterval(refreshServiceStatus, 3000)
+// Polling status service secara ramah CPU (hanya jika jendela sedang aktif/terlihat)
+setInterval(() => {
+  if (document.visibilityState !== 'hidden') {
+    refreshServiceStatus()
+  }
+}, 4500)
 
 // --- Checklist 9Router (pengingat manual, persisten) ---
 routerCheck.checked = !!settings.routerChecked
@@ -1691,21 +1981,28 @@ function renderLlmList() {
     llmList.innerHTML = '<p class="hint" style="padding:16px;">Belum ada provider yang tersimpan.</p>'
     return
   }
+  const activeId = settings.llm.activeId || (providers[0] ? providers[0].id : null)
+
   llmList.innerHTML = providers
     .map((p) => {
-      return `<div class="format-item llm-row" data-id="${escapeHtml(p.id)}">
-        <div class="format-emblem theme-indigo">
+      const isActive = (p.id === activeId)
+      return `<div class="format-item llm-row ${isActive ? 'active-provider' : ''}" data-id="${escapeHtml(p.id)}" style="${isActive ? 'border: 1px solid rgba(34,197,94,0.45); background: rgba(34,197,94,0.06); box-shadow: 0 0 12px rgba(34,197,94,0.12); border-radius: 8px;' : ''}">
+        <div class="format-emblem ${isActive ? 'theme-green' : 'theme-indigo'}">
           ${renderIcon('brain', { size: 18 })}
         </div>
         <div class="format-info-col">
-          <div class="format-title-line">
+          <div class="format-title-line" style="display:flex; align-items:center; gap:8px;">
             <span class="format-title">${escapeHtml(p.name)}</span>
+            ${isActive ? `<span class="badge ready" style="padding:2px 8px; font-size:11px;">Aktif Digunakan ✅</span>` : ''}
             ${p.model ? `<span class="format-pill-tag">${escapeHtml(p.model)}</span>` : ''}
           </div>
           <p class="format-desc-text">${escapeHtml(p.baseUrl || '')} · <span class="muted">${maskKey(p.apiKey)}</span></p>
         </div>
         <div class="format-status-col" style="gap:6px;">
-          <button class="mini-btn primary llm-activate" data-id="${escapeHtml(p.id)}" title="Aktifkan sebagai model utama">Aktifkan</button>
+          ${isActive
+            ? `<button class="mini-btn success llm-activate" data-id="${escapeHtml(p.id)}" disabled style="background:rgba(34,197,94,0.18); border-color:#22c55e; color:#4ade80; cursor:default;">Aktif ✅</button>`
+            : `<button class="mini-btn primary llm-activate" data-id="${escapeHtml(p.id)}" title="Aktifkan sebagai model utama">Aktifkan</button>`
+          }
           <button class="mini-btn secondary llm-test" data-id="${escapeHtml(p.id)}" title="Tes koneksi ke endpoint">Tes</button>
           <button class="mini-btn browse llm-edit" data-id="${escapeHtml(p.id)}" title="Edit konfigurasi provider">Edit</button>
           <button class="mini-btn del llm-del" data-id="${escapeHtml(p.id)}" title="Hapus provider ini">${renderIcon('trash-2', { size: 13 })}</button>
@@ -1714,8 +2011,8 @@ function renderLlmList() {
     })
     .join('')
 
-  // Bind tombol "Aktifkan" → set model + base_url ke Hermes.
-  llmList.querySelectorAll('.llm-activate').forEach((btn) => {
+  // Bind tombol "Aktifkan" → set model + base_url + api_key ke Hermes.
+  llmList.querySelectorAll('.llm-activate:not([disabled])').forEach((btn) => {
     btn.addEventListener('click', async () => {
       const id = btn.dataset.id
       const p = settings.llm.providers.find((x) => x.id === id)
@@ -1723,18 +2020,46 @@ function renderLlmList() {
 
       btn.disabled = true
       const original = btn.textContent
-      btn.textContent = '…'
+      btn.textContent = '⏳ Mengaktifkan…'
+      showToast('Mengaktifkan Provider...', `Menyetel ${p.name} (${p.model}) ke Hermes...`, 'running', '🧠')
 
       try {
-        // Set model aktif via `hermes config set` (mekanisme resmi, pasti benar).
-        const res = await window.hermesAvatar.setModel(p.model)
+        let apiKey = ''
+        if (p.apiKey) {
+          try {
+            const dec = await window.hermesAvatar.decryptSecret(p.apiKey)
+            if (dec && dec.ok) apiKey = dec.value
+          } catch (_) {}
+        }
+        if (!apiKey && (p.baseUrl?.includes('20128') || p.baseUrl?.toLowerCase().includes('9router'))) {
+          try {
+            const rKey = await window.hermesAvatar.getRouterApiKey()
+            if (rKey?.ok && rKey?.key) apiKey = rKey.key
+          } catch (_) {}
+        }
+
+        // Set full provider config ke Hermes
+        const res = await window.hermesAvatar.setLlmProvider({
+          name: p.name,
+          baseUrl: p.baseUrl || 'http://localhost:20128/v1',
+          apiKey: apiKey,
+          model: p.model
+        })
         if (!res.ok) throw new Error(res.error)
 
+        settings.llm.activeId = p.id
+        saveSettings(settings)
+
         statusEl.textContent = `✓ Provider "${p.name}" diaktifkan (${p.model}).`
+        showToast('Provider Diaktifkan! ✅', `${p.name} kini aktif sebagai otak percakapan avatar (${p.model})`, 'success', '✨', 4500)
+
+        renderLlmList()
         await refreshLlmActive()
         await refreshModelOptions()
+        await refreshServiceStatus()
       } catch (err) {
         statusEl.textContent = `✗ Gagal aktifkan: ${err?.message || err}`
+        showToast('Gagal Mengaktifkan Provider', err?.message || err, 'error', '❌')
       } finally {
         btn.disabled = false
         btn.textContent = original
@@ -1793,6 +2118,13 @@ function renderLlmList() {
         const decRes = await window.hermesAvatar.decryptSecret(p.apiKey || '')
         apiKey = decRes.ok ? decRes.value : ''
       } catch { /* key kosong */ }
+
+      if (!apiKey && (p.baseUrl?.includes('20128') || p.baseUrl?.toLowerCase().includes('9router'))) {
+        try {
+          const rKey = await window.hermesAvatar.getRouterApiKey()
+          if (rKey?.ok && rKey?.key) apiKey = rKey.key
+        } catch (_) {}
+      }
 
       try {
         const res = await window.hermesAvatar.testConnection(p.baseUrl, p.model, apiKey)
@@ -1895,7 +2227,13 @@ llmAddBtn.addEventListener('click', async () => {
   }
 
   // Enkripsi API key sebelum disimpan (aman, tidak plaintext di localStorage).
-  const apiKeyPlain = llmApiKey.value.trim()
+  let apiKeyPlain = llmApiKey.value.trim()
+  if (!apiKeyPlain && (llmBaseUrl.value.includes('20128') || llmBaseUrl.value.toLowerCase().includes('9router'))) {
+    try {
+      const rKey = await window.hermesAvatar.getRouterApiKey()
+      if (rKey?.ok && rKey?.key) apiKeyPlain = rKey.key
+    } catch (_) {}
+  }
   const encRes = await window.hermesAvatar.encryptSecret(apiKeyPlain)
   const apiKeyEnc = encRes.ok ? encRes.value : ''
 
@@ -1931,6 +2269,7 @@ llmAddBtn.addEventListener('click', async () => {
   }
 
   renderLlmList()
+  await refreshModelOptions()
 })
 
 // --- LLM via RPC (model aktif + switch via dropdown) ---
@@ -1952,62 +2291,101 @@ function modelItemHtml(r) {
 async function refreshLlmActive() {
   const homeModelEl = document.getElementById('home-model')
   try {
-    const res = await window.hermesAvatar.rpc('config.get', { key: 'provider' })
-    if (!res.ok) throw new Error(res.error)
-    const r = res.result
-    const html = modelItemHtml(r)
-    llmActiveEl.innerHTML = html
-    if (homeModelEl) homeModelEl.innerHTML = html
+    const info = await checkActiveLlmModel()
+    if (info.ok) {
+      const html = modelItemHtml(info)
+      if (llmActiveEl) llmActiveEl.innerHTML = html
+      if (homeModelEl) homeModelEl.innerHTML = html
+    } else {
+      const fallback = `<div class="llm-pill-badge" style="display:inline-flex; align-items:center; gap:8px; padding:4px 10px; border-radius:14px; background:rgba(239,68,68,0.12); border:1px solid rgba(239,68,68,0.3);">
+        <span style="display:inline-block; width:6px; height:6px; border-radius:50%; background:#ef4444; box-shadow:0 0 6px #ef4444;"></span>
+        <span style="font-size:12.5px; font-weight:600; color:#f87171;">Belum Dipilih ⚠️</span>
+        <span style="font-size:11px; color:var(--text-secondary); opacity:0.8;">(Pilih di LLM & Provider)</span>
+      </div>`
+      if (llmActiveEl) llmActiveEl.innerHTML = fallback
+      if (homeModelEl) homeModelEl.innerHTML = fallback
+    }
   } catch (err) {
     const fallback = `<p class="hint">Tidak dapat memuat (${escapeHtml(err?.message || err)})</p>`
-    llmActiveEl.innerHTML = fallback
+    if (llmActiveEl) llmActiveEl.innerHTML = fallback
     if (homeModelEl) homeModelEl.innerHTML = fallback
   }
 }
 
-// Ambil daftar model dari model.options — HANYA custom/user-defined provider
-// (mis. 9Router / "Hermes Avatar"), bukan provider canonical (OpenRouter, dll).
+// Ambil daftar model aktual dari endpoint aktif (mis. 9Router / Ollama) & provider tersimpan
 async function refreshModelOptions() {
   try {
-    const res = await window.hermesAvatar.rpc('model.options', {})
-    if (!res.ok) throw new Error(res.error)
-    const providers = res.result?.providers || []
+    const activeProv = (settings.llm.providers || []).find((p) => p.id === settings.llm.activeId) || (settings.llm.providers || [])[0]
+    let apiKey = ''
+    if (activeProv?.apiKey) {
+      try {
+        const dec = await window.hermesAvatar.decryptSecret(activeProv.apiKey)
+        if (dec && dec.ok) apiKey = dec.value
+      } catch (_) {}
+    }
 
     const custom = []
+    const seenModels = new Set()
 
-    for (const p of providers) {
-      const slug = p.slug || 'custom'
-      const name = p.name || slug
-      const models = p.models || []
-      const isCustom = p.is_user_defined || slug === 'custom' || /^custom(:|$)/.test(slug) || /localhost|127\.0\.0\.1/.test(p.base_url || '')
+    // 1. Ambil model langsung dari endpoint provider yang sedang aktif (mis. 9Router :20128/v1/models)
+    if (activeProv?.baseUrl) {
+      try {
+        const epRes = await window.hermesAvatar.fetchEndpointModels(activeProv.baseUrl, apiKey)
+        if (epRes && epRes.ok && Array.isArray(epRes.models) && epRes.models.length > 0) {
+          for (const m of epRes.models) {
+            if (!seenModels.has(m)) {
+              seenModels.add(m)
+              custom.push({ value: m, label: `${activeProv.name} — ${m}` })
+            }
+          }
+        }
+      } catch (_) {}
+    }
 
-      if (!isCustom) continue // abaikan provider canonical (OpenRouter, Anthropic, dll)
-
-      for (const m of models) {
-        // Value = nama model langsung (tanpa prefix), karena switch pakai
-        // config.set model.default (bukan format custom:model yang salah parse).
-        custom.push({ value: m, label: `${name} — ${m}` })
-      }
-      if (models.length === 0) {
-        custom.push({ value: '', label: name })
+    // 2. Tambahkan semua model dari daftar provider tersimpan user
+    for (const p of (settings.llm.providers || [])) {
+      if (p.model && !seenModels.has(p.model)) {
+        seenModels.add(p.model)
+        custom.push({ value: p.model, label: `${p.name} — ${p.model}` })
       }
     }
 
-    // Jika tidak ada custom, fallback tampilkan semua (jaga-jaga).
-    let options = custom
-    if (custom.length === 0) {
-      for (const p of providers) {
-        const slug = p.slug || 'custom'
-        const name = p.name || slug
-        for (const m of (p.models || [])) {
-          options.push({ value: `${slug}:${m}`, label: `${name} — ${m}` })
+    // 3. Tambahkan custom provider dari RPC model.options jika ada
+    try {
+      const res = await window.hermesAvatar.rpc('model.options', {})
+      if (res && res.ok) {
+        const providers = res.result?.providers || []
+        for (const p of providers) {
+          const slug = p.slug || 'custom'
+          const name = p.name || slug
+          const isCustom = p.is_user_defined || slug === 'custom' || /^custom(:|$)/.test(slug) || /localhost|127\.0\.0\.1/.test(p.base_url || '')
+          if (isCustom) {
+            for (const m of (p.models || [])) {
+              if (!seenModels.has(m)) {
+                seenModels.add(m)
+                custom.push({ value: m, label: `${name} — ${m}` })
+              }
+            }
+          }
         }
       }
+    } catch (_) {}
+
+    // Fallback bila sama sekali belum terdeteksi
+    let options = custom
+    if (options.length === 0) {
+      options.push({ value: '', label: 'Belum ada model terdeteksi di endpoint' })
     }
 
-    llmSwitchModel.innerHTML = options.length
-      ? options.map((o) => `<option value="${escapeHtml(o.value)}">${escapeHtml(o.label)}</option>`).join('')
-      : '<option value="">Tidak ada model</option>'
+    llmSwitchModel.innerHTML = options
+      .map((o) => `<option value="${escapeHtml(o.value)}">${escapeHtml(o.label)}</option>`)
+      .join('')
+
+    // Sinkronkan pilihan dropdown dengan model aktif saat ini
+    const curModel = cachedLlmModelInfo?.model || activeProv?.model
+    if (curModel && seenModels.has(curModel)) {
+      llmSwitchModel.value = curModel
+    }
   } catch (err) {
     llmSwitchModel.innerHTML = `<option value="">Gagal memuat (${escapeHtml(err?.message || err)})</option>`
   }
@@ -3427,11 +3805,40 @@ llmSwitchBtn.addEventListener('click', async () => {
   llmSwitchBtn.disabled = true
   showToast('Menerapkan Model LLM...', `Mengalihkan model aktif ke "${value}"`, 'running', '🧠')
   try {
-    const res = await window.hermesAvatar.setModel(value)
+    const activeProv = (settings.llm.providers || []).find((p) => p.id === settings.llm.activeId) || (settings.llm.providers || [])[0]
+    let apiKey = ''
+    if (activeProv?.apiKey) {
+      try {
+        const dec = await window.hermesAvatar.decryptSecret(activeProv.apiKey)
+        if (dec && dec.ok) apiKey = dec.value
+      } catch (_) {}
+    }
+    if (!apiKey && (activeProv?.baseUrl?.includes('20128') || activeProv?.baseUrl?.toLowerCase().includes('9router'))) {
+      try {
+        const rKey = await window.hermesAvatar.getRouterApiKey()
+        if (rKey?.ok && rKey?.key) apiKey = rKey.key
+      } catch (_) {}
+    }
+
+    const res = await window.hermesAvatar.setLlmProvider({
+      name: activeProv?.name || 'custom',
+      baseUrl: activeProv?.baseUrl || 'http://localhost:20128/v1',
+      apiKey: apiKey,
+      model: value
+    })
     if (!res.ok) throw new Error(res.error)
+
+    if (activeProv) {
+      activeProv.model = value
+      saveSettings(settings)
+    }
+
     statusEl.textContent = 'Model diterapkan.'
     showToast('Model Diterapkan! ✅', `Model LLM aktif: ${value}`, 'success', '🧠')
     await refreshLlmActive()
+    await refreshModelOptions()
+    await refreshServiceStatus()
+    renderLlmList()
   } catch (err) {
     statusEl.textContent = `Gagal switch model: ${err?.message || err}`
     showToast('Gagal Menerapkan Model', err?.message || err, 'error', '❌')
@@ -3785,6 +4192,7 @@ function init() {
   initSidebarSearch()
   renderNav()
   refreshServiceStatus()
+  loadDetectedPathsOnce(false)
   bindPackageActions()
   loadVoiceUI()
   renderLlmList()

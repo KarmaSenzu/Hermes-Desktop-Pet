@@ -16,9 +16,18 @@ import {
   KOKORO_PORT,
   startKokoro,
   startHermes,
+  restartHermes,
+  startRouter,
   resolvePythonCmd,
   resolveHermesCmd,
+  resolveRouterBinary,
+  resolveRouterApiKey,
+  resolveKokoroModelDir,
   resolveHermesConfigPath,
+  getAllDetectedPaths,
+  loadPersistedPaths,
+  savePersistedPath,
+  getLogicalDrives,
   fixSystemPath
 } from './service-manager.js'
 import { connectGateway, disconnectGateway, request as gatewayRequest, isGatewayConnected } from './hermes-gateway.js'
@@ -748,62 +757,116 @@ ipcMain.handle('avatar:hermes-config', () => {
   }
 })
 
-// IPC: status service (9Router, Hermes, Kokoro, Companion Bridge, Python, model disk) — untuk settings & Package Hub.
+// Cache untuk status pip Kokoro agar tidak spawn proses python berat tiap interval
+let cachedKokoroPip = { installed: null, lastCheck: 0 }
+
+async function checkKokoroPipInstalled(pyCmd, force = false) {
+  const now = Date.now()
+  if (!force && cachedKokoroPip.installed !== null && (now - cachedKokoroPip.lastCheck < 180000)) {
+    return cachedKokoroPip.installed
+  }
+  if (!pyCmd) return false
+  try {
+    await new Promise((res, rej) => {
+      execFile(pyCmd, ['-c', 'import kokoro_onnx, soundfile; print("ok")'], { timeout: 3500, env: process.env }, (err, stdout) => {
+        if (!err && stdout && stdout.includes('ok')) return res(true)
+        rej(err || new Error('Module import failed'))
+      })
+    })
+    cachedKokoroPip = { installed: true, lastCheck: now }
+    return true
+  } catch {
+    cachedKokoroPip = { installed: false, lastCheck: now }
+    return false
+  }
+}
+
+// IPC: status service (9Router, Hermes, Kokoro, Companion Bridge) — murni cek port via TCP non-blocking (<0.1ms)
 ipcMain.handle('avatar:service-status', async () => {
   const router = await isPortOpen(ROUTER_PORT)
   const hermes = await isPortOpen(HERMES_PORT)
   const kokoro = await isPortOpen(KOKORO_PORT)
   const companion = await isPortOpen(BRIDGE_PORT)
 
-  // Cek deteksi Python di sistem menggunakan resolver cross-platform
-  const pyInfo = await resolvePythonCmd()
-  const pythonOk = pyInfo.ok
-  const pythonVersion = pyInfo.version
-  const pyCmd = pyInfo.cmd
-
-  // Cek apakah paket python kokoro-onnx & soundfile terpasang di environment
-  let kokoroInstalled = false
-  if (pythonOk) {
-    try {
-      await new Promise((res, rej) => {
-        execFile(pyCmd, ['-c', 'import kokoro_onnx, soundfile; print("ok")'], { timeout: 4000, env: process.env }, (err, stdout) => {
-          if (!err && stdout && stdout.includes('ok')) return res(true)
-          rej(err || new Error('Module import failed'))
-        })
-      })
-      kokoroInstalled = true
-    } catch {
-      kokoroInstalled = false
-    }
-  }
-
-  // Cek keberadaan model di folder penyimpanan terpusat
-  const pkgDir = join(homedir(), '.hermes-avatar', 'packages', 'kokoro')
-  const legacyDir = join(homedir(), '.kokoro-models')
-  const modelFile1 = join(pkgDir, 'kokoro-v1.0.onnx')
-  const modelFile2 = join(legacyDir, 'kokoro-v1.0.onnx')
-  const kokoroModelReady = existsSync(modelFile1) || existsSync(modelFile2)
-
-  let modelSizeMb = 0
-  try {
-    const targetFile = existsSync(modelFile1) ? modelFile1 : (existsSync(modelFile2) ? modelFile2 : null)
-    if (targetFile) {
-      const st = statSync(targetFile)
-      modelSizeMb = Math.round(st.size / (1024 * 1024))
-    }
-  } catch {}
-
   return {
     router,
     hermes,
     kokoro,
-    companion,
-    pythonOk,
-    pythonVersion,
-    kokoroInstalled,
-    kokoroModelReady,
-    modelSizeMb,
-    packagePath: pkgDir
+    companion
+  }
+})
+
+// IPC: ambil seluruh status jalur yang terdeteksi di komputer (hanya dipanggil 1x saat inisialisasi / permintaan)
+ipcMain.handle('avatar:get-detected-paths', async () => {
+  const paths = await getAllDetectedPaths(false)
+  let kokoroInstalled = false
+  if (paths.python?.ok && paths.python?.cmd) {
+    kokoroInstalled = await checkKokoroPipInstalled(paths.python.cmd, false)
+  }
+  return { ...paths, kokoroInstalled }
+})
+
+// IPC: simpan jalur kustom pengguna (~/.hermes-avatar/paths.json)
+ipcMain.handle('avatar:set-custom-path', async (_event, key, val) => {
+  try {
+    const ok = savePersistedPath(key, val)
+    const all = await getAllDetectedPaths(true)
+    return { ok, all }
+  } catch (err) {
+    return { ok: false, error: err?.message || String(err) }
+  }
+})
+
+// IPC: buka dialog pemilihan berkas/folder kustom native OS
+ipcMain.handle('avatar:browse-custom-path', async (_event, key, type = 'file') => {
+  try {
+    const isDir = type === 'dir' || type === 'folder'
+    const properties = [isDir ? 'openDirectory' : 'openFile']
+    let filters = [{ name: 'Semua berkas', extensions: ['*'] }]
+    if (key === 'hermes_bin' || key === 'router_bin' || key === 'python_bin') {
+      filters = process.platform === 'win32'
+        ? [{ name: 'Aplikasi & Script', extensions: ['exe', 'cmd', 'bat', '*'] }, { name: 'Semua berkas', extensions: ['*'] }]
+        : [{ name: 'Semua berkas', extensions: ['*'] }]
+    }
+    const res = await dialog.showOpenDialog({
+      title: isDir ? 'Pilih Folder Direktori' : 'Pilih Berkas Eksekusi / Script',
+      properties,
+      filters
+    })
+    if (res.canceled || res.filePaths.length === 0) {
+      return { canceled: true }
+    }
+    const chosenPath = res.filePaths[0]
+    savePersistedPath(key, chosenPath)
+    const all = await getAllDetectedPaths(true)
+    return { ok: true, path: chosenPath, all }
+  } catch (err) {
+    return { ok: false, error: err?.message || String(err) }
+  }
+})
+
+// IPC: pindai ulang seluruh jalur dan logical drive secara dinamis (Hanya berjalan saat tombol ditekan manual)
+ipcMain.handle('avatar:rescan-paths', async () => {
+  try {
+    cachedKokoroPip.installed = null
+    const paths = await getAllDetectedPaths(true)
+    let kokoroInstalled = false
+    if (paths.python?.ok && paths.python?.cmd) {
+      kokoroInstalled = await checkKokoroPipInstalled(paths.python.cmd, true)
+    }
+    return { ok: true, all: { ...paths, kokoroInstalled } }
+  } catch (err) {
+    return { ok: false, error: err?.message || String(err) }
+  }
+})
+
+// IPC: jalankan 9Router daemon jika terpasang
+ipcMain.handle('avatar:start-router', async () => {
+  try {
+    const res = await startRouter()
+    return res
+  } catch (err) {
+    return { ok: false, error: err?.message || String(err) }
   }
 })
 
@@ -832,12 +895,14 @@ ipcMain.handle('avatar:install-kokoro-deps', async () => {
 
     try {
       const out = await runPip()
+      cachedKokoroPip.installed = true
       return { ok: true, output: out }
     } catch (err) {
       // Fallback untuk macOS Homebrew Python PEP 668 externally managed environment
       if (err.message?.includes('externally-managed-environment') || process.platform !== 'win32') {
         try {
           const out = await runPip(['--break-system-packages'])
+          cachedKokoroPip.installed = true
           return { ok: true, output: out }
         } catch (err2) {
           throw err2
@@ -846,6 +911,7 @@ ipcMain.handle('avatar:install-kokoro-deps', async () => {
       throw err
     }
   } catch (err) {
+    cachedKokoroPip.installed = null
     return { ok: false, error: err?.message || String(err) }
   }
 })
@@ -865,10 +931,12 @@ ipcMain.handle('avatar:uninstall-kokoro-deps', async () => {
 
     try {
       const out = await runUninstall()
+      cachedKokoroPip.installed = false
       return { ok: true, output: out }
     } catch (err) {
       if (process.platform !== 'win32') {
         const out = await runUninstall(['--break-system-packages'])
+        cachedKokoroPip.installed = false
         return { ok: true, output: out }
       }
       throw err
@@ -1283,11 +1351,19 @@ ipcMain.handle('avatar:test-connection', async (_event, url, model, apiKey) => {
       max_tokens: 5
     })
 
+    let effectiveKey = apiKey
+    if (!effectiveKey && (target.includes('20128') || target.toLowerCase().includes('9router'))) {
+      try {
+        const rKey = await resolveRouterApiKey()
+        if (rKey?.ok && rKey?.key) effectiveKey = rKey.key
+      } catch (_) {}
+    }
+
     const headers = {
       'Content-Type': 'application/json',
       'Content-Length': Buffer.byteLength(body)
     }
-    if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`
+    if (effectiveKey) headers['Authorization'] = `Bearer ${effectiveKey}`
 
     return await new Promise((resolve) => {
       const req = mod.request(u, { method: 'POST', headers, timeout: 15000 }, (res) => {
@@ -1331,39 +1407,249 @@ function runHermes(args, timeout = 30000) {
   })
 }
 
+// Helper komprehensif: sinkronisasi konfigurasi LLM Provider ke config.yaml dan .env
+async function updateHermesProviderConfig({ name, baseUrl, apiKey, model }) {
+  const modelName = String(model || '').trim()
+  const cfgPath = resolveHermesConfigPath()
+  let cfg = ''
+  if (existsSync(cfgPath)) {
+    cfg = await readFile(cfgPath, 'utf8')
+  } else {
+    await mkdir(dirname(cfgPath), { recursive: true })
+  }
+
+  // 1. Tentukan model efektif
+  let effectiveModel = modelName
+  if (!effectiveModel) {
+    const mMatch = cfg.match(/^\s+default:\s*([^\r\n#]+)/m) || cfg.match(/^model:\s*([^\r\n#]+)/m)
+    if (mMatch && mMatch[1]) {
+      effectiveModel = mMatch[1].trim()
+    } else if (process.env.HERMES_INFERENCE_MODEL) {
+      effectiveModel = process.env.HERMES_INFERENCE_MODEL.trim()
+    }
+  }
+
+  // 2. Tentukan baseUrl efektif
+  let provUrl = String(baseUrl || '').trim()
+  if (!provUrl) {
+    const uMatch = cfg.match(/^\s+base_url:\s*([^\r\n#]+)/m)
+    if (uMatch && uMatch[1]) {
+      provUrl = uMatch[1].trim()
+    } else {
+      provUrl = 'http://localhost:20128/v1'
+    }
+  }
+
+  // 3. Tentukan nama provider efektif
+  let provName = String(name || '').trim()
+  if (!provName) {
+    const pMatch = cfg.match(/^\s+name:\s*['"]?([^'"\r\n#]+)['"]?/m)
+    if (pMatch && pMatch[1]) {
+      provName = pMatch[1].trim()
+    } else {
+      provName = 'custom'
+    }
+  }
+
+  // 4. Resolusi API Key cerdas (mencegah 401 Invalid API Key pada 9Router)
+  let keyVal = String(apiKey || '').trim()
+  const isRouter = provUrl.includes('20128') || provUrl.toLowerCase().includes('9router')
+
+  if (!keyVal || keyVal === 'no-key-required') {
+    if (isRouter) {
+      try {
+        const rKey = await resolveRouterApiKey()
+        if (rKey?.ok && rKey?.key) {
+          keyVal = rKey.key
+          console.log(`[updateHermesProviderConfig] Otomatis menyematkan API Key 9Router (${rKey.name || 'Key'})`)
+        }
+      } catch (_) {}
+    }
+  }
+
+  // Jika masih belum ada, pertahankan key yang tersimpan sebelumnya di process.env / config.yaml
+  if (!keyVal || keyVal === 'no-key-required') {
+    if (process.env.OPENAI_API_KEY && process.env.OPENAI_API_KEY !== 'no-key-required') {
+      keyVal = process.env.OPENAI_API_KEY
+    } else {
+      const curKeyMatch = cfg.match(/^\s*api_key:\s*([^\r\n#]+)/m)
+      if (curKeyMatch && curKeyMatch[1] && curKeyMatch[1].trim() !== 'no-key-required') {
+        keyVal = curKeyMatch[1].trim()
+      }
+    }
+  }
+
+  if (!keyVal) {
+    keyVal = 'no-key-required'
+  }
+
+  // 5. Update blok model di config.yaml
+  if (/^model:\s*$/m.test(cfg)) {
+    if (/^\s+default:/m.test(cfg)) {
+      cfg = cfg.replace(/^(\s+default:\s*).*$/m, `$1${effectiveModel}`)
+    } else {
+      cfg = cfg.replace(/^(model:\s*)$/m, `$1\n  default: ${effectiveModel}`)
+    }
+    if (/^\s+provider:/m.test(cfg)) {
+      cfg = cfg.replace(/^(\s+provider:\s*).*$/m, `$1custom`)
+    } else {
+      cfg = cfg.replace(/^(model:\s*)$/m, `$1\n  provider: custom`)
+    }
+    if (/^\s+base_url:/m.test(cfg)) {
+      cfg = cfg.replace(/^(\s+base_url:\s*).*$/m, `$1${provUrl}`)
+    } else {
+      cfg = cfg.replace(/^(model:\s*)$/m, `$1\n  base_url: ${provUrl}`)
+    }
+  } else {
+    cfg += `\nmodel:\n  default: ${effectiveModel}\n  provider: custom\n  base_url: ${provUrl}\n`
+  }
+
+  // 6. Format blok providers & custom_providers
+  const safeName = provName.replace(/[^a-zA-Z0-9_-]/g, '_') || 'custom'
+  const provSection = `providers:\n  '${safeName}':\n    name: '${provName}'\n    base_url: ${provUrl}\n    api_key: ${keyVal}\n    default_model: ${effectiveModel}\n`
+  const customProvSection = `custom_providers:\n- name: '${provName}'\n  base_url: ${provUrl}\n  api_key: ${keyVal}\n  model: ${effectiveModel}\n`
+
+  if (/^providers:\s*(\n\s+.*)*/m.test(cfg)) {
+    cfg = cfg.replace(/^providers:\s*(\n(\s+[^\n]*|\s*))*/m, provSection)
+  } else {
+    cfg += `\n${provSection}`
+  }
+
+  if (/^custom_providers:\s*(\n\s+.*)*/m.test(cfg)) {
+    cfg = cfg.replace(/^custom_providers:\s*(\n(\s+-[^\n]*|\s+[^\n]*|\s*))*/m, customProvSection)
+  } else {
+    cfg += `\n${customProvSection}`
+  }
+
+  await writeFile(cfgPath, cfg, 'utf8')
+
+  // 7. Update .env (garansi mutlak bagi runtime Python agar tidak 'No LLM provider configured')
+  const envPath = join(dirname(cfgPath), '.env')
+  let env = ''
+  if (existsSync(envPath)) {
+    env = await readFile(envPath, 'utf8')
+  }
+  if (/^OPENAI_BASE_URL=.*$/m.test(env)) {
+    env = env.replace(/^OPENAI_BASE_URL=.*$/m, `OPENAI_BASE_URL=${provUrl}`)
+  } else {
+    env += `\nOPENAI_BASE_URL=${provUrl}\n`
+  }
+  if (/^OPENAI_API_KEY=.*$/m.test(env)) {
+    env = env.replace(/^OPENAI_API_KEY=.*$/m, `OPENAI_API_KEY=${keyVal}`)
+  } else {
+    env += `OPENAI_API_KEY=${keyVal}\n`
+  }
+  if (/^HERMES_INFERENCE_MODEL=.*$/m.test(env)) {
+    env = env.replace(/^HERMES_INFERENCE_MODEL=.*$/m, `HERMES_INFERENCE_MODEL=${effectiveModel}`)
+  } else {
+    env += `HERMES_INFERENCE_MODEL=${effectiveModel}\n`
+  }
+  await writeFile(envPath, env, 'utf8')
+
+  // 8. Update process.env lokal
+  process.env.OPENAI_BASE_URL = provUrl
+  process.env.OPENAI_API_KEY = keyVal
+  process.env.HERMES_INFERENCE_MODEL = effectiveModel
+
+  return true
+}
+
 // Helper: tulis update model langsung ke config.yaml bila CLI / RPC tidak tersedia
 async function updateModelConfigYaml(modelName) {
   try {
-    const cfgPath = resolveHermesConfigPath()
-    let cfg = ''
-    if (existsSync(cfgPath)) {
-      cfg = await readFile(cfgPath, 'utf8')
-    } else {
-      await mkdir(join(cfgPath, '..'), { recursive: true })
-    }
-
-    if (/^model:\s*$/m.test(cfg)) {
-      if (/^\s+default:/m.test(cfg)) {
-        cfg = cfg.replace(/^(\s+default:\s*).*$/m, `$1${modelName}`)
-      } else {
-        cfg = cfg.replace(/^(model:\s*)$/m, `$1\n  default: ${modelName}`)
-      }
-      if (/^\s+provider:/m.test(cfg)) {
-        cfg = cfg.replace(/^(\s+provider:\s*).*$/m, `$1custom`)
-      } else {
-        cfg = cfg.replace(/^(model:\s*)$/m, `$1\n  provider: custom`)
-      }
-    } else {
-      cfg += `\nmodel:\n  default: ${modelName}\n  provider: custom\n`
-    }
-
-    await writeFile(cfgPath, cfg, 'utf8')
-    return true
+    return await updateHermesProviderConfig({ model: modelName })
   } catch (err) {
     console.warn('[updateModelConfigYaml] failed:', err?.message || err)
     return false
   }
 }
+
+// IPC: set full LLM provider ke Hermes (config.yaml + .env + RPC gateway)
+ipcMain.handle('avatar:set-llm-provider', async (_event, payload) => {
+  try {
+    const { name, baseUrl, apiKey, model } = payload || {}
+    const modelName = String(model || '').trim()
+    if (!modelName) return { ok: false, error: 'Model identifier wajib diisi' }
+
+    await updateHermesProviderConfig({ name, baseUrl, apiKey, model: modelName })
+
+    // Set via RPC jika terhubung
+    if (isGatewayConnected()) {
+      try {
+        await gatewayRequest('config.set', { key: 'model.default', value: modelName })
+        await gatewayRequest('config.set', { key: 'model.provider', value: 'custom' })
+        await gatewayRequest('config.set', { key: 'model.base_url', value: baseUrl })
+      } catch (_) {}
+    }
+
+    // Restart server Hermes agar process runtime memuat konfigurasi baru
+    await restartHermes()
+
+    return { ok: true, model: modelName, name, baseUrl }
+  } catch (err) {
+    return { ok: false, error: err?.message || String(err) }
+  }
+})
+
+// IPC: restart Hermes daemon
+ipcMain.handle('avatar:restart-hermes', async () => {
+  try {
+    const res = await restartHermes()
+    return { ok: res.ok, already: res.already, error: res.error }
+  } catch (err) {
+    return { ok: false, error: err?.message || String(err) }
+  }
+})
+
+// IPC: ambil API key aktif 9Router yang tersimpan di data.sqlite
+ipcMain.handle('avatar:get-router-api-key', async () => {
+  try {
+    return await resolveRouterApiKey()
+  } catch (err) {
+    return { ok: false, key: null, error: err?.message || String(err) }
+  }
+})
+
+// IPC: ambil model aktual langsung dari endpoint OpenAI-compatible (9Router, Ollama, dll)
+ipcMain.handle('avatar:fetch-endpoint-models', async (_event, baseUrl, apiKey) => {
+  try {
+    const targetUrl = String(baseUrl || '').trim()
+    if (!targetUrl) return { ok: false, error: 'Base URL kosong' }
+
+    let effectiveKey = apiKey
+    if ((!effectiveKey || effectiveKey === 'no-key-required') && (targetUrl.includes('20128') || targetUrl.toLowerCase().includes('9router'))) {
+      try {
+        const rKey = await resolveRouterApiKey()
+        if (rKey?.ok && rKey?.key) {
+          effectiveKey = rKey.key
+        }
+      } catch (_) {}
+    }
+
+    const url = targetUrl.replace(/\/+$/, '') + '/models'
+    const headers = { Accept: 'application/json' }
+    if (effectiveKey && effectiveKey !== 'no-key-required') {
+      headers['Authorization'] = `Bearer ${effectiveKey}`
+    }
+
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 3200)
+    const resp = await fetch(url, { headers, signal: controller.signal })
+    clearTimeout(timeout)
+
+    if (!resp.ok) {
+      return { ok: false, error: `HTTP ${resp.status} ${resp.statusText}` }
+    }
+    const data = await resp.json()
+    const rawList = Array.isArray(data) ? data : (data?.data || [])
+    const models = rawList
+      .map((m) => (typeof m === 'string' ? m : (m.id || m.name)))
+      .filter(Boolean)
+    return { ok: true, models }
+  } catch (err) {
+    return { ok: false, error: err?.message || String(err) }
+  }
+})
 
 // IPC: set model aktif via 3-layer (RPC gateway -> hermes CLI -> config.yaml fallback).
 ipcMain.handle('avatar:set-model', async (_event, model) => {
@@ -1394,7 +1680,7 @@ ipcMain.handle('avatar:set-model', async (_event, model) => {
       if (!lastErr) lastErr = e
     }
 
-    // Layer 3: Tulis langsung ke config.yaml
+    // Layer 3: Tulis langsung ke config.yaml & .env
     const fileOk = await updateModelConfigYaml(modelName)
     if (fileOk) anySuccess = true
 
@@ -1405,6 +1691,40 @@ ipcMain.handle('avatar:set-model', async (_event, model) => {
     return { ok: true, model: modelName }
   } catch (err) {
     return { ok: false, error: err?.message || String(err) }
+  }
+})
+
+// IPC: ambil info model LLM aktif (dari Gateway bila online, atau config.yaml langsung)
+ipcMain.handle('avatar:get-current-model', async () => {
+  try {
+    if (isGatewayConnected()) {
+      try {
+        const res = await gatewayRequest('config.get', { key: 'provider' })
+        if (res && res.model && res.model !== '—' && res.model !== 'none') {
+          return { ok: true, model: res.model, provider: res.provider || 'default' }
+        }
+      } catch (_) {}
+    }
+    // Fallback: baca config.yaml langsung
+    const cfgPath = resolveHermesConfigPath()
+    if (existsSync(cfgPath)) {
+      const cfg = await readFile(cfgPath, 'utf8')
+      const matchModel = cfg.match(/^\s+default:\s*([^\r\n#]+)/m) || cfg.match(/^model:\s*([^\r\n#]+)/m)
+      const matchProvider = cfg.match(/^\s+provider:\s*([^\r\n#]+)/m)
+      if (matchModel && matchModel[1]) {
+        const model = matchModel[1].trim()
+        if (model && model !== '—' && model !== 'none' && model !== 'Tidak ada model') {
+          return {
+            ok: true,
+            model,
+            provider: matchProvider && matchProvider[1] ? matchProvider[1].trim() : 'custom'
+          }
+        }
+      }
+    }
+    return { ok: false, model: null, error: 'Belum ada model LLM yang dipilih' }
+  } catch (err) {
+    return { ok: false, model: null, error: err?.message || String(err) }
   }
 })
 

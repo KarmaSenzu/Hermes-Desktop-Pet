@@ -4,6 +4,7 @@ import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import http from 'node:http'
 import net from 'node:net'
+import { getAllDetectedPaths } from '../src/main/path-resolver.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const avatarDir = join(__dirname, '..')
@@ -169,8 +170,31 @@ async function runDoctor() {
     issues++
   }
 
-  // 5. Backend Services & Port Health
-  console.log(`\n${BOLD}[5/5] Port & Layanan Latar Belakang (Konektivitas)${RESET}`)
+  // 5. Backend Services & Path Discovery Health
+  console.log(`\n${BOLD}[5/5] Port & Layanan Latar Belakang (Smart Path Discovery)${RESET}`)
+  const paths = await getAllDetectedPaths()
+  info(`Drive Terdeteksi`, `[${paths.drives.map((d) => d + ':').join(', ')}]`)
+
+  if (paths.hermes.ok) {
+    pass(`Hermes CLI: ${paths.hermes.cmd}`, `(${paths.hermes.source})`)
+  } else {
+    warn(`Hermes CLI belum terdeteksi di drive manapun`, `(Dapat ditentukan manual di Pengaturan)`)
+    warnings++
+  }
+
+  if (paths.python.ok) {
+    pass(`Python Engine: ${paths.python.cmd} - ${paths.python.version}`, `(${paths.python.source})`)
+  } else {
+    warn(`Python belum terdeteksi`, `(Dibutuhkan untuk Kokoro-TTS vokal anime lokal)`)
+    warnings++
+  }
+
+  if (paths.router.ok) {
+    pass(`9Router Gateway: ${paths.router.cmd}`, `(${paths.router.source})`)
+  } else {
+    info(`9Router CLI offline`, `(Opsional — dapat diinstall via npm install -g 9router)`)
+  }
+
   const isHermesUp = await checkPort(9119)
   if (isHermesUp) {
     pass(`Hermes Serve AI terdeteksi di port 9119`, `(JSON-RPC WebSocket Online)`)

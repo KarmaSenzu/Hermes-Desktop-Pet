@@ -19,6 +19,11 @@ export function toSpeechText(markdown, { maxChars = 500 } = {}) {
 
   let s = String(markdown)
 
+  // 0. Assessment Card & placeholder -> jangan dibaca oleh TTS
+  s = s.replace(/<assessment[\s\S]*?(?:<\/assessment>|$)/gi, '')
+  s = s.replace(/@@@DYNAMICASSESSMENTCARD\d+@@@/g, '')
+  s = s.replace(/%%DYNAMIC(?:<em>)?_?ASSESSMENT_?(?:<\/em>)?\d+%%/gi, '')
+
   // 1. Code block (fenced) → ringkas, jangan baca per baris.
   s = s.replace(/```[\s\S]*?```/g, ' [ada contoh kode di layar] ')
   // Inline code → hapus backtick (baca isinya).

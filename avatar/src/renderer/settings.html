@@ -251,9 +251,12 @@
                 <span class="row-title" style="font-size:14px;">Status Kelengkapan Sistem</span>
                 <div id="package-overall-status" class="overall-badge" style="margin-top:5px;">Memeriksa kelengkapan…</div>
               </div>
-              <button type="button" id="pkg-refresh-all-btn" class="mini-btn browse" title="Pindai ulang seluruh port dan dependensi">Periksa Ulang 🔄</button>
+              <div style="display:flex; align-items:center; gap:8px;">
+                <span id="pkg-drives-info" class="badge" style="font-size:11px;">Drive: …</span>
+                <button type="button" id="pkg-refresh-all-btn" class="mini-btn browse" title="Pindai ulang seluruh logical drive, port, dan dependensi">Pindai Seluruh Drive 🔍</button>
+              </div>
             </div>
-            <p class="hint" style="margin: 8px 0 0;">Klik setiap paket di bawah untuk membuka detail panduan instalasi atau mengontrol service.</p>
+            <p class="hint" style="margin: 8px 0 0;">Klik setiap paket di bawah untuk membuka detail panduan instalasi, mengontrol service, atau mengubah lokasi folder jika dipasang di harddisk lain.</p>
           </div>
 
           <div class="group-header">Daftar Paket & Service (Buka / Tutup Detail)</div>
@@ -301,6 +304,14 @@
                 <div class="package-meta">
                   <span>Port Target: <code>9119</code></span> · 
                   <span>Protokol: <code>WebSocket JSON-RPC</code></span>
+                </div>
+                <div class="package-meta" style="margin-top: 6px; flex-wrap: wrap; gap: 6px; align-items: center;">
+                  <span>Lokasi Binary: <code id="pkg-hermes-location" style="word-break: break-all;">Mendeteksi…</code></span>
+                  <span class="badge" id="pkg-hermes-source-badge" style="font-size:10px;">…</span>
+                </div>
+                <div style="display:flex; gap:8px; margin: 6px 0 8px; flex-wrap: wrap;">
+                  <button type="button" id="pkg-hermes-browse-btn" class="mini-btn browse" title="Pilih file hermes.exe / hermes.cmd secara manual">Ubah Jalur 📂</button>
+                  <button type="button" id="pkg-hermes-reset-btn" class="mini-btn" title="Kembalikan ke deteksi otomatis sistem" style="display:none;">Reset Otomatis 🔄</button>
                 </div>
                 <p class="row-desc">Hermes otomatis dijalankan oleh aplikasi ini. Jika Anda ingin menjalankannya secara manual di jendela terminal terpisah:</p>
                 <div style="display:flex; gap:8px; margin: 4px 0 8px;">
@@ -361,9 +372,18 @@
                   <span>Port Target: <code>20128</code></span> · 
                   <span>Perintah Service: <code>9router</code></span>
                 </div>
-                <p class="row-desc">Jalankan service 9Router di terminal baru sebelum menghubungkan avatar ke LLM:</p>
+                <div class="package-meta" style="margin-top: 6px; flex-wrap: wrap; gap: 6px; align-items: center;">
+                  <span>Lokasi Command: <code id="pkg-router-location" style="word-break: break-all;">Mendeteksi…</code></span>
+                  <span class="badge" id="pkg-router-source-badge" style="font-size:10px;">…</span>
+                </div>
+                <div style="display:flex; gap:8px; margin: 6px 0 8px; flex-wrap: wrap;">
+                  <button type="button" id="pkg-router-start-btn" class="mini-btn primary" title="Jalankan service 9Router secara senyap di background">⚡ Jalankan di Background (Senyap)</button>
+                  <button type="button" id="pkg-router-browse-btn" class="mini-btn browse" title="Pilih file 9router.cmd secara manual">Ubah Jalur 📂</button>
+                  <button type="button" id="pkg-router-reset-btn" class="mini-btn" title="Kembalikan ke deteksi otomatis sistem" style="display:none;">Reset Otomatis 🔄</button>
+                </div>
+                <p class="row-desc">Jalankan service 9Router sebelum menghubungkan avatar ke model LLM:</p>
                 <div style="display:flex; gap:8px; margin: 4px 0 8px;">
-                  <button type="button" class="terminal-action-btn secondary-term" data-terminal-cmd="9router">⚡ Buka Terminal & Jalankan (9router)</button>
+                  <button type="button" class="terminal-action-btn secondary-term" data-terminal-cmd="9router -n --skip-update">Buka Terminal (Debugging)</button>
                 </div>
                 <div class="command-box-group">
                   <span class="command-box-label">Perintah Terminal:</span>
@@ -423,12 +443,17 @@
               <div class="pkg-tab-panel" data-panel="manage">
                 <div class="package-meta">
                   <span>Port Server: <code>8880</code></span> · 
-                  <span>Lokasi Cache: <code id="pkg-kokoro-location">~/.hermes-avatar/packages/kokoro/</code></span>
+                  <span>Lokasi Folder Model: <code id="pkg-kokoro-location" style="word-break: break-all;">~/.hermes-avatar/packages/kokoro/</code></span>
+                  <span class="badge" id="pkg-kokoro-source-badge" style="font-size:10px;">…</span>
+                </div>
+                <div style="display:flex; gap:8px; margin: 6px 0 8px; flex-wrap: wrap;">
+                  <button type="button" id="pkg-kokoro-browse-btn" class="mini-btn browse" title="Pilih folder kustom untuk model Kokoro (misal di Drive D:\)">Ubah Folder Model 📂</button>
+                  <button type="button" id="pkg-kokoro-reset-btn" class="mini-btn" title="Kembalikan ke folder default" style="display:none;">Reset Default 🔄</button>
                 </div>
                 <p class="row-desc">Jalankan daemon server audio Kokoro agar avatar dapat bersuara anime:</p>
                 <div style="display:flex; gap:8px; margin: 6px 0 10px; flex-wrap:wrap;">
-                  <button type="button" class="terminal-action-btn secondary-term" data-terminal-cmd="py scripts/kokoro_server.py">⚡ Buka Terminal & Jalankan Server</button>
-                  <button type="button" id="pkg-start-kokoro-btn" class="mini-btn primary">Jalankan di Background App</button>
+                  <button type="button" id="pkg-start-kokoro-btn" class="mini-btn primary">⚡ Jalankan di Background (Senyap)</button>
+                  <button type="button" class="terminal-action-btn secondary-term" data-terminal-cmd="py scripts/kokoro_server.py">Buka Terminal (Debugging)</button>
                 </div>
                 <div class="package-actions-row" style="margin-top: 8px;">
                   <button type="button" id="pkg-open-folder-btn" class="mini-btn edit">Buka Folder Paket 📁</button>
@@ -478,10 +503,15 @@
                 </div>
               </div>
 
-              <!-- Sub-panel Manage -->
               <div class="pkg-tab-panel" data-panel="manage">
-                <div class="package-meta">
+                <div class="package-meta" style="flex-wrap: wrap; gap: 6px; align-items: center;">
                   <span id="pkg-python-version">Memeriksa versi…</span>
+                  <span>Jalur Eksekusi: <code id="pkg-python-location" style="word-break: break-all;">Mendeteksi…</code></span>
+                  <span class="badge" id="pkg-python-source-badge" style="font-size:10px;">…</span>
+                </div>
+                <div style="display:flex; gap:8px; margin: 6px 0 8px; flex-wrap: wrap;">
+                  <button type="button" id="pkg-python-browse-btn" class="mini-btn browse" title="Pilih binary python.exe kustom">Ubah Python 📂</button>
+                  <button type="button" id="pkg-python-reset-btn" class="mini-btn" title="Kembalikan ke deteksi otomatis sistem" style="display:none;">Reset Otomatis 🔄</button>
                 </div>
               </div>
             </div>
@@ -1241,10 +1271,12 @@
         <div class="modal-actions" style="display:flex; flex-wrap:wrap; justify-content:flex-end; gap:8px;">
           <button type="button" id="prereq-cancel-btn" class="modal-btn secondary">Batal</button>
           <button type="button" id="prereq-hub-btn" class="modal-btn secondary">Buka Package Hub</button>
+          <button type="button" id="prereq-llm-btn" class="modal-btn secondary" style="border-color:rgba(139,92,246,0.5); color:#a78bfa;">Pilih Model LLM 🤖</button>
           <button type="button" id="prereq-auto-btn" class="modal-btn primary" style="background:var(--accent,#3b82f6); color:#fff;">⚡ Nyalakan Otomatis</button>
           <button type="button" id="prereq-force-btn" class="modal-btn" style="background:rgba(255,255,255,0.06); color:var(--text); border:1px solid var(--border);">Tetap Mulai Saja</button>
         </div>
       </div>
+    </div>
     <!-- Modal Detail Catatan Rilis & Pembaruan Aplikasi -->
     <div id="update-modal" class="modal-overlay" hidden>
       <div class="modal update-modal-box" role="dialog" aria-modal="true" aria-labelledby="update-modal-title" style="max-width: 540px;">

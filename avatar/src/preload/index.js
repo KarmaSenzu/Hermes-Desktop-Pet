@@ -78,6 +78,13 @@ const api = {
   openPackageFolder: (pkgName) => ipcRenderer.invoke('avatar:open-package-folder', pkgName),
   cleanPackage: (pkgName) => ipcRenderer.invoke('avatar:clean-package', pkgName),
 
+  // Smart Multi-Tier Path Discovery & Configuration
+  getDetectedPaths: () => ipcRenderer.invoke('avatar:get-detected-paths'),
+  setCustomPath: (key, val) => ipcRenderer.invoke('avatar:set-custom-path', key, val),
+  browseCustomPath: (key, type) => ipcRenderer.invoke('avatar:browse-custom-path', key, type),
+  rescanPaths: () => ipcRenderer.invoke('avatar:rescan-paths'),
+  startRouter: () => ipcRenderer.invoke('avatar:start-router'),
+
   // RPC ke Hermes (shared gateway) — untuk config/model di LLM section.
   rpc: (method, params) => ipcRenderer.invoke('avatar:rpc', method, params),
 
@@ -92,6 +99,21 @@ const api = {
 
   // Set model aktif (via hermes config set — mekanisme resmi).
   setModel: (model) => ipcRenderer.invoke('avatar:set-model', model),
+
+  // Set provider LLM lengkap (nama, base_url, api_key, model) ke Hermes
+  setLlmProvider: (payload) => ipcRenderer.invoke('avatar:set-llm-provider', payload),
+
+  // Ambil daftar model aktual dari endpoint (cth. 9Router :20128/v1/models)
+  fetchEndpointModels: (baseUrl, apiKey) => ipcRenderer.invoke('avatar:fetch-endpoint-models', baseUrl, apiKey),
+
+  // Ambil API key aktif 9Router langsung dari data.sqlite
+  getRouterApiKey: () => ipcRenderer.invoke('avatar:get-router-api-key'),
+
+  // Restart server Hermes serve
+  restartHermesServer: () => ipcRenderer.invoke('avatar:restart-hermes'),
+
+  // Ambil info model LLM aktif (dari Gateway bila online, atau config.yaml langsung)
+  getCurrentModel: () => ipcRenderer.invoke('avatar:get-current-model'),
 
   // Set TTS config (voice + speed) ke Hermes.
   setTtsConfig: (cfg) => ipcRenderer.invoke('avatar:set-tts-config', cfg),
