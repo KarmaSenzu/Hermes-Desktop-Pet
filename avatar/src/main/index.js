@@ -862,7 +862,7 @@ function isNewerVersion(vLatest, vCurrent) {
 }
 
 async function checkAppUpdate() {
-  const currentVersion = app.getVersion() || '0.1.2'
+  const currentVersion = app.getVersion() || '0.1.3'
   const repoOwner = 'KarmaSenzu'
   const repoName = 'Hermes-Desktop-Pet'
 
