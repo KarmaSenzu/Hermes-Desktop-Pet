@@ -25,14 +25,17 @@ $LatestTag = $Release.tag_name
 $ReleaseName = $Release.name
 Write-Host "  ✓ Rilis terbaru ditemukan: $LatestTag ($ReleaseName)" -ForegroundColor Green
 
-# 2. Cari aset installer Windows (.exe) atau .zip
-$Asset = $Release.assets | Where-Object { $_.name -like "*.exe" } | Select-Object -First 1
+# 2. Prioritaskan paket pembaruan portabel (.zip) agar tidak perlu menjalankan installer .exe ulang
+$Asset = $Release.assets | Where-Object { $_.name -like "*win*.zip" } | Select-Object -First 1
 if (-not $Asset) {
-    $Asset = $Release.assets | Where-Object { $_.name -like "*win*.zip" } | Select-Object -First 1
+    $Asset = $Release.assets | Where-Object { $_.name -like "*.zip" -and $_.name -notlike "*mac*" -and $_.name -notlike "*linux*" } | Select-Object -First 1
+}
+if (-not $Asset) {
+    $Asset = $Release.assets | Where-Object { $_.name -like "*.exe" } | Select-Object -First 1
 }
 
 if (-not $Asset) {
-    Write-Host "✗ Berkas installer Windows tidak ditemukan di rilis $LatestTag." -ForegroundColor Red
+    Write-Host "✗ Berkas rilis Windows tidak ditemukan di rilis $LatestTag." -ForegroundColor Red
     exit 1
 }
 
@@ -53,13 +56,21 @@ Write-Host "⚡ Menutup aplikasi Hermes Desktop Pet jika sedang terbuka..." -For
 Get-Process "Hermes Desktop Pet" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 Start-Sleep -Seconds 1
 
-# 4. Jalankan installer
-Write-Host "📦 Menjalankan pembaruan..." -ForegroundColor Cyan
-if ($TargetFile.EndsWith(".exe")) {
+# 4. Terapkan pembaruan langsung
+Write-Host "📦 Menerapkan pembaruan..." -ForegroundColor Cyan
+$DestDir = Join-Path $env:LOCALAPPDATA "Programs\Hermes Desktop Pet"
+if (-not (Test-Path $DestDir)) {
+    New-Item -ItemType Directory -Path $DestDir -Force | Out-Null
+}
+
+if ($TargetFile.EndsWith(".zip")) {
+    $ExtractTemp = Join-Path $TempDir "extracted"
+    Expand-Archive -Path $TargetFile -DestinationPath $ExtractTemp -Force
+    $InnerDir = Get-ChildItem -Path $ExtractTemp | Where-Object { $_.PSIsContainer -and (Test-Path (Join-Path $_.FullName "Hermes Desktop Pet.exe")) } | Select-Object -First 1
+    $SourceDir = if ($InnerDir) { $InnerDir.FullName } else { $ExtractTemp }
+    Copy-Item -Path "$SourceDir\*" -Destination $DestDir -Recurse -Force
+} else {
     Start-Process -FilePath $TargetFile -ArgumentList "/S" -Wait
-} elseif ($TargetFile.EndsWith(".zip")) {
-    $DestDir = Join-Path $env:LOCALAPPDATA "Programs\Hermes Desktop Pet"
-    Expand-Archive -Path $TargetFile -DestinationPath $DestDir -Force
 }
 
 Write-Host "`n✓ PEMBARUAN BERHASIL DIPASANG! Versi $LatestTag aktif." -ForegroundColor Green

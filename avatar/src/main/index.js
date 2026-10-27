@@ -1,5 +1,5 @@
 import { app, BrowserWindow, ipcMain, protocol, dialog, screen, safeStorage, shell, Menu } from 'electron'
-import { join, extname, isAbsolute, basename } from 'path'
+import { join, extname, isAbsolute, basename, dirname } from 'path'
 import { readFile, writeFile, mkdir, rm } from 'fs/promises'
 import { existsSync, statSync, readdirSync, cpSync, mkdirSync, createWriteStream } from 'fs'
 import { homedir } from 'os'
@@ -998,8 +998,10 @@ async function checkAppUpdate() {
         matchedAsset = data.assets.find((a) => a.name.endsWith('.dmg')) ||
                        data.assets.find((a) => a.name.endsWith('.zip') && a.name.includes('mac'))
       } else if (process.platform === 'win32') {
-        matchedAsset = data.assets.find((a) => a.name.endsWith('.exe')) ||
-                       data.assets.find((a) => a.name.endsWith('.zip') && a.name.includes('win'))
+        // Prioritaskan paket pembaruan portabel .zip untuk update seamless tanpa menjalankan installer .exe ulang!
+        matchedAsset = data.assets.find((a) => a.name.endsWith('.zip') && (a.name.includes('win') || a.name.toLowerCase().includes('windows'))) ||
+                       data.assets.find((a) => a.name.endsWith('.zip') && !a.name.includes('mac') && !a.name.includes('linux')) ||
+                       data.assets.find((a) => a.name.endsWith('.exe'))
       } else {
         matchedAsset = data.assets.find((a) => a.name.endsWith('.AppImage')) ||
                        data.assets.find((a) => a.name.endsWith('.deb'))
@@ -1130,13 +1132,45 @@ ipcMain.handle('avatar:download-and-apply-update', async (event, downloadUrl, as
       }
       return { ok: true, readyToRestart: true, message: 'Update berhasil dipasang di /Applications!' }
     } else if (process.platform === 'win32') {
-      if (filename.endsWith('.exe')) {
+      if (filename.endsWith('.zip')) {
+        const destDir = app.isPackaged
+          ? dirname(process.execPath)
+          : join(process.env.LOCALAPPDATA || homedir(), 'Programs', 'Hermes Desktop Pet')
+
+        const stagingDir = join(tempDir, 'staging')
+        await mkdir(stagingDir, { recursive: true })
+
+        // Ekstrak ZIP di background ke folder staging sementara
+        await new Promise((resolve, reject) => {
+          execFile('powershell', [
+            '-NoProfile',
+            '-ExecutionPolicy', 'Bypass',
+            '-Command',
+            `Expand-Archive -Path '${targetFilePath}' -DestinationPath '${stagingDir}' -Force`
+          ], (err) => {
+            if (err) return reject(err)
+            resolve()
+          })
+        })
+
+        // Buat runner script batch updater mandiri yang menimpa file dan membuka kembali aplikasi setelah Electron exit
+        const updateScriptPath = join(tempDir, 'apply_update.bat')
+        const exePath = app.isPackaged ? process.execPath : join(destDir, 'Hermes Desktop Pet.exe')
+
+        const batContent = [
+          '@echo off',
+          'timeout /t 2 /nobreak > nul',
+          `powershell -NoProfile -ExecutionPolicy Bypass -Command "$staging = '${stagingDir}'; $appDir = '${destDir}'; $inner = Get-ChildItem -Path $staging | Where-Object { $_.PSIsContainer -and (Test-Path (Join-Path $_.FullName 'Hermes Desktop Pet.exe')) } | Select-Object -First 1; $src = if ($inner) { Join-Path $inner.FullName '*' } else { Join-Path $staging '*' }; Copy-Item -Path $src -Destination $appDir -Recurse -Force"`,
+          `start "" "${exePath}"`,
+          'exit'
+        ].join('\r\n')
+
+        await writeFile(updateScriptPath, batContent, 'utf-8')
+        pendingWindowsInstaller = updateScriptPath
+        return { ok: true, readyToRestart: true, message: 'Pembaruan siap diterapkan seketika saat restart!' }
+      } else if (filename.endsWith('.exe')) {
         pendingWindowsInstaller = targetFilePath
         return { ok: true, readyToRestart: true, message: 'Installer update siap dipasang saat restart!' }
-      } else if (filename.endsWith('.zip')) {
-        const destDir = join(process.env.LOCALAPPDATA || homedir(), 'Programs', 'Hermes Desktop Pet')
-        execFile('powershell', ['-NoProfile', '-Command', `Expand-Archive -Path '${targetFilePath}' -DestinationPath '${destDir}' -Force`], () => {})
-        return { ok: true, readyToRestart: true }
       }
     } else {
       // Linux AppImage
@@ -1159,7 +1193,11 @@ ipcMain.handle('avatar:download-and-apply-update', async (event, downloadUrl, as
 // IPC: Relaunch aplikasi untuk menerapkan update
 ipcMain.handle('avatar:relaunch-app', () => {
   if (process.platform === 'win32' && pendingWindowsInstaller) {
-    spawn(pendingWindowsInstaller, ['/S'], { detached: true, stdio: 'ignore' }).unref()
+    if (pendingWindowsInstaller.endsWith('.bat')) {
+      spawn('cmd.exe', ['/c', pendingWindowsInstaller], { detached: true, stdio: 'ignore' }).unref()
+    } else {
+      spawn(pendingWindowsInstaller, ['/S'], { detached: true, stdio: 'ignore' }).unref()
+    }
     app.exit(0)
     return
   }
