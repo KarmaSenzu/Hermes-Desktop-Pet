@@ -33,6 +33,7 @@ import {
 import { connectGateway, disconnectGateway, request as gatewayRequest, isGatewayConnected } from './hermes-gateway.js'
 import { registerShortcuts, unregisterShortcuts, getShortcutList, updateShortcut } from './shortcuts.js'
 import { startBridgeServer, stopBridgeServer, BRIDGE_PORT } from './bridge-server.js'
+import { parseHttpUrl, isLocalRouterUrl } from './url-guard.js'
 
 // Inisialisasi perbaikan PATH untuk macOS/Windows sedini mungkin
 fixSystemPath()
@@ -1339,6 +1340,9 @@ ipcMain.handle('avatar:test-connection', async (_event, url, model, apiKey) => {
     const modelName = String(model || '').trim()
     if (!target) return { ok: false, error: 'URL kosong.' }
     if (!modelName) return { ok: false, error: 'Model kosong.' }
+    if (!parseHttpUrl(target)) {
+      return { ok: false, error: 'URL target tidak valid. Harus menggunakan protokol http atau https.' }
+    }
 
     const base = target.replace(/\/+$/, '')
     const endpoint = base.endsWith('/v1') ? `${base}/chat/completions` : `${base}/v1/chat/completions`
@@ -1352,7 +1356,7 @@ ipcMain.handle('avatar:test-connection', async (_event, url, model, apiKey) => {
     })
 
     let effectiveKey = apiKey
-    if (!effectiveKey && (target.includes('20128') || target.toLowerCase().includes('9router'))) {
+    if (!effectiveKey && isLocalRouterUrl(target)) {
       try {
         const rKey = await resolveRouterApiKey()
         if (rKey?.ok && rKey?.key) effectiveKey = rKey.key
@@ -1453,7 +1457,7 @@ async function updateHermesProviderConfig({ name, baseUrl, apiKey, model }) {
 
   // 4. Resolusi API Key cerdas (mencegah 401 Invalid API Key pada 9Router)
   let keyVal = String(apiKey || '').trim()
-  const isRouter = provUrl.includes('20128') || provUrl.toLowerCase().includes('9router')
+  const isRouter = isLocalRouterUrl(provUrl)
 
   if (!keyVal || keyVal === 'no-key-required') {
     if (isRouter) {
@@ -1570,6 +1574,9 @@ ipcMain.handle('avatar:set-llm-provider', async (_event, payload) => {
     const { name, baseUrl, apiKey, model } = payload || {}
     const modelName = String(model || '').trim()
     if (!modelName) return { ok: false, error: 'Model identifier wajib diisi' }
+    if (!parseHttpUrl(baseUrl)) {
+      return { ok: false, error: 'URL endpoint LLM tidak valid. Harus menggunakan protokol http atau https.' }
+    }
 
     await updateHermesProviderConfig({ name, baseUrl, apiKey, model: modelName })
 
@@ -1615,9 +1622,12 @@ ipcMain.handle('avatar:fetch-endpoint-models', async (_event, baseUrl, apiKey) =
   try {
     const targetUrl = String(baseUrl || '').trim()
     if (!targetUrl) return { ok: false, error: 'Base URL kosong' }
+    if (!parseHttpUrl(targetUrl)) {
+      return { ok: false, error: 'URL endpoint tidak valid. Harus menggunakan protokol http atau https.' }
+    }
 
     let effectiveKey = apiKey
-    if ((!effectiveKey || effectiveKey === 'no-key-required') && (targetUrl.includes('20128') || targetUrl.toLowerCase().includes('9router'))) {
+    if ((!effectiveKey || effectiveKey === 'no-key-required') && isLocalRouterUrl(targetUrl)) {
       try {
         const rKey = await resolveRouterApiKey()
         if (rKey?.ok && rKey?.key) {
