@@ -157,7 +157,15 @@ const api = {
     ipcRenderer.on('avatar:update-download-progress', handler)
     return () => ipcRenderer.removeListener('avatar:update-download-progress', handler)
   },
-  relaunchApp: () => ipcRenderer.invoke('avatar:relaunch-app')
+  relaunchApp: () => ipcRenderer.invoke('avatar:relaunch-app'),
+
+  // Pengingat idle chatter
+  triggerIdleChatter: (line) => ipcRenderer.invoke('avatar:trigger-idle-chatter', line),
+  onTriggerIdleChatter: (callback) => {
+    const handler = (_event, line) => callback(line)
+    ipcRenderer.on('avatar:trigger-idle-chatter', handler)
+    return () => ipcRenderer.removeListener('avatar:trigger-idle-chatter', handler)
+  }
 }
 
 contextBridge.exposeInMainWorld('hermesAvatar', api)

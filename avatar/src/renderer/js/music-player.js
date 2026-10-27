@@ -364,6 +364,12 @@ export class MusicPlayer {
 
   init() {
     this.cacheDom()
+    // Pastikan panel musik tertutup dan status playback mati saat inisialisasi awal
+    if (this.dom.panel) {
+      this.dom.panel.hidden = true
+    }
+    this.isPlaying = false
+    this.pause()
     this.initYouTubeApi()
     this.bindEvents()
     this.renderTracklist()
@@ -371,68 +377,87 @@ export class MusicPlayer {
   }
 
   initYouTubeApi() {
-    // Muat YouTube IFrame Player API secara dinamis
+    // Muat script YouTube IFrame Player API secara dinamis jika belum ada
     if (!window.YT) {
       const tag = document.createElement('script')
       tag.src = 'https://www.youtube.com/iframe_api'
       const firstScriptTag = document.getElementsByTagName('script')[0]
-      firstScriptTag.parentNode.insertBefore(tag, firstScriptTag)
+      firstScriptTag?.parentNode?.insertBefore(tag, firstScriptTag)
     }
 
-    const setupPlayer = () => {
-      if (window.YT && window.YT.Player) {
-        this.ytPlayer = new window.YT.Player('youtube-player-element', {
-          height: '200',
-          width: '200',
-          playerVars: {
-            playsinline: 1,
-            controls: 0,
-            disablekb: 1,
-            fs: 0,
-            rel: 0,
-            autoplay: 0,
-            origin: window.location.origin || 'http://localhost'
-          },
-          events: {
-            onReady: () => {
-              this.ytReady = true
-              this.ytPlayer.setVolume(this.volume * 100)
-            },
-            onStateChange: (event) => {
-              // YT.PlayerState: PLAYING = 1, PAUSED = 2, ENDED = 0, BUFFERING = 3
-              if (event.data === 1) {
-                this.isPlaying = true
-                this.updatePlayStateUi(true)
-                this.startYouTubeProgressTracker()
-              } else if (event.data === 2) {
-                this.isPlaying = false
-                this.updatePlayStateUi(false)
-                this.stopYouTubeProgressTracker()
-              } else if (event.data === 0) {
-                this.stopYouTubeProgressTracker()
-                this.handleTrackEnded()
-              }
-            },
-            onError: (err) => {
-              console.warn('[YouTube Player] Error:', err)
-              this.next()
-            }
-          }
-        })
-      } else {
-        setTimeout(setupPlayer, 300)
-      }
+    const onReady = () => {
+      this.ytReady = true
     }
 
     if (window.onYouTubeIframeAPIReady) {
       const oldReady = window.onYouTubeIframeAPIReady
       window.onYouTubeIframeAPIReady = () => {
         oldReady()
-        setupPlayer()
+        onReady()
       }
     } else {
-      window.onYouTubeIframeAPIReady = setupPlayer
+      window.onYouTubeIframeAPIReady = onReady
     }
+  }
+
+  ensureYouTubePlayer(onReadyCb) {
+    if (this.ytPlayer) {
+      if (this.ytReady) {
+        onReadyCb?.()
+      }
+      return
+    }
+
+    if (!window.YT || !window.YT.Player) {
+      setTimeout(() => this.ensureYouTubePlayer(onReadyCb), 300)
+      return
+    }
+
+    this.ytPlayer = new window.YT.Player('youtube-player-element', {
+      height: '200',
+      width: '200',
+      playerVars: {
+        playsinline: 1,
+        controls: 0,
+        disablekb: 1,
+        fs: 0,
+        rel: 0,
+        autoplay: 0,
+        origin: window.location.origin || 'http://localhost'
+      },
+      events: {
+        onReady: () => {
+          this.ytReady = true
+          this.ytPlayer.setVolume(this.volume * 100)
+          onReadyCb?.()
+        },
+        onStateChange: (event) => {
+          if (this.getCurrentTrack()?.type !== 'youtube') return
+          // YT.PlayerState: PLAYING = 1, PAUSED = 2, ENDED = 0, BUFFERING = 3
+          if (event.data === 1) {
+            this.isPlaying = true
+            this.updatePlayStateUi(true)
+            this.startYouTubeProgressTracker()
+          } else if (event.data === 2) {
+            this.isPlaying = false
+            this.updatePlayStateUi(false)
+            this.stopYouTubeProgressTracker()
+          } else if (event.data === 0) {
+            this.stopYouTubeProgressTracker()
+            if (this.isPlaying) {
+              this.handleTrackEnded()
+            }
+          }
+        },
+        onError: (err) => {
+          console.warn('[YouTube Player] Error:', err)
+          // Cegah auto-play / advance ke next track jika player sedang mati/idle
+          if (this.isPlaying && this.getCurrentTrack()?.type === 'youtube') {
+            this.next()
+          }
+        }
+      }
+    })
   }
 
   startYouTubeProgressTracker() {
@@ -667,12 +692,16 @@ export class MusicPlayer {
     })
 
     this.htmlAudio.addEventListener('ended', () => {
-      this.handleTrackEnded()
+      if (this.isPlaying) {
+        this.handleTrackEnded()
+      }
     })
 
     this.htmlAudio.addEventListener('error', (e) => {
       console.warn('[MusicPlayer] Audio playback error:', e)
-      this.next()
+      if (this.isPlaying && (this.getCurrentTrack()?.type === 'stream' || this.getCurrentTrack()?.type === 'local')) {
+        this.next()
+      }
     })
   }
 
@@ -870,15 +899,14 @@ export class MusicPlayer {
       this.htmlAudio.pause()
       this.htmlAudio.currentTime = 0
 
-      if (this.ytPlayer && this.ytReady) {
-        this.ytPlayer.loadVideoById(track.videoId)
-        this.ytPlayer.playVideo()
-        this.ytPlayer.setVolume(this.volume * 100)
-        this.startYouTubeProgressTracker()
-      } else {
-        console.warn('[YouTube Player] YouTube API belum siap, mencoba lagi...')
-        setTimeout(() => this.playTrack(index), 500)
-      }
+      this.ensureYouTubePlayer(() => {
+        if (this.isPlaying && this.getCurrentTrack()?.id === track.id) {
+          this.ytPlayer.loadVideoById(track.videoId)
+          this.ytPlayer.playVideo()
+          this.ytPlayer.setVolume(this.volume * 100)
+          this.startYouTubeProgressTracker()
+        }
+      })
     } else if (track.type === 'procedural') {
       // Hentikan YouTube & HTML audio
       this.ytPlayer?.pauseVideo?.()
@@ -1008,6 +1036,8 @@ export class MusicPlayer {
   }
 
   handleTrackEnded() {
+    if (!this.isPlaying) return
+
     if (this.repeatMode === 'one') {
       const track = this.getCurrentTrack()
       if (track?.type === 'youtube') {

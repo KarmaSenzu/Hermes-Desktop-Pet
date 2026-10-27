@@ -62,6 +62,18 @@ const DEFAULT_SETTINGS = {
     processing: 'charterer', // 'charterer' | 'focus' | 'relaxed' | 'custom:<id>'
     greeting: 'sarangheo',   // 'sarangheo' | 'bounce' | 'wave' | 'custom:<id>'
     idle: 'a-pose'           // 'a-pose' | 't-pose' | 'custom:<id>'
+  },
+  idleReminder: {
+    enabled: true,
+    intervalMinutes: 10,
+    lines: [
+      'Jangan lupa minum air putih ya 💧',
+      'Postur tubuhnya ditegakkan dulu yuk, biar punggung tidak pegal 🧘',
+      'Fokus kerja hebat banget! Semangat terus ya ✨',
+      'Sudah istirahatkan mata sejenak belum? Coba lihat ke kejauhan sebentar 👀',
+      'Ada yang bisa kubantu dengan AI Hermes? Buka chat kapan saja ya 💬',
+      'Tarik napas dalam-dalam... hembuskan perlahan 🌸'
+    ]
   }
 }
 
@@ -80,6 +92,13 @@ export function loadSettings() {
     merged.stateAnimations = {
       ...DEFAULT_SETTINGS.stateAnimations,
       ...(parsed.stateAnimations || {})
+    }
+    merged.idleReminder = {
+      ...DEFAULT_SETTINGS.idleReminder,
+      ...(parsed.idleReminder || {})
+    }
+    if (!Array.isArray(merged.idleReminder.lines) || merged.idleReminder.lines.length === 0) {
+      merged.idleReminder.lines = [...DEFAULT_SETTINGS.idleReminder.lines]
     }
     return merged
   } catch {

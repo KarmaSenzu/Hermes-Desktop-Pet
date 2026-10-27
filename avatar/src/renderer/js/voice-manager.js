@@ -22,6 +22,11 @@ export class VoiceManager {
     this.currentAudio = null
     this.isPlaying = false
     this.audioBaseDir = null
+    this.audioPlayer = null
+  }
+
+  setAudioPlayer(player) {
+    this.audioPlayer = player
   }
 
   /**
@@ -32,7 +37,7 @@ export class VoiceManager {
       const defaultModel = await window.hermesAvatar.getDefaultModelPath()
       // Path model: .../assets/live2d/mother/20250106.model3.json
       // Path audio: .../assets/audio/mother/
-      const normalized = defaultModel.replace(/\\/g, '/')
+      const normalized = (defaultModel || '').replace(/\\/g, '/')
       const assetsIndex = normalized.lastIndexOf('/assets/')
       if (assetsIndex !== -1) {
         this.audioBaseDir = normalized.slice(0, assetsIndex) + '/assets/audio/mother'
@@ -54,41 +59,68 @@ export class VoiceManager {
       await this.init()
     }
 
-    if (!this.audioBaseDir) return
+    const candidatePaths = [
+      this.audioBaseDir ? `${this.audioBaseDir}/${file}` : null,
+      `assets/audio/mother/${file}`
+    ].filter(Boolean)
 
-    const filePath = `${this.audioBaseDir}/${file}`
-    try {
-      const url = await window.hermesAvatar.getModelUrl(filePath)
-      this.stop()
+    for (const filePath of candidatePaths) {
+      try {
+        if (this.audioPlayer) {
+          const res = await window.hermesAvatar?.readModel?.(filePath)
+          if (res && res.ok && res.base64) {
+            const binaryString = atob(res.base64)
+            const len = binaryString.length
+            const bytes = new Uint8Array(len)
+            for (let i = 0; i < len; i++) {
+              bytes[i] = binaryString.charCodeAt(i)
+            }
+            this.isPlaying = true
+            await this.audioPlayer.play(bytes.buffer)
+            this.isPlaying = false
+            return
+          }
+        }
 
-      const audio = new Audio(url)
-      this.currentAudio = audio
-      this.isPlaying = true
+        // Fallback HTML5 Audio jika audioPlayer belum siap
+        const url = await window.hermesAvatar?.getModelUrl?.(filePath)
+        if (url) {
+          this.stop()
+          const audio = new Audio(url)
+          this.currentAudio = audio
+          this.isPlaying = true
 
-      audio.onended = () => {
-        this.isPlaying = false
-        this.currentAudio = null
+          audio.onended = () => {
+            this.isPlaying = false
+            this.currentAudio = null
+          }
+          audio.onerror = (e) => {
+            console.warn(`[voice-manager] Gagal memutar audio ${file}:`, e)
+            this.isPlaying = false
+            this.currentAudio = null
+          }
+
+          await audio.play()
+          return
+        }
+      } catch (err) {
+        console.warn(`[voice-manager] Gagal coba putar ${filePath}:`, err)
       }
-      audio.onerror = (e) => {
-        console.warn(`[voice-manager] Gagal memutar audio ${file}:`, e)
-        this.isPlaying = false
-        this.currentAudio = null
-      }
-
-      await audio.play()
-    } catch (err) {
-      console.warn('[voice-manager] play error:', err)
-      this.isPlaying = false
     }
   }
 
   stop() {
+    if (this.audioPlayer) {
+      try {
+        this.audioPlayer.stop()
+      } catch {}
+    }
     if (this.currentAudio) {
       this.currentAudio.pause()
       this.currentAudio.currentTime = 0
       this.currentAudio = null
-      this.isPlaying = false
     }
+    this.isPlaying = false
   }
 }
 

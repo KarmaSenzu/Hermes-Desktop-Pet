@@ -28,6 +28,7 @@ let live2dPet = null
 let mmdRef = null // { mesh, loader, helper } untuk playback .vmd
 let modelScene = null // scene model aktif (untuk AnimationMixer .glb)
 const audioPlayer = new AudioPlayer()
+voiceManager.setAudioPlayer(audioPlayer)
 const musicPlayer = new MusicPlayer()
 musicPlayer.init()
 
@@ -132,7 +133,8 @@ window.hermesAvatar.onLoadModel(async (modelPath) => {
         }
       }
 
-      // Sapaan visual awal saat aplikasi dibuka (suara auto-play dinonaktifkan agar tidak bising di awal)
+      // Putar sapaan awal saat aplikasi dibuka + tampilkan balon dialog
+      voiceManager.playStateVoice('welcome')
       showSpeechBubble('Halo! Selamat datang di Hermes Desktop Pet 👋', 5000)
 
       const exprNames = controller.availableExpressions()
@@ -1884,8 +1886,8 @@ async function playCustomEmote(anim) {
   }
 }
 
-// --- Idle Chatter Berkala ala YourMother (motherSpeakFrequency) ---
-const IDLE_CHATTER_LINES = [
+// --- Idle Chatter Berkala ala YourMother (motherSpeakFrequency) & Pengaturan Dinamis ---
+const DEFAULT_IDLE_CHATTER_LINES = [
   'Jangan lupa minum air putih ya 💧',
   'Postur tubuhnya ditegakkan dulu yuk, biar punggung tidak pegal 🧘',
   'Fokus kerja hebat banget! Semangat terus ya ✨',
@@ -1894,26 +1896,72 @@ const IDLE_CHATTER_LINES = [
   'Tarik napas dalam-dalam... hembuskan perlahan 🌸'
 ]
 
+function getIdleReminderConfig() {
+  try {
+    const raw = localStorage.getItem('hermes-avatar-settings')
+    if (raw) {
+      const s = JSON.parse(raw)
+      if (s.idleReminder) {
+        return {
+          enabled: s.idleReminder.enabled !== false,
+          intervalMinutes: Math.max(1, parseInt(s.idleReminder.intervalMinutes, 10) || 10),
+          lines: Array.isArray(s.idleReminder.lines) && s.idleReminder.lines.length > 0
+            ? s.idleReminder.lines
+            : DEFAULT_IDLE_CHATTER_LINES
+        }
+      }
+    }
+  } catch {}
+  return {
+    enabled: true,
+    intervalMinutes: 10,
+    lines: DEFAULT_IDLE_CHATTER_LINES
+  }
+}
+
 let idleChatterTimer = null
 
 function scheduleNextIdleChatter() {
-  if (idleChatterTimer) clearTimeout(idleChatterTimer)
-  // Interval acak antara 8 - 15 menit
-  const delayMinutes = Math.floor(Math.random() * (15 - 8 + 1) + 8)
+  if (idleChatterTimer) {
+    clearTimeout(idleChatterTimer)
+    idleChatterTimer = null
+  }
+  const cfg = getIdleReminderConfig()
+  if (!cfg.enabled) return
+
+  // Beri sedikit variasi acak +/- 15% agar percakapan terasa natural
+  const baseMs = cfg.intervalMinutes * 60 * 1000
+  const jitterMs = (Math.random() * 0.3 - 0.15) * baseMs
+  const delayMs = Math.max(15000, Math.floor(baseMs + jitterMs))
+
   idleChatterTimer = setTimeout(() => {
     triggerIdleChatter()
     scheduleNextIdleChatter()
-  }, delayMinutes * 60 * 1000)
+  }, delayMs)
 }
 
-function triggerIdleChatter() {
+function triggerIdleChatter(forcedLine = null) {
+  const cfg = getIdleReminderConfig()
+  if (!cfg.enabled && !forcedLine) return
   // Hanya berbunyi jika suara aktif, tidak sedang tidur, tidak sedang sesi timer, dan tidak sedang bicara
-  if (!ttsEnabled || live2dPet?.isSleeping || isSpeaking || isTimerRunning) return
+  if (live2dPet?.isSleeping || isSpeaking || isTimerRunning) return
 
-  const line = IDLE_CHATTER_LINES[Math.floor(Math.random() * IDLE_CHATTER_LINES.length)]
+  const line = forcedLine || cfg.lines[Math.floor(Math.random() * cfg.lines.length)]
   showSpeechBubble(line, 8000)
   speak(line, 'neutral')
 }
+
+// Sinkronisasi otomatis saat konfigurasi di Pengaturan berubah
+window.addEventListener('storage', (e) => {
+  if (e.key === 'hermes-avatar-settings') {
+    scheduleNextIdleChatter()
+  }
+})
+
+// Trigger instan dari tombol tes di Pengaturan
+window.hermesAvatar?.onTriggerIdleChatter?.((line) => {
+  triggerIdleChatter(line)
+})
 
 scheduleNextIdleChatter()
 

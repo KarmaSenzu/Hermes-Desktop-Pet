@@ -28,6 +28,9 @@ import { startBridgeServer, stopBridgeServer, BRIDGE_PORT } from './bridge-serve
 // Inisialisasi perbaikan PATH untuk macOS/Windows sedini mungkin
 fixSystemPath()
 
+// Izinkan autoplay audio tanpa memblokir pada startup awal (mencegah NotAllowedError Chromium)
+app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required')
+
 // Variabel penyimpan berkas installer sementara jika di Windows
 let pendingWindowsInstaller = null
 
@@ -851,6 +854,15 @@ ipcMain.handle('avatar:clean-package', async (_event, pkgName = 'kokoro') => {
   }
 })
 
+// IPC: trigger tes pengingat idle secara instan dari jendela Pengaturan ke Avatar
+ipcMain.handle('avatar:trigger-idle-chatter', (_event, line) => {
+  if (avatarWindow && !avatarWindow.isDestroyed()) {
+    avatarWindow.webContents.send('avatar:trigger-idle-chatter', line)
+    return { ok: true }
+  }
+  return { ok: false, error: 'Avatar window belum aktif' }
+})
+
 function isNewerVersion(vLatest, vCurrent) {
   if (!vLatest || !vCurrent) return false
   const p1 = vLatest.replace(/^v/i, '').split('.').map((x) => parseInt(x, 10) || 0)
@@ -865,7 +877,7 @@ function isNewerVersion(vLatest, vCurrent) {
 }
 
 async function checkAppUpdate() {
-  const currentVersion = app.getVersion() || '0.1.3'
+  const currentVersion = app.getVersion() || '0.1.4'
   const repoOwner = 'KarmaSenzu'
   const repoName = 'Hermes-Desktop-Pet'
 

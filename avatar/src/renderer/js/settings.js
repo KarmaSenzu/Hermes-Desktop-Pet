@@ -1181,13 +1181,26 @@ startBtn.addEventListener('click', async () => {
       s = await window.hermesAvatar.getServiceStatus()
     }
 
-    // Jika Hermes masih belum aktif, tampilkan popup modal Prasyarat
-    if (!s.hermes) {
+    // Bila menggunakan Kokoro TTS dan servernya belum aktif, coba nyalakan otomatis
+    if (settings.tts?.provider === 'kokoro' && !s.kokoro) {
+      showToast('Menyiapkan Vokal Kokoro...', 'Menyalakan server Kokoro TTS...', 'running', '🎙️')
+      await window.hermesAvatar.startKokoroServer()
+      await new Promise((r) => setTimeout(r, 1400))
+      s = await window.hermesAvatar.getServiceStatus()
+    }
+
+    // Periksa apakah ada layanan yang belum siap
+    const isHermesReady = !!s.hermes
+    const isTtsReady = !!(s.kokoro || settings.tts?.provider === 'edge')
+    const isRouterReady = settings.routerChecked ? !!s.router : true
+
+    // Jika ada layanan yang belum siap, tampilkan pop-up modal Prasyarat
+    if (!isHermesReady || !isTtsReady || !isRouterReady) {
       showPrerequisitesModal(s)
       return
     }
 
-    // Semua prasyarat kritis terpenuhi -> mulai avatar langsung
+    // Semua prasyarat terpenuhi -> mulai avatar langsung
     await launchAvatarDirect(active.path)
   } catch (err) {
     statusEl.textContent = `Gagal: ${err.message}`
@@ -2210,6 +2223,7 @@ const AVATAR_STATES = [
 
 const ANIM_MENU = [
   { id: 'state-mapping', icon: 'sliders', theme: 'indigo', label: 'Pemetaan Gaya Status Avatar', desc: 'Atur gaya avatar saat berpikir, megang jam, memproses, menyapa, dan diam' },
+  { id: 'idle-reminder', icon: 'bell', theme: 'rose', label: 'Pengingat Idle & Postur Tubuh', desc: 'Atur kalimat pengingat (minum air, tegakkan badan, dll) & interval kemunculannya saat avatar santai/idle' },
   { id: 'add', icon: 'upload-cloud', theme: 'emerald', label: 'Unggah Animasi Baru', desc: 'Unggah file animasi gerakan 3D (.glb, .vmd, .motion3.json, .bvh, .fbx)' },
   { id: 'pose-saved', icon: 'film', theme: 'purple', label: 'Animasi & Pose Tersimpan', desc: 'Kelola dan uji file animasi custom yang telah diunggah' },
   { id: 'emote', icon: 'smile', theme: 'amber', label: 'Emote & Ekspresi Bawaan', desc: 'Daftar emote bawaan & ekspresi interaktif avatar' },
@@ -2261,6 +2275,41 @@ async function previewStateAnimation(stateKey, value) {
   }
 }
 
+let currentPhraseAudio = null
+async function previewPhraseVoice(text) {
+  if (currentPhraseAudio) {
+    try {
+      currentPhraseAudio.pause()
+    } catch {}
+    currentPhraseAudio = null
+  }
+  try {
+    const voice = settings.tts?.voice || 'af_heart'
+    const provider = settings.tts?.provider || 'kokoro'
+    const speed = settings.tts?.speed || 1.0
+    const intonation = settings.tts?.intonation || 'sweet'
+    const kokoroEndpoint = settings.tts?.kokoroEndpoint || 'http://127.0.0.1:8880'
+
+    showToast('Memproses Suara... 🎙️', text, 'running', '🎙️', 2500)
+    const res = await window.hermesAvatar?.synthesizeSpeech?.(text, voice, {
+      provider,
+      speed,
+      intonation,
+      kokoroEndpoint
+    })
+    if (res?.ok) {
+      const audioSrc = res.dataUrl || (res.base64 ? `data:${res.mimeType || 'audio/mpeg'};base64,${res.base64}` : null)
+      if (audioSrc) {
+        currentPhraseAudio = new Audio(audioSrc)
+        currentPhraseAudio.play()
+        showToast('Memutar Suara Pengingat 🔊', text, 'success', '🔊', 3000)
+      }
+    }
+  } catch (err) {
+    showToast('Gagal Memutar Audio', err.message, 'error', '❌')
+  }
+}
+
 function renderAnimMenu() {
   const animCount = customAnimations().length
   const defaultPose = settings.stateAnimations?.idle === 't-pose' || settings.pose === 't-pose' ? 'T-Pose' : 'A-Pose'
@@ -2269,6 +2318,13 @@ function renderAnimMenu() {
     let countBadge = ''
     if (m.id === 'state-mapping') {
       countBadge = `<span class="format-count-pill on">⚡ 5 Status Aktif</span>`
+    } else if (m.id === 'idle-reminder') {
+      const cfg = settings.idleReminder || {}
+      const isEn = cfg.enabled !== false
+      const count = (cfg.lines || []).length
+      countBadge = isEn
+        ? `<span class="format-count-pill on">🔔 ${cfg.intervalMinutes || 10}m (${count} Kalimat)</span>`
+        : `<span class="format-count-pill off">Nonaktif</span>`
     } else if (m.id === 'add') {
       countBadge = `<span class="format-count-pill off">+ Unggah</span>`
     } else if (m.id === 'pose-saved') {
@@ -2506,6 +2562,206 @@ function openAnimDetail(sub) {
       previewStateAnimation('idle', sel.value)
       showToast('Menguji Postur Diam ⚡', `Pose: ${sel.options[sel.selectedIndex].text}`, 'info', '⚡')
     }
+
+  } else if (sub === 'idle-reminder') {
+    const cfg = settings.idleReminder || {
+      enabled: true,
+      intervalMinutes: 10,
+      lines: [
+        'Jangan lupa minum air putih ya 💧',
+        'Postur tubuhnya ditegakkan dulu yuk, biar punggung tidak pegal 🧘',
+        'Fokus kerja hebat banget! Semangat terus ya ✨',
+        'Sudah istirahatkan mata sejenak belum? Coba lihat ke kejauhan sebentar 👀',
+        'Ada yang bisa kubantu dengan AI Hermes? Buka chat kapan saja ya 💬',
+        'Tarik napas dalam-dalam... hembuskan perlahan 🌸'
+      ]
+    }
+
+    const intervals = [
+      { val: 1, label: '1 Menit (Tes Cepat ⚡)' },
+      { val: 3, label: '3 Menit (Sering)' },
+      { val: 5, label: '5 Menit' },
+      { val: 10, label: '10 Menit (Bawaan Ideal ⭐)' },
+      { val: 15, label: '15 Menit' },
+      { val: 20, label: '20 Menit' },
+      { val: 30, label: '30 Menit (Santai)' },
+      { val: 45, label: '45 Menit' },
+      { val: 60, label: '60 Menit (1 Jam)' }
+    ]
+
+    animDetail.innerHTML = `
+      <div class="group-header">Konfigurasi Pengingat Santai (Idle Chatter)</div>
+      <div class="card">
+        <div class="settings-row">
+          <div class="format-emblem theme-rose">
+            ${renderIcon('bell', { size: 18 })}
+          </div>
+          <div class="format-info-col">
+            <div class="format-title-line">
+              <span class="format-title">Aktifkan Pengingat Berkala</span>
+            </div>
+            <p class="format-desc-text">Avatar akan sesekali berbicara ramah mengingatkan kesehatan & postur saat sedang santai</p>
+          </div>
+          <div class="row-control">
+            <input id="idle-rem-enabled" type="checkbox" class="mac-switch" ${cfg.enabled !== false ? 'checked' : ''} />
+          </div>
+        </div>
+
+        <div class="settings-row">
+          <div class="format-emblem theme-blue">
+            ${renderIcon('clock', { size: 18 })}
+          </div>
+          <div class="format-info-col">
+            <div class="format-title-line">
+              <span class="format-title">Interval Frekuensi Waktu</span>
+            </div>
+            <p class="format-desc-text">Seberapa sering avatar akan memunculkan kalimat pengingat saat idle</p>
+          </div>
+          <div class="row-control">
+            <select id="idle-rem-interval" class="mac-select">
+              ${intervals.map((i) => `<option value="${i.val}" ${i.val === (cfg.intervalMinutes || 10) ? 'selected' : ''}>${i.label}</option>`).join('')}
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div class="group-header" style="margin-top:20px;">Koleksi Kalimat Pengingat Mandiri</div>
+      <div class="card padded">
+        <p class="hint" style="margin-top:0; margin-bottom:12px;">
+          Tulis kalimat pengingat kustom Anda sendiri (misal: tegakkan badan, minum air, istirahatkan mata). Avatar akan memilih kalimat ini secara acak saat waktu tiba.
+        </p>
+
+        <div style="display:flex; gap:8px; margin-bottom:14px;">
+          <input id="idle-rem-new-input" type="text" class="mac-input" style="flex:1;" placeholder="Ketik kalimat pengingat baru... (cth. Luruskan kaki dan rilekskan bahu 🧘)" />
+          <button id="idle-rem-add-btn" class="mini-btn primary" style="height:34px; padding:0 14px;">+ Tambah</button>
+        </div>
+
+        <div id="idle-rem-list" class="anim-list"></div>
+
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:16px; padding-top:12px; border-top:1px solid rgba(255,255,255,0.06);">
+          <button id="idle-rem-reset-btn" class="mini-btn browse" title="Kembalikan ke 6 kalimat pengingat bawaan">🔄 Reset ke Bawaan</button>
+          <button id="idle-rem-test-btn" class="mini-btn use" title="Langsung tampilkan salah satu kalimat di avatar sekarang">⚡ Uji di Avatar Sekarang</button>
+        </div>
+      </div>
+    `
+
+    const toggleEn = document.getElementById('idle-rem-enabled')
+    const selInterval = document.getElementById('idle-rem-interval')
+    const inputNew = document.getElementById('idle-rem-new-input')
+    const btnAdd = document.getElementById('idle-rem-add-btn')
+    const listEl = document.getElementById('idle-rem-list')
+    const btnReset = document.getElementById('idle-rem-reset-btn')
+    const btnTest = document.getElementById('idle-rem-test-btn')
+
+    const renderList = () => {
+      const lines = settings.idleReminder?.lines || []
+      if (lines.length === 0) {
+        listEl.innerHTML = `<div style="text-align:center; padding:16px; color:var(--text-secondary); font-size:13px;">Belum ada kalimat pengingat. Tambahkan di atas atau klik Reset ke Bawaan.</div>`
+        return
+      }
+
+      listEl.innerHTML = lines.map((line, idx) => `
+        <div class="app-item" style="padding:8px 12px;">
+          <div class="app-item-main" style="gap:10px;">
+            <span style="font-size:16px;">💬</span>
+            <span style="font-size:13px; line-height:1.4;">${escapeHtml(line)}</span>
+          </div>
+          <div style="display:flex; gap:6px; flex-shrink:0;">
+            <button type="button" class="mini-btn browse btn-test-phrase" data-idx="${idx}" title="Uji suara kalimat ini">🔊</button>
+            <button type="button" class="mini-btn danger btn-del-phrase" data-idx="${idx}" title="Hapus kalimat ini">✕</button>
+          </div>
+        </div>
+      `).join('')
+
+      listEl.querySelectorAll('.btn-test-phrase').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const idx = parseInt(btn.dataset.idx, 10)
+          const text = (settings.idleReminder?.lines || [])[idx]
+          if (text) previewPhraseVoice(text)
+        })
+      })
+
+      listEl.querySelectorAll('.btn-del-phrase').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const idx = parseInt(btn.dataset.idx, 10)
+          const lines = settings.idleReminder?.lines || []
+          if (idx >= 0 && idx < lines.length) {
+            const removed = lines.splice(idx, 1)[0]
+            settings.idleReminder.lines = lines
+            saveSettings(settings)
+            renderList()
+            showToast('Kalimat Dihapus 🗑️', removed, 'info', '🗑️', 2500)
+          }
+        })
+      })
+    }
+
+    renderList()
+
+    toggleEn.onchange = () => {
+      settings.idleReminder = settings.idleReminder || {}
+      settings.idleReminder.enabled = toggleEn.checked
+      saveSettings(settings)
+      showToast(toggleEn.checked ? 'Pengingat Idle Aktif 🔔' : 'Pengingat Idle Dimatikan 🔕', 'Status pengingat telah diperbarui.', 'success', toggleEn.checked ? '🔔' : '🔕')
+    }
+
+    selInterval.onchange = () => {
+      settings.idleReminder = settings.idleReminder || {}
+      const mins = parseInt(selInterval.value, 10) || 10
+      settings.idleReminder.intervalMinutes = mins
+      saveSettings(settings)
+      showToast('Interval Diperbarui ⏱️', `Pengingat akan muncul setiap ~${mins} menit saat santai`, 'success', '⏱️')
+    }
+
+    const addLine = () => {
+      const text = inputNew.value.trim()
+      if (!text) return
+      settings.idleReminder = settings.idleReminder || {}
+      settings.idleReminder.lines = settings.idleReminder.lines || []
+      settings.idleReminder.lines.push(text)
+      saveSettings(settings)
+      inputNew.value = ''
+      renderList()
+      showToast('Kalimat Pengingat Ditambahkan! ✨', text, 'success', '✨')
+    }
+
+    btnAdd.addEventListener('click', addLine)
+    inputNew.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault()
+        addLine()
+      }
+    })
+
+    btnReset.addEventListener('click', () => {
+      settings.idleReminder = settings.idleReminder || {}
+      settings.idleReminder.lines = [
+        'Jangan lupa minum air putih ya 💧',
+        'Postur tubuhnya ditegakkan dulu yuk, biar punggung tidak pegal 🧘',
+        'Fokus kerja hebat banget! Semangat terus ya ✨',
+        'Sudah istirahatkan mata sejenak belum? Coba lihat ke kejauhan sebentar 👀',
+        'Ada yang bisa kubantu dengan AI Hermes? Buka chat kapan saja ya 💬',
+        'Tarik napas dalam-dalam... hembuskan perlahan 🌸'
+      ]
+      saveSettings(settings)
+      renderList()
+      showToast('Kalimat Bawaan Dipulihkan 🔄', '6 kalimat pengingat bawaan telah direset.', 'success', '🔄')
+    })
+
+    btnTest.addEventListener('click', async () => {
+      const lines = settings.idleReminder?.lines || []
+      const sample = lines.length > 0 ? lines[Math.floor(Math.random() * lines.length)] : 'Semangat fokus kerjanya ya! ✨'
+      try {
+        const res = await window.hermesAvatar?.triggerIdleChatter?.(sample)
+        if (res && res.ok === false) {
+          showToast('Avatar Belum Aktif ⚠️', 'Mulai desktop avatar terlebih dahulu untuk menguji di layar.', 'info', '⚠️')
+        } else {
+          showToast('Pengingat Dimunculkan di Layar! 🚀', sample, 'success', '🔔')
+        }
+      } catch (err) {
+        showToast('Info', err.message, 'info', 'ℹ️')
+      }
+    })
   }
 }
 
@@ -3159,7 +3415,7 @@ async function checkAppUpdates(interactive = false) {
     }
 
     cachedUpdateInfo = res
-    const currentVer = res.currentVersion ? (res.currentVersion.startsWith('v') ? res.currentVersion : `v${res.currentVersion}`) : 'v0.1.3'
+    const currentVer = res.currentVersion ? (res.currentVersion.startsWith('v') ? res.currentVersion : `v${res.currentVersion}`) : 'v0.1.4'
     const latestVer = res.latestVersion ? (res.latestVersion.startsWith('v') ? res.latestVersion : `v${res.latestVersion}`) : currentVer
 
     if (footerVerTag) footerVerTag.textContent = currentVer
@@ -3304,8 +3560,8 @@ function showUpdateModal() {
 
   if (!modal) return
 
-  const cur = cachedUpdateInfo?.currentVersion || '0.1.3'
-  const lat = cachedUpdateInfo?.latestVersion || 'v0.1.3'
+  const cur = cachedUpdateInfo?.currentVersion || '0.1.4'
+  const lat = cachedUpdateInfo?.latestVersion || 'v0.1.4'
   const date = cachedUpdateInfo?.releaseDate || 'Rilis Terbaru'
   const changelog = cachedUpdateInfo?.changelog || 'Pembaruan stabilitas dan perbaikan bug.'
 

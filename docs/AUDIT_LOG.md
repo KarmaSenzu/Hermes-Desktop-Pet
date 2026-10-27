@@ -1529,6 +1529,56 @@ Dokumen ini mencatat setiap perubahan, penambahan, dan penghapusan kode secara t
    - `npm run build`: Berhasil 100% tanpa error (*out/main/index.js 82.44 kB, out/preload/index.mjs 7.69 kB, out/renderer 170 modules transformed*).
    - `npm run doctor`: 5/5 LULUS.
 
+---
+
+### [2026-10-27 19:40] 🚀 Audit Entry #042: Rilis v0.1.4 — Kustomisasi Pengingat Idle & Postur, Restorasi Suara Welcome Lip-Sync, dan Perbaikan Autoplay Audio
+
+* **Tipe Perubahan:** Feature / Bug Fix / Audio & Animation Enhancement / Release Bump (v0.1.4)
+* **Pelapor:** User
+  - Permintaan:
+    1. Perbaiki musik YouTube/Lo-Fi yang berputar sendiri di awal (*shibuya_night*).
+    2. Kembalikan sapaan suara awal (*welcome voice*) agar avatar berbicara saat baru dibuka, tanpa diblokir oleh sistem.
+    3. Buatkan pengaturan di menu Animasi untuk mengkustomisasi kalimat pengingat idle/postur (seperti "Tegakkan badan", "Minum air", dll) serta mengatur interval frekuensi munculnya.
+    4. Modal prasyarat hanya muncul jika ada layanan yang belum siap; jika semua siap, langsung jalankan avatar.
+    5. Naikkan versi ke `v0.1.4` dan rilis pembaruan ke GitHub lengkap dengan informasi rilis mendalam.
+* **Status:** ✅ Selesai & Terverifikasi Penuh (`npm run build` 100% lulus, 173 modul ter-bundle tanpa peringatan)
+
+#### Rincian Implementasi Teknis:
+
+1. **Perbaikan Music Player Mencegah Autoplay Liar (`avatar/src/renderer/js/music-player.js`):**
+   - **Akar Masalah:** Inisialisasi YouTube iframe API (`YT.Player`) dijalankan di awal secara eager. Saat terjadi kesalahan koneksi atau audio idle di latar belakang, event handler `onError` dan `htmlAudio.error` memanggil `this.next()` tanpa memeriksa apakah musik sedang diputar (`this.isPlaying`). Akibatnya, playlist otomatis beralih dan memutar trek YouTube pertama (*Midnight Study in Shibuya*).
+   - **Solusi:**
+     - Mengubah pemuatan iframe YouTube menjadi *lazy initialization* via `ensureYouTubePlayer()`, hanya dibuat saat pengguna benar-benar memutar trek YouTube secara eksplisit.
+     - Menambahkan proteksi ketat `if (!this.isPlaying) return;` pada handler `onError`, `onStateChange`, `htmlAudio.error`, dan `htmlAudio.ended`.
+     - Memastikan status startup selalu memanggil `this.pause()` dan menyembunyikan panel UI (`dom.panel.hidden = true`).
+
+2. **Restorasi Suara Sapaan Awal (*Welcome Voice*) & Sinkronisasi Lip-Sync (`main.js`, `voice-manager.js`, `main/index.js`):**
+   - Mengaktifkan kembali pemanggilan `voiceManager.playStateVoice('welcome')` di `main.js` saat model Live2D selesai dimuat.
+   - Menghubungkan `voiceManager.setAudioPlayer(audioPlayer)` agar pemutaran berkas audio `.wav` menggunakan Web Audio API buffer decoding (`AudioContext.decodeAudioData`) via IPC `avatar:read-model`, sehingga terbebas dari kendala streaming protokol kustom.
+   - Mengintegrasikan analitik amplitudo audio ke parameter Live2D `ParamMouthOpenY` sehingga bibir avatar bergerak selaras (*lip-sync*) saat menyapa pengguna.
+   - Menambahkan argumen Chromium `app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required')` di `main/index.js` agar audio selamat datang tidak terblokir oleh *autoplay policy* Chromium saat pertama kali dibuka.
+
+3. **Fitur Kustomisasi Pengingat Idle & Postur Tubuh (`settings.js`, `settings-store.js`, `main.js`, `preload/index.js`):**
+   - Menambahkan kartu sub-pengaturan **Pengingat Idle & Postur Tubuh** pada menu **Pengaturan ➔ Animasi**:
+     - Toggle ON/OFF pengingat idle.
+     - Dropdown pilihan interval frekuensi waktu tunggu idle: 1 menit, 3 menit, 5 menit, 10 menit (default), 15 menit, 20 menit, 30 menit, 45 menit, dan 60 menit.
+     - Daftar frasa kalimat kustom dinamis: pengguna dapat menambah kalimat motivasi baru, menghapus kalimat yang tidak disukai, menguji dengar suara TTS langsung via ikon `🔊`, dan memulihkan 6 frasa default bawaan (`🔄`).
+     - Tombol **⚡ Uji di Avatar Sekarang** untuk mengirim pesan uji coba ke jendela avatar via IPC `avatar:trigger-idle-chatter`.
+   - Mengimplementasikan sinkronisasi real-time tanpa restart: jendela avatar mendengarkan perubahan pengaturan melalui event `storage` dan memperbarui interval timer serta daftar kalimat secara instan.
+
+4. **Logika Cerdas Modal Prasyarat (*Smart Prerequisites Check*) (`settings.js`):**
+   - Tombol **Mulai Avatar** di Beranda memeriksa status 4 prasyarat: Hermes AI Agent (:9119), Kokoro-TTS (:8880), Router AI (:20128 jika aktif), dan keberadaan berkas model karakter.
+   - Jika ke-4 layanan berstatus *Ready (4/4)*, avatar langsung diluncurkan seketika tanpa menampilkan modal konfirmasi. Modal konfirmasi hanya dimunculkan sebagai panduan solutif jika ada layanan yang belum aktif atau belum siap.
+
+5. **Pembaruan Versi (Version Bump) ke `0.1.4`:**
+   - Memperbarui `avatar/package.json` ke versi `0.1.4`.
+   - Memperbarui fallback versi di `avatar/src/main/index.js` dan `avatar/src/renderer/js/settings.js`.
+   - Terhubung langsung dengan OTA Auto-Updater dan skrip pembaruan `update.sh` / `update.ps1` untuk mendeteksi rilis `v0.1.4` dari GitHub Releases.
+
+6. **Verifikasi:**
+   - `npm run build` berhasil 100% (173 modules transformed, out/main/index.js 83.05 kB, out/renderer 353.94 kB).
+
+
 
 
 

@@ -44,9 +44,29 @@ Bagi Anda yang ingin memasang langsung secara otomatis dalam satu baris perintah
 ```bash
 curl -fsSL https://raw.githubusercontent.com/KarmaSenzu/Hermes-Desktop-Pet/main/install.sh | bash
 ```
-*(Panduan lengkap cara mengetik dan tahapan normal eksekusi script ini dapat dibaca pada [bagian Metode 1](#-metode-1-pemasangan-cepat-via-terminal-macos--linux) di bawah).*
+
+#### 🔄 Pembaruan Cepat ke Versi Terbaru (Bagi yang Sudah Memasang):
+Cukup jalankan satu perintah berikut di terminal tanpa perlu download ulang:
+* **macOS & Linux (Terminal Bash):**
+  ```bash
+  curl -fsSL https://raw.githubusercontent.com/KarmaSenzu/Hermes-Desktop-Pet/main/update.sh | bash
+  ```
+* **Windows (PowerShell):**
+  ```powershell
+  irm https://raw.githubusercontent.com/KarmaSenzu/Hermes-Desktop-Pet/main/update.ps1 | iex
+  ```
+*(Atau gunakan tombol **Update Sekarang** langsung di dalam menu Pengaturan aplikasi).*
 
 </div>
+
+---
+
+### 🚀 Apa yang Baru di Versi v0.1.4?
+* 🧘 **Pengaturan Kustom Pengingat Idle & Postur Tubuh:** Kustomisasi kalimat motivasi harian (seperti *"Tegakkan badanmu"*, *"Minum air putih"*), sesuaikan frekuensi interval munculnya (1–60 menit), uji audio TTS langsung, dan nikmati sinkronisasi instan ke avatar tanpa perlu restart.
+* 🗣️ **Restorasi Suara Sapaan Awal (*Welcome Voice*) + Live2D Lip-Sync:** Karakter kembali menyapa dengan suara ramah saat pertama kali dibuka, dilengkapi sinkronisasi gerak bibir (*lip-sync*) dan perbaikan *autoplay policy* Chromium.
+* 🎵 **Perbaikan Hermes Music Player:** Mencegah pemutaran otomatis musik YouTube Lo-Fi (*Midnight Study in Shibuya*) saat startup; pemutaran kini 100% terkendali oleh pengguna.
+* ⚡ **Modal Prasyarat Cerdas (*Smart Prerequisites Check*):** Tombol Mulai Avatar langsung meluncur jika semua layanan telah aktif (*4/4 Ready*), dan hanya menampilkan modal panduan jika ada modul yang belum siap.
+* 📦 **Seamless In-App & Terminal OTA Updater:** Pembaruan aplikasi kini otomatis mendeteksi rilis `v0.1.4` dan dapat diperbarui dalam 1 klik.
 
 ---
 
