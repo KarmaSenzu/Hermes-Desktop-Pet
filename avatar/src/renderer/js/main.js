@@ -132,8 +132,7 @@ window.hermesAvatar.onLoadModel(async (modelPath) => {
         }
       }
 
-      // Putar sapaan awal saat aplikasi dibuka + tampilkan balon dialog
-      voiceManager.playStateVoice('welcome')
+      // Sapaan visual awal saat aplikasi dibuka (suara auto-play dinonaktifkan agar tidak bising di awal)
       showSpeechBubble('Halo! Selamat datang di Hermes Desktop Pet 👋', 5000)
 
       const exprNames = controller.availableExpressions()

@@ -1454,6 +1454,39 @@ Dokumen ini mencatat setiap perubahan, penambahan, dan penghapusan kode secara t
 3. **Verifikasi Build:**
    - `npm run build` dijalankan di direktori `hermes-3d-avatar/avatar/` dan selesai 100% tanpa error (*all 66 modules transformed cleanly*).
 
+---
+
+### [2026-10-27 17:15] — Audit Entry #040: Resolusi Path Pre-Flight Model & Penonaktifan Audio Autoplay Saat Mulai Avatar
+
+* **Tipe Perubahan:** Bug Fix / Path Resolution / Audio Stabilization
+* **Pelapor:** User
+  1. Muncul toast alert `File Model Hilang / Rusak` (`assets/live2d/mother/20250106.model3.json`) saat mengklik tombol "Mulai Desktop Avatar" meskipun checklist status prasyarat sudah `4/4 Siap Memulai ✅`.
+  2. Suara/musik langsung otomatis berputar (*auto-play*) saat avatar desktop pertama kali diluncurkan.
+* **Status:** ✅ Selesai & Terverifikasi (`npm run build` lulus 100%, 0 error; `npm run doctor` lulus 5/5)
+
+#### Analisis Akar Masalah (Root Causes) & Solusi Teknis:
+
+1. **Resolusi Path Relatif pada Pre-flight Model Check (`main/index.js`):**
+   - *Akar Masalah:* Ketika tombol "Mulai Desktop Avatar" diklik di `settings.js`, dilakukan validasi awal disk melalui IPC `avatar:read-model`. Path karakter aktif bawaan tersimpan sebagai path relatif `assets/live2d/mother/20250106.model3.json`. Di dalam `avatar:read-model`, `fs.readFile` membaca langsung path relatif terhadap `process.cwd()`. Pada aplikasi terpaket (misalnya macOS `/Applications/` atau shortcut Windows), `process.cwd()` bukan folder bundle aplikasi, sehingga `readFile` gagal dengan `ENOENT` dan memicu alert modal prasyarat palsu. Sementara itu, handler `avatar:start` menyelesaikan path dengan `join(__dirname, '../../')`, sehingga ketika dipaksa mulai, model tetap dapat berjalan.
+   - *Solusi:*
+     - Merancang helper terpusat `resolveModelPath(modelPath)` di `avatar/src/main/index.js` yang memeriksa seluruh kandidat root: absolute path, `app.getAppPath()`, `__dirname`, `process.resourcesPath`, `app.asar.unpacked`, dan `homedir()/.hermes-avatar`.
+     - Mengintegrasikan `resolveModelPath` ke IPC `avatar:read-model`, `avatar:start`, `avatar:default-model`, `avatar:model-url`, serta custom protocol handler `model://`.
+     - Memperbaiki parsing POSIX leading slash pada handler protocol `model://` agar kompatibel di macOS dan Linux.
+
+2. **Penonaktifan Auto-Play Audio Saat Startup Avatar (`main.js` & `music-player.js`):**
+   - *Akar Masalah:*
+     1. Pada `main.js`, pemanggilan `voiceManager.playStateVoice('welcome')` dijalankan tanpa syarat setiap kali model Live2D selesai dimuat, sehingga suara sapaan wav diputar paksa ke speaker saat avatar pertama kali dibuka.
+     2. Pada `music-player.js`, konfigurasi YouTube iframe player (`initYouTubeApi`) menyertakan parameter `autoplay: 1` di `playerVars`.
+   - *Solusi:*
+     - Menghapus pemanggilan audio paksa `voiceManager.playStateVoice('welcome')` di `main.js` saat startup. Balon sapaan teks visual `showSpeechBubble('Halo! Selamat datang di Hermes Desktop Pet 👋', 5000)` tetap dipertahankan agar avatar tetap ramah menyapa tanpa bising.
+     - Mengubah parameter `autoplay: 1` menjadi `autoplay: 0` pada inisialisasi YouTube iframe player di `music-player.js`.
+     - Memastikan seluruh player (HTML5 Audio, Procedural Lofi Synth, YouTube) berada pada status `isPlaying = false` saat startup dan hanya berputar saat pengguna secara eksplisit menekan tombol putar.
+
+3. **Verifikasi:**
+   - `npm run build` berhasil 100% (semua bundle SSR dan renderer ter-compile bersih).
+   - `npm run doctor` 5/5 lulus (semua dependensi, model, skill, dan port dalam kondisi prima).
+
+
 
 
 

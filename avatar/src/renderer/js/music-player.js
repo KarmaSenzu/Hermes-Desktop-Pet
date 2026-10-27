@@ -390,7 +390,7 @@ export class MusicPlayer {
             disablekb: 1,
             fs: 0,
             rel: 0,
-            autoplay: 1,
+            autoplay: 0,
             origin: window.location.origin || 'http://localhost'
           },
           events: {

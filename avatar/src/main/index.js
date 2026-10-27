@@ -411,12 +411,53 @@ ipcMain.handle('avatar:set-shortcut', (_event, id, accel) => {
   }
 })
 
+/**
+ * Helper untuk me-resolve path model / aset baik dari relative path,
+ * absolute path, dev environment (out/main), maupun packaged app (asar / resources).
+ */
+export function resolveModelPath(modelPath) {
+  if (!modelPath) return ''
+
+  // 1. Jika sudah absolute dan ada di filesystem, kembalikan langsung
+  if (isAbsolute(modelPath) && existsSync(modelPath)) {
+    return modelPath
+  }
+
+  // 2. Daftar kandidat root untuk path relatif
+  const cleanRel = modelPath.replace(/^[/\\]+/, '')
+  const candidates = [
+    modelPath,
+    join(app.getAppPath(), modelPath),
+    join(app.getAppPath(), cleanRel),
+    join(__dirname, '../../', modelPath),
+    join(__dirname, '../../', cleanRel),
+    join(process.resourcesPath, modelPath),
+    join(process.resourcesPath, cleanRel),
+    join(process.resourcesPath, 'app.asar.unpacked', modelPath),
+    join(process.resourcesPath, 'app.asar.unpacked', cleanRel),
+    join(homedir(), '.hermes-avatar', modelPath),
+    join(homedir(), '.hermes-avatar', cleanRel),
+    join(process.cwd(), modelPath)
+  ]
+
+  for (const candidate of candidates) {
+    try {
+      if (candidate && existsSync(candidate)) {
+        return candidate
+      }
+    } catch {
+      // Abaikan error stat
+    }
+  }
+
+  // Fallback terbaik
+  return isAbsolute(modelPath) ? modelPath : join(app.getAppPath(), cleanRel)
+}
+
 // IPC: launcher → main → buka avatar window dengan model terpilih.
 ipcMain.handle('avatar:start', (_event, modelPath) => {
-  const defaultPath = join(__dirname, '../../assets/live2d/mother/20250106.model3.json')
-  const resolvedPath = modelPath
-    ? (isAbsolute(modelPath) ? modelPath : join(__dirname, '../../', modelPath))
-    : defaultPath
+  const defaultRelPath = 'assets/live2d/mother/20250106.model3.json'
+  const resolvedPath = resolveModelPath(modelPath || defaultRelPath)
 
   if (!existsSync(resolvedPath)) {
     return { ok: false, error: `File model tidak ditemukan di disk: ${resolvedPath}` }
@@ -579,7 +620,7 @@ ipcMain.handle('avatar:run-in-terminal', async (_event, cmd, workingDir) => {
 
 // IPC: path model default (dipakai launcher untuk pre-select).
 ipcMain.handle('avatar:default-model', () => {
-  return join(__dirname, '../../assets/live2d/mother/20250106.model3.json')
+  return resolveModelPath('assets/live2d/mother/20250106.model3.json')
 })
 
 // IPC: buka dialog pilih file model (native Finder/Explorer).
@@ -1795,11 +1836,16 @@ ipcMain.handle('avatar:tts', async (_event, text, voice, options = {}) => {
 // Renderer tidak bisa akses filesystem langsung, jadi main yang membacakan.
 ipcMain.handle('avatar:read-model', async (_event, modelPath) => {
   try {
-    const buffer = await readFile(modelPath)
-    const name = modelPath.split(/[/\\]/).pop() || 'model'
+    const targetPath = resolveModelPath(modelPath)
+    if (!existsSync(targetPath)) {
+      return { ok: false, error: `File model tidak ditemukan: ${modelPath}` }
+    }
+    const buffer = await readFile(targetPath)
+    const name = targetPath.split(/[/\\]/).pop() || 'model'
     return {
       ok: true,
       name,
+      resolvedPath: targetPath,
       base64: buffer.toString('base64'),
       ext: name.split('.').pop()?.toLowerCase()
     }
@@ -1810,8 +1856,9 @@ ipcMain.handle('avatar:read-model', async (_event, modelPath) => {
 
 // IPC: ubah path filesystem model → URL `model://` (untuk MMD/Live2D yang butuh texture relatif).
 ipcMain.handle('avatar:model-url', (_event, modelPath) => {
+  const targetPath = resolveModelPath(modelPath)
   // Normalize Windows backslashes dan encode segmen path
-  const normalized = modelPath.replace(/\\/g, '/')
+  const normalized = targetPath.replace(/\\/g, '/')
   const segments = normalized.split('/')
   const encoded = segments.map((s) => encodeURIComponent(s)).join('/')
   return `model://local/${encoded}`
@@ -1854,7 +1901,24 @@ function registerModelProtocol() {
       const url = new URL(request.url)
       // Format: model://local/<segmen-encoded path> (tiap segmen di-encode, `/` tetap).
       const encoded = url.pathname.replace(/^\//, '')
-      const filePath = decodeURIComponent(encoded)
+      let filePath = decodeURIComponent(encoded)
+
+      // Normalize drive letters on Windows if needed (e.g. /C:/ -> C:/)
+      if (process.platform === 'win32' && /^[a-zA-Z]:/.test(filePath)) {
+        // Valid Windows absolute path
+      } else if (process.platform !== 'win32' && !filePath.startsWith('/')) {
+        // Pada macOS/Linux, jika sebelumnya ada leading slash yang terpotong oleh replace(/^\//, '')
+        if (existsSync('/' + filePath)) {
+          filePath = '/' + filePath
+        }
+      }
+
+      if (!existsSync(filePath)) {
+        const resolved = resolveModelPath(filePath)
+        if (existsSync(resolved)) {
+          filePath = resolved
+        }
+      }
 
       const ext = extname(filePath).toLowerCase()
       const mime = MIME_MAP[ext] || 'application/octet-stream'
