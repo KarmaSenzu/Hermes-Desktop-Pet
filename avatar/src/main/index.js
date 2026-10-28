@@ -1,11 +1,12 @@
 import { app, BrowserWindow, ipcMain, protocol, dialog, screen, safeStorage, shell, Menu } from 'electron'
 import { join, extname, isAbsolute, basename, dirname } from 'path'
 import { readFile, writeFile, mkdir, rm, copyFile, rename, readdir } from 'fs/promises'
-import { existsSync, statSync, readdirSync, cpSync, mkdirSync, createWriteStream } from 'fs'
+import { existsSync, statSync, readdirSync, cpSync, mkdirSync, createWriteStream, readFileSync } from 'fs'
 import { homedir } from 'os'
 import http from 'http'
 import { execFile, spawn } from 'child_process'
 import { createHash } from 'crypto'
+import { approveRoot, isPathAllowed } from './path-guard.js'
 import {
   startAllServices,
   stopAllServices,
@@ -473,6 +474,14 @@ export function resolveModelPath(modelPath) {
   return isAbsolute(modelPath) ? modelPath : join(app.getAppPath(), cleanRel)
 }
 
+export function getFixedRoots() {
+  return [
+    join(app.getAppPath(), 'assets'),
+    process.resourcesPath,
+    join(homedir(), '.hermes-avatar')
+  ].filter(Boolean)
+}
+
 // IPC: launcher → main → buka avatar window dengan model terpilih.
 ipcMain.handle('avatar:start', (_event, modelPath) => {
   const defaultRelPath = 'assets/live2d/mother/20250106.model3.json'
@@ -481,6 +490,7 @@ ipcMain.handle('avatar:start', (_event, modelPath) => {
   if (!existsSync(resolvedPath)) {
     return { ok: false, error: `File model tidak ditemukan di disk: ${resolvedPath}` }
   }
+  approveRoot(dirname(resolvedPath))
 
   if (avatarWindow && !avatarWindow.isDestroyed()) {
     avatarWindow.focus()
@@ -654,7 +664,9 @@ ipcMain.handle('avatar:pick-model', async () => {
     ]
   })
   if (result.canceled || result.filePaths.length === 0) return null
-  return result.filePaths[0]
+  const chosenPath = result.filePaths[0]
+  approveRoot(dirname(chosenPath))
+  return chosenPath
 })
 
 // IPC: buka dialog pilih file audio musik lokal (mp3, wav, ogg, flac, m4a, aac).
@@ -668,6 +680,9 @@ ipcMain.handle('avatar:pick-audio-files', async () => {
     ]
   })
   if (result.canceled || result.filePaths.length === 0) return []
+  for (const fp of result.filePaths) {
+    approveRoot(dirname(fp))
+  }
   return result.filePaths.map((fp) => {
     const filename = basename(fp)
     const ext = extname(fp)
@@ -690,6 +705,46 @@ ipcMain.handle('avatar:pick-audio-files', async () => {
 })
 
 const MUSIC_LIBRARY_FILE = join(homedir(), '.hermes-avatar', 'music_library.json')
+
+export function approveStartupRoots() {
+  try {
+    // 1. Jalur dari paths.json (loadPersistedPaths)
+    const persisted = loadPersistedPaths()
+    for (const val of Object.values(persisted)) {
+      if (typeof val === 'string' && val && existsSync(val)) {
+        try {
+          const stats = statSync(val)
+          approveRoot(stats.isDirectory() ? val : dirname(val))
+        } catch {}
+      }
+    }
+
+    // 2. Jalur dari music_library.json
+    if (existsSync(MUSIC_LIBRARY_FILE)) {
+      try {
+        const raw = readFileSync(MUSIC_LIBRARY_FILE, 'utf8')
+        const data = JSON.parse(raw)
+        const tracks = [
+          ...(Array.isArray(data?.customTracks) ? data.customTracks : []),
+          ...(Array.isArray(data?.tracks) ? data.tracks : [])
+        ]
+        for (const t of tracks) {
+          if (t?.path && existsSync(t.path)) {
+            approveRoot(dirname(t.path))
+          }
+        }
+      } catch {}
+    }
+
+    // 3. Model default
+    const defaultModel = resolveModelPath('assets/live2d/mother/20250106.model3.json')
+    if (defaultModel && existsSync(defaultModel)) {
+      approveRoot(dirname(defaultModel))
+    }
+  } catch (err) {
+    console.warn('[path-guard] Gagal memuat root tersimpan pada startup:', err?.message || err)
+  }
+}
 
 // IPC: Memuat pustaka musik permanen (~/.hermes-avatar/music_library.json)
 ipcMain.handle('avatar:music-load-library', async () => {
@@ -841,6 +896,7 @@ ipcMain.handle('avatar:browse-custom-path', async (_event, key, type = 'file') =
       return { canceled: true }
     }
     const chosenPath = res.filePaths[0]
+    approveRoot(isDir ? chosenPath : dirname(chosenPath))
     savePersistedPath(key, chosenPath)
     const all = await getAllDetectedPaths(true)
     return { ok: true, path: chosenPath, all }
@@ -2519,6 +2575,16 @@ ipcMain.handle('avatar:read-model', async (_event, modelPath) => {
     if (!existsSync(targetPath)) {
       return { ok: false, error: `File model tidak ditemukan: ${modelPath}` }
     }
+
+    if (!isPathAllowed(targetPath, getFixedRoots())) {
+      return { ok: false, error: 'Path tidak diizinkan' }
+    }
+
+    const ext = extname(targetPath).toLowerCase()
+    if (!MIME_MAP[ext]) {
+      return { ok: false, error: 'Ekstensi file tidak diizinkan' }
+    }
+
     const buffer = await readFile(targetPath)
     const name = targetPath.split(/[/\\]/).pop() || 'model'
     return {
@@ -2554,6 +2620,9 @@ const MIME_MAP = {
   '.spa': 'image/tga',
   '.sph': 'image/tga',
   '.dds': 'image/vnd-ms.dds',
+  '.vrm': 'application/octet-stream',
+  '.glb': 'model/gltf-binary',
+  '.gltf': 'model/gltf+json',
   '.pmx': 'application/octet-stream',
   '.pmd': 'application/octet-stream',
   '.vmd': 'application/octet-stream',
@@ -2599,7 +2668,19 @@ function registerModelProtocol() {
         }
       }
 
+      if (!existsSync(filePath)) {
+        return new Response('Not found', { status: 404 })
+      }
+
+      if (!isPathAllowed(filePath, getFixedRoots())) {
+        return new Response('Path tidak diizinkan', { status: 403 })
+      }
+
       const ext = extname(filePath).toLowerCase()
+      if (!MIME_MAP[ext]) {
+        return new Response('Ekstensi tidak diizinkan', { status: 403 })
+      }
+
       const mime = MIME_MAP[ext] || 'application/octet-stream'
 
       const data = await readFile(filePath)
@@ -2619,6 +2700,7 @@ function registerModelProtocol() {
 
 app.whenReady().then(() => {
   Menu.setApplicationMenu(null)
+  approveStartupRoots()
   registerModelProtocol()
   ensureDeployedCompanionAndScripts()
 
