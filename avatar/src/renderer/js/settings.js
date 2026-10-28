@@ -2024,28 +2024,17 @@ function renderLlmList() {
       showToast('Mengaktifkan Provider...', `Menyetel ${p.name} (${p.model}) ke Hermes...`, 'running', '🧠')
 
       try {
-        let apiKey = ''
-        if (p.apiKey) {
-          try {
-            const dec = await window.hermesAvatar.decryptSecret(p.apiKey)
-            if (dec && dec.ok) apiKey = dec.value
-          } catch (_) {}
-        }
-        if (!apiKey && (p.baseUrl?.includes('20128') || p.baseUrl?.toLowerCase().includes('9router'))) {
-          try {
-            const rKey = await window.hermesAvatar.getRouterApiKey()
-            if (rKey?.ok && rKey?.key) apiKey = rKey.key
-          } catch (_) {}
-        }
-
-        // Set full provider config ke Hermes
+        // Set full provider config ke Hermes (kirim p.apiKey ciphertext apa adanya, atau '')
         const res = await window.hermesAvatar.setLlmProvider({
           name: p.name,
           baseUrl: p.baseUrl || 'http://localhost:20128/v1',
-          apiKey: apiKey,
+          apiKey: p.apiKey || '',
           model: p.model
         })
-        if (!res.ok) throw new Error(res.error)
+        if (!res.ok) {
+          showToast('Gagal Mengaktifkan Provider', res.error || 'Terjadi kesalahan konfigurasi', 'error', '❌', 6000)
+          throw new Error(res.error)
+        }
 
         settings.llm.activeId = p.id
         saveSettings(settings)
@@ -2089,16 +2078,18 @@ function renderLlmList() {
 
   // Bind tombol edit.
   llmList.querySelectorAll('.llm-edit').forEach((btn) => {
-    btn.addEventListener('click', async () => {
+    btn.addEventListener('click', () => {
       const id = btn.dataset.id
       const p = settings.llm.providers.find((x) => x.id === id)
       if (!p) return
       editingProviderId = id
       llmName.value = p.name
       llmBaseUrl.value = p.baseUrl || ''
-      // Decrypt API key untuk diedit.
-      const decRes = await window.hermesAvatar.decryptSecret(p.apiKey || '')
-      llmApiKey.value = decRes.ok ? decRes.value : ''
+      // Form edit: JANGAN mendekripsi. llmApiKey.value = '' dan pasang placeholder informatif
+      llmApiKey.value = ''
+      llmApiKey.placeholder = p.apiKey
+        ? '•••••••• (tersimpan, kosongkan untuk mempertahankan)'
+        : 'Kosong = otomatis untuk 9Router lokal'
       llmModel.value = p.model || ''
       llmAddBtn.textContent = 'Simpan Perubahan'
       statusEl.textContent = `Mengedit: ${p.name}`
@@ -2117,22 +2108,8 @@ function renderLlmList() {
       const originalText = btn.textContent
       btn.textContent = '…'
 
-      // Decrypt API key untuk dikirim.
-      let apiKey = ''
       try {
-        const decRes = await window.hermesAvatar.decryptSecret(p.apiKey || '')
-        apiKey = decRes.ok ? decRes.value : ''
-      } catch { /* key kosong */ }
-
-      if (!apiKey && (p.baseUrl?.includes('20128') || p.baseUrl?.toLowerCase().includes('9router'))) {
-        try {
-          const rKey = await window.hermesAvatar.getRouterApiKey()
-          if (rKey?.ok && rKey?.key) apiKey = rKey.key
-        } catch (_) {}
-      }
-
-      try {
-        const res = await window.hermesAvatar.testConnection(p.baseUrl, p.model, apiKey)
+        const res = await window.hermesAvatar.testConnection(p.baseUrl, p.model, p.apiKey || '')
         if (res.ok) {
           btn.textContent = '✓'
           btn.classList.add('test-ok')
@@ -2141,11 +2118,13 @@ function renderLlmList() {
           btn.textContent = '✗'
           btn.classList.add('test-fail')
           statusEl.textContent = `✗ Gagal: ${res.error || 'tidak berfungsi'}`
+          showToast('Uji Koneksi Gagal', res.error || 'Koneksi ke endpoint gagal', 'error', '❌', 6000)
         }
       } catch (err) {
         btn.textContent = '✗'
         btn.classList.add('test-fail')
         statusEl.textContent = `✗ Gagal: ${err?.message || err}`
+        showToast('Uji Koneksi Gagal', err?.message || String(err), 'error', '❌', 6000)
       } finally {
         btn.disabled = false
         // Kembalikan label "Tes" setelah beberapa detik.
@@ -2163,6 +2142,7 @@ function resetProviderForm() {
   llmName.value = ''
   llmBaseUrl.value = ''
   llmApiKey.value = ''
+  llmApiKey.placeholder = 'Kosong = otomatis untuk 9Router lokal'
   llmModel.value = ''
   llmAddBtn.textContent = 'Simpan Provider'
 }
@@ -2231,46 +2211,82 @@ llmAddBtn.addEventListener('click', async () => {
     return
   }
 
-  // Enkripsi API key sebelum disimpan (aman, tidak plaintext di localStorage).
-  let apiKeyPlain = llmApiKey.value.trim()
-  if (!apiKeyPlain && (llmBaseUrl.value.includes('20128') || llmBaseUrl.value.toLowerCase().includes('9router'))) {
+  const baseUrl = llmBaseUrl.value.trim()
+  const keyInput = llmApiKey.value.trim()
+  let apiKeyEnc = ''
+
+  function getUrlOrigin(raw) {
     try {
-      const rKey = await window.hermesAvatar.getRouterApiKey()
-      if (rKey?.ok && rKey?.key) apiKeyPlain = rKey.key
-    } catch (_) {}
+      const u = new URL(String(raw || '').trim())
+      return (u.protocol === 'http:' || u.protocol === 'https:') ? u.origin : null
+    } catch {
+      return null
+    }
   }
-  const encRes = await window.hermesAvatar.encryptSecret(apiKeyPlain)
-  const apiKeyEnc = encRes.ok ? encRes.value : ''
 
   if (editingProviderId) {
     // Mode edit: update provider yang ada.
     const p = settings.llm.providers.find((x) => x.id === editingProviderId)
-    if (p) {
-      p.name = name
-      p.baseUrl = llmBaseUrl.value.trim()
-      p.apiKey = apiKeyEnc
-      p.model = llmModel.value.trim()
-      saveSettings(settings)
-      statusEl.textContent = 'Provider diperbarui.'
-      showToast('Provider Diperbarui! ✅', `Konfigurasi ${name} telah diupdate`, 'success', '💾')
+    if (!p) {
+      resetProviderForm()
+      return
     }
+
+    if (keyInput) {
+      const encRes = await window.hermesAvatar.encryptSecret(keyInput, baseUrl)
+      if (!encRes?.ok) {
+        statusEl.textContent = `⚠️ Gagal mengenkripsi kunci: ${encRes?.error || 'URL atau kunci tidak valid'}`
+        showToast('Enkripsi Kunci Gagal', encRes?.error || 'URL atau kunci tidak valid', 'error', '❌', 6000)
+        return
+      }
+      apiKeyEnc = encRes.value
+    } else {
+      const oldOrigin = getUrlOrigin(p.baseUrl)
+      const newOrigin = getUrlOrigin(baseUrl)
+      if (oldOrigin && newOrigin && oldOrigin === newOrigin) {
+        apiKeyEnc = p.apiKey || ''
+      } else {
+        apiKeyEnc = ''
+        statusEl.textContent = 'URL berubah, kunci lama tidak dibawa. Masukkan ulang jika perlu.'
+        showToast('Perhatian Kunci API ⚠️', 'URL berubah, kunci lama tidak dibawa. Masukkan ulang jika perlu.', 'warning', '⚠️', 6000)
+      }
+    }
+
+    p.name = name
+    p.baseUrl = baseUrl
+    p.apiKey = apiKeyEnc
+    p.model = llmModel.value.trim()
+    saveSettings(settings)
+    if (!statusEl.textContent.includes('URL berubah')) {
+      statusEl.textContent = 'Provider diperbarui.'
+    }
+    showToast('Provider Diperbarui! ✅', `Konfigurasi ${name} telah diupdate`, 'success', '💾')
     resetProviderForm()
   } else {
-    // Mode tambah.
+    // Mode tambah provider baru.
+    if (keyInput) {
+      const encRes = await window.hermesAvatar.encryptSecret(keyInput, baseUrl)
+      if (!encRes?.ok) {
+        statusEl.textContent = `⚠️ Gagal mengenkripsi kunci: ${encRes?.error || 'URL atau kunci tidak valid'}`
+        showToast('Enkripsi Kunci Gagal', encRes?.error || 'URL atau kunci tidak valid', 'error', '❌', 6000)
+        return
+      }
+      apiKeyEnc = encRes.value
+    } else {
+      apiKeyEnc = ''
+    }
+
     settings.llm.providers.push({
       id: Date.now().toString(36),
       name,
-      baseUrl: llmBaseUrl.value.trim(),
+      baseUrl,
       apiKey: apiKeyEnc,
       model: llmModel.value.trim()
     })
     saveSettings(settings)
-    statusEl.textContent = 'Provider disimpan (lokal).'
-    showToast('Provider Disimpan! ✅', `Provider ${name} berhasil ditambahkan`, 'success', '💾')
-    llmName.value = ''
-    llmBaseUrl.value = ''
-    llmApiKey.value = ''
-    llmModel.value = ''
+    statusEl.textContent = 'Provider ditambahkan.'
+    showToast('Provider Ditambahkan! 🎉', `${name} berhasil ditambahkan ke daftar LLM`, 'success', '💾')
+    resetProviderForm()
   }
 
   renderLlmList()
@@ -2321,21 +2337,16 @@ async function refreshLlmActive() {
 async function refreshModelOptions() {
   try {
     const activeProv = (settings.llm.providers || []).find((p) => p.id === settings.llm.activeId) || (settings.llm.providers || [])[0]
-    let apiKey = ''
-    if (activeProv?.apiKey) {
-      try {
-        const dec = await window.hermesAvatar.decryptSecret(activeProv.apiKey)
-        if (dec && dec.ok) apiKey = dec.value
-      } catch (_) {}
-    }
-
     const custom = []
     const seenModels = new Set()
 
     // 1. Ambil model langsung dari endpoint provider yang sedang aktif (mis. 9Router :20128/v1/models)
     if (activeProv?.baseUrl) {
       try {
-        const epRes = await window.hermesAvatar.fetchEndpointModels(activeProv.baseUrl, apiKey)
+        const epRes = await window.hermesAvatar.fetchEndpointModels(activeProv.baseUrl, activeProv.apiKey || '')
+        if (epRes && !epRes.ok && epRes.error) {
+          showToast('Model Endpoint Gagal', epRes.error, 'warning', '⚠️', 5000)
+        }
         if (epRes && epRes.ok && Array.isArray(epRes.models) && epRes.models.length > 0) {
           for (const m of epRes.models) {
             if (!seenModels.has(m)) {
@@ -3811,27 +3822,16 @@ llmSwitchBtn.addEventListener('click', async () => {
   showToast('Menerapkan Model LLM...', `Mengalihkan model aktif ke "${value}"`, 'running', '🧠')
   try {
     const activeProv = (settings.llm.providers || []).find((p) => p.id === settings.llm.activeId) || (settings.llm.providers || [])[0]
-    let apiKey = ''
-    if (activeProv?.apiKey) {
-      try {
-        const dec = await window.hermesAvatar.decryptSecret(activeProv.apiKey)
-        if (dec && dec.ok) apiKey = dec.value
-      } catch (_) {}
-    }
-    if (!apiKey && (activeProv?.baseUrl?.includes('20128') || activeProv?.baseUrl?.toLowerCase().includes('9router'))) {
-      try {
-        const rKey = await window.hermesAvatar.getRouterApiKey()
-        if (rKey?.ok && rKey?.key) apiKey = rKey.key
-      } catch (_) {}
-    }
-
     const res = await window.hermesAvatar.setLlmProvider({
       name: activeProv?.name || 'custom',
       baseUrl: activeProv?.baseUrl || 'http://localhost:20128/v1',
-      apiKey: apiKey,
+      apiKey: activeProv?.apiKey || '',
       model: value
     })
-    if (!res.ok) throw new Error(res.error)
+    if (!res.ok) {
+      showToast('Gagal Menerapkan Model', res.error || 'Gagal menyetel provider LLM', 'error', '❌', 6000)
+      throw new Error(res.error)
+    }
 
     if (activeProv) {
       activeProv.model = value

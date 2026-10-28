@@ -2,8 +2,8 @@ import { app, BrowserWindow, ipcMain, protocol, dialog, screen, safeStorage, she
 import { join, extname, isAbsolute, basename, dirname } from 'path'
 import { readFile, writeFile, mkdir, rm, copyFile, rename, readdir } from 'fs/promises'
 import { existsSync, statSync, readdirSync, cpSync, mkdirSync, createWriteStream, readFileSync } from 'fs'
-import { homedir } from 'os'
 import http from 'http'
+import https from 'https'
 import { execFile, spawn } from 'child_process'
 import { createHash } from 'crypto'
 import { approveRoot, isPathAllowed } from './path-guard.js'
@@ -39,6 +39,20 @@ import { applyProviderConfig, setEnvVar } from './hermes-config.js'
 import YAML from 'yaml'
 import { loadOrCreateBridgeToken, BRIDGE_TOKEN_FILE } from './bridge-token.js'
 import { isSafeArg } from './cli-args.js'
+import { createSecretStore } from './secret-store.js'
+
+const secretStore = createSecretStore(safeStorage)
+
+async function resolveApiKeyFor(sealed, url) {
+  const r = secretStore.open(sealed, url)
+  if (r.ok && r.key) return r.key
+  if (!r.ok && !(r.legacy && isLocalRouterUrl(url))) throw new Error(r.error) // legacy + router lokal: lanjut ke otomatis
+  if (isLocalRouterUrl(url)) {
+    const k = await resolveRouterApiKey()
+    return k?.ok && k?.key ? k.key : ''
+  }
+  return ''
+}
 
 // Inisialisasi perbaikan PATH untuk macOS/Windows sedini mungkin
 fixSystemPath()
@@ -1513,12 +1527,11 @@ ipcMain.handle('avatar:test-connection', async (_event, url, model, apiKey) => {
       max_tokens: 5
     })
 
-    let effectiveKey = apiKey
-    if (!effectiveKey && isLocalRouterUrl(target)) {
-      try {
-        const rKey = await resolveRouterApiKey()
-        if (rKey?.ok && rKey?.key) effectiveKey = rKey.key
-      } catch (_) {}
+    let effectiveKey = ''
+    try {
+      effectiveKey = await resolveApiKeyFor(apiKey, target)
+    } catch (err) {
+      return { ok: false, error: err?.message || 'Format kunci tidak valid' }
     }
 
     const headers = {
@@ -1749,7 +1762,14 @@ ipcMain.handle('avatar:set-llm-provider', async (_event, payload) => {
       return { ok: false, error: 'URL endpoint LLM tidak valid. Harus menggunakan protokol http atau https.' }
     }
 
-    await updateHermesProviderConfig({ name, baseUrl, apiKey, model: modelName })
+    let effectiveKey = ''
+    try {
+      effectiveKey = await resolveApiKeyFor(apiKey, baseUrl)
+    } catch (err) {
+      return { ok: false, error: err?.message || 'Format kunci tidak valid' }
+    }
+
+    await updateHermesProviderConfig({ name, baseUrl, apiKey: effectiveKey, model: modelName })
 
     // Set via RPC jika terhubung
     if (isGatewayConnected()) {
@@ -1789,15 +1809,6 @@ ipcMain.handle('avatar:restart-hermes', async () => {
   }
 })
 
-// IPC: ambil API key aktif 9Router yang tersimpan di data.sqlite
-ipcMain.handle('avatar:get-router-api-key', async () => {
-  try {
-    return await resolveRouterApiKey()
-  } catch (err) {
-    return { ok: false, key: null, error: err?.message || String(err) }
-  }
-})
-
 // IPC: ambil model aktual langsung dari endpoint OpenAI-compatible (9Router, Ollama, dll)
 ipcMain.handle('avatar:fetch-endpoint-models', async (_event, baseUrl, apiKey) => {
   try {
@@ -1807,14 +1818,11 @@ ipcMain.handle('avatar:fetch-endpoint-models', async (_event, baseUrl, apiKey) =
       return { ok: false, error: 'URL endpoint tidak valid. Harus menggunakan protokol http atau https.' }
     }
 
-    let effectiveKey = apiKey
-    if ((!effectiveKey || effectiveKey === 'no-key-required') && isLocalRouterUrl(targetUrl)) {
-      try {
-        const rKey = await resolveRouterApiKey()
-        if (rKey?.ok && rKey?.key) {
-          effectiveKey = rKey.key
-        }
-      } catch (_) {}
+    let effectiveKey = ''
+    try {
+      effectiveKey = await resolveApiKeyFor(apiKey, targetUrl)
+    } catch (err) {
+      return { ok: false, error: err?.message || 'Format kunci tidak valid' }
     }
 
     const url = targetUrl.replace(/\/+$/, '') + '/models'
@@ -2053,29 +2061,10 @@ ipcMain.handle('avatar:browse-skills', async (_event, query) => {
   }
 })
 
-// IPC: encrypt secret (API key) via safeStorage → base64.
-ipcMain.handle('avatar:encrypt-secret', (_event, plaintext) => {
+// IPC: encrypt secret via origin-bound secretStore.
+ipcMain.handle('avatar:encrypt-secret', (_event, plaintext, baseUrl) => {
   try {
-    if (!plaintext) return { ok: true, value: '' }
-    if (!safeStorage.isEncryptionAvailable()) {
-      return { ok: false, error: 'safeStorage tidak tersedia di sistem ini.' }
-    }
-    const buf = safeStorage.encryptString(String(plaintext))
-    return { ok: true, value: buf.toString('base64') }
-  } catch (err) {
-    return { ok: false, error: err?.message || String(err) }
-  }
-})
-
-// IPC: decrypt secret (base64) via safeStorage → plaintext.
-ipcMain.handle('avatar:decrypt-secret', (_event, encrypted) => {
-  try {
-    if (!encrypted) return { ok: true, value: '' }
-    if (!safeStorage.isEncryptionAvailable()) {
-      return { ok: false, error: 'safeStorage tidak tersedia di sistem ini.' }
-    }
-    const buf = Buffer.from(String(encrypted), 'base64')
-    return { ok: true, value: safeStorage.decryptString(buf) }
+    return { ok: true, value: secretStore.seal(plaintext, baseUrl) }
   } catch (err) {
     return { ok: false, error: err?.message || String(err) }
   }

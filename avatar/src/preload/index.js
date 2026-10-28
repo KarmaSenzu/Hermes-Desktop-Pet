@@ -106,8 +106,6 @@ const api = {
   // Ambil daftar model aktual dari endpoint (cth. 9Router :20128/v1/models)
   fetchEndpointModels: (baseUrl, apiKey) => ipcRenderer.invoke('avatar:fetch-endpoint-models', baseUrl, apiKey),
 
-  // Ambil API key aktif 9Router langsung dari data.sqlite
-  getRouterApiKey: () => ipcRenderer.invoke('avatar:get-router-api-key'),
 
   // Restart server Hermes serve
   restartHermesServer: () => ipcRenderer.invoke('avatar:restart-hermes'),
@@ -125,9 +123,8 @@ const api = {
   installSkill: (skillId) => ipcRenderer.invoke('avatar:install-skill', skillId),
   browseSkills: (query) => ipcRenderer.invoke('avatar:browse-skills', query),
 
-  // Enkripsi/dekripsi secret (API key) via safeStorage.
-  encryptSecret: (text) => ipcRenderer.invoke('avatar:encrypt-secret', text),
-  decryptSecret: (encrypted) => ipcRenderer.invoke('avatar:decrypt-secret', encrypted),
+  // Enkripsi secret (API key) terikat origin server via safeStorage.
+  encryptSecret: (plaintext, baseUrl) => ipcRenderer.invoke('avatar:encrypt-secret', plaintext, baseUrl),
 
   // Pilih file aplikasi (native dialog) + ambil icon.
   pickApp: () => ipcRenderer.invoke('avatar:pick-app'),
