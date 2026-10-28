@@ -61,6 +61,18 @@
         </div>
       </form>
 
+      <!-- Bridge Token Setting -->
+      <div class="token-config-section" style="display: flex; flex-direction: column; gap: 5px; padding: 8px 10px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm);">
+        <label for="bridge-token-input" class="form-label" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
+          <span>🔑 Token Bridge:</span>
+          <span id="token-status-hint" style="font-size: 10px; color: var(--text-secondary);"></span>
+        </label>
+        <div style="display: flex; gap: 6px;">
+          <input type="password" id="bridge-token-input" placeholder="Masukkan token bridge..." autocomplete="off" style="flex: 1; padding: 6px 8px; background: #121214; border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text); font-family: inherit; font-size: 11px; outline: none;" />
+          <button type="button" id="btn-save-token" class="submit-btn" style="padding: 6px 12px; font-size: 11px;">Simpan</button>
+        </div>
+      </div>
+
       <!-- Status Notification Banner -->
       <div id="status-toast" class="status-toast hidden"></div>
 

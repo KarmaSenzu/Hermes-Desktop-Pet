@@ -3337,7 +3337,7 @@ window.hermesAvatar.onShortcut((payload) => {
 })
 
 // --- Web Companion (Chrome & Edge Extension) Ask AI Prompt Handler ---
-window.hermesAvatar.onWebPrompt?.(async (data) => {
+window.hermesAvatar.onWebPrompt?.((data) => {
   if (!data) return
 
   // 1. Buka jendela chat jika sedang tersembunyi
@@ -3347,37 +3347,153 @@ window.hermesAvatar.onWebPrompt?.(async (data) => {
 
   const title = (data.title || 'Halaman Web').trim()
   const url = (data.url || '').trim()
-  const snippet = (data.text || '').trim()
+  const text = (data.text || '').trim()
   const question = (data.prompt || 'Tolong jelaskan teks berikut:').trim()
+  const preview = text.length > 280 ? text.slice(0, 280) + '…' : text
 
-  // Format pesan pengguna dengan referensi sumber web yang elegan
-  let userDisplay = `🌐 **[${escapeHtml(title)}](${escapeHtml(url)})**\n\n`
-  if (snippet && snippet !== url) {
-    const preview = snippet.length > 280 ? snippet.slice(0, 280) + '…' : snippet
-    userDisplay += `> _"${escapeHtml(preview)}"_\n\n`
-  }
-  userDisplay += `❓ **Pertanyaan:** ${escapeHtml(question)}`
-
-  log('user', userDisplay)
-
-  // Emosi avatar: curious / thinking
+  // Emosi avatar: curious
   controller?.setExpression('curious')
-  showSpeechBubble('Menerima pertanyaan dari browser! 🌐 Menganalisis...', 4000)
+  showSpeechBubble('Menerima permintaan dari browser web companion. Konfirmasi pengiriman? 🌐', 4000)
 
-  if (!hermesReady) {
-    log('avatar', '⚠️ **Hermes AI Daemon belum aktif di background.** Silakan periksa status koneksi di menu Pengaturan.')
-    speak('Hermes belum terhubung, silakan nyalakan service di pengaturan.', 'neutral')
-    return
+  // 2. Buat kartu konfirmasi menggunakan createElement + textContent (tanpa innerHTML dengan data mentah)
+  const card = document.createElement('div')
+  card.className = 'avatar assessment-card'
+
+  const header = document.createElement('div')
+  header.className = 'assessment-card-header'
+
+  const badge = document.createElement('div')
+  badge.className = 'assessment-badge'
+  badge.textContent = '🌐 WEB COMPANION PROMPT'
+
+  const pill = document.createElement('span')
+  pill.className = 'assessment-type-pill'
+  pill.textContent = 'Menunggu Konfirmasi'
+
+  header.appendChild(badge)
+  header.appendChild(pill)
+  card.appendChild(header)
+
+  // Sumber (title + url)
+  const sourceDiv = document.createElement('div')
+  sourceDiv.style.marginBottom = '8px'
+  sourceDiv.style.fontSize = '12px'
+
+  const sourceLabel = document.createElement('span')
+  sourceLabel.style.color = '#94a3b8'
+  sourceLabel.style.fontWeight = '600'
+  sourceLabel.textContent = '📄 Sumber: '
+  sourceDiv.appendChild(sourceLabel)
+
+  if (url && (url.startsWith('http://') || url.startsWith('https://'))) {
+    const link = document.createElement('a')
+    link.href = url
+    link.target = '_blank'
+    link.rel = 'noreferrer noopener'
+    link.textContent = title || url
+    link.style.color = '#38bdf8'
+    link.style.textDecoration = 'underline'
+    sourceDiv.appendChild(link)
+  } else {
+    const titleSpan = document.createElement('span')
+    titleSpan.textContent = title
+    titleSpan.style.color = '#38bdf8'
+    sourceDiv.appendChild(titleSpan)
+  }
+  card.appendChild(sourceDiv)
+
+  // Cuplikan teks (maks 280 karakter)
+  if (preview) {
+    const previewDiv = document.createElement('div')
+    previewDiv.className = 'assessment-option-item'
+    previewDiv.style.cursor = 'default'
+    previewDiv.style.marginBottom = '8px'
+
+    const previewContent = document.createElement('div')
+    previewContent.className = 'assessment-option-desc'
+    previewContent.style.fontStyle = 'italic'
+    previewContent.textContent = `"${preview}"`
+
+    previewDiv.appendChild(previewContent)
+    card.appendChild(previewDiv)
   }
 
-  setInputLocked(true)
+  // Pertanyaan / Prompt
+  const questionDiv = document.createElement('div')
+  questionDiv.className = 'assessment-prompt-text'
+  questionDiv.style.marginBottom = '10px'
 
-  try {
-    const promptPayload = `[PERTANYAAN DARI CHROME/EDGE EXTENSION (HERMES WEB COMPANION)]
+  const questionLabel = document.createElement('div')
+  questionLabel.style.fontSize = '11px'
+  questionLabel.style.color = '#94a3b8'
+  questionLabel.style.marginBottom = '2px'
+  questionLabel.textContent = '❓ Pertanyaan:'
+
+  const questionContent = document.createElement('div')
+  questionContent.textContent = question
+
+  questionDiv.appendChild(questionLabel)
+  questionDiv.appendChild(questionContent)
+  card.appendChild(questionDiv)
+
+  // Footer dengan tombol "Kirim ke Hermes" dan "Batal"
+  const footer = document.createElement('div')
+  footer.className = 'assessment-footer'
+
+  const btnSend = document.createElement('button')
+  btnSend.type = 'button'
+  btnSend.className = 'assessment-execute-btn'
+  btnSend.textContent = '🚀 Kirim ke Hermes'
+
+  const btnCancel = document.createElement('button')
+  btnCancel.type = 'button'
+  btnCancel.className = 'assessment-preset-chip'
+  btnCancel.style.padding = '7px 14px'
+  btnCancel.textContent = '❌ Batal'
+
+  footer.appendChild(btnSend)
+  footer.appendChild(btnCancel)
+  card.appendChild(footer)
+
+  // Tambahkan kartu ke chat
+  chatLog.appendChild(card)
+  chatLog.scrollTop = chatLog.scrollHeight
+
+  // Event handler tombol Batal
+  btnCancel.addEventListener('click', () => {
+    btnSend.disabled = true
+    btnCancel.disabled = true
+    pill.textContent = 'Dibatalkan'
+    const statusText = document.createElement('span')
+    statusText.className = 'assessment-status-text'
+    statusText.textContent = 'Dibatalkan oleh pengguna.'
+    footer.replaceChildren(statusText)
+  })
+
+  // Event handler tombol Kirim ke Hermes
+  btnSend.addEventListener('click', async () => {
+    btnSend.disabled = true
+    btnCancel.disabled = true
+    pill.textContent = 'Terkirim'
+    const statusText = document.createElement('span')
+    statusText.className = 'assessment-status-text'
+    statusText.textContent = 'Mengirim ke Hermes...'
+    footer.replaceChildren(statusText)
+
+    if (!hermesReady) {
+      log('avatar', '⚠️ **Hermes AI Daemon belum aktif di background.** Silakan periksa status koneksi di menu Pengaturan.')
+      speak('Hermes belum terhubung, silakan nyalakan service di pengaturan.', 'neutral')
+      return
+    }
+
+    setInputLocked(true)
+
+    try {
+      const promptPayload = `[PERTANYAAN DARI CHROME/EDGE EXTENSION (HERMES WEB COMPANION)]
 Sumber Halaman: ${title} (${url})
 Teks / Kutipan dari Web:
 """
-${snippet}
+${text}
 """
 
 Instruksi / Pertanyaan Pengguna:
@@ -3388,11 +3504,12 @@ Panduan Format:
 2. Rangkum penjelasan dan fakta-fakta kunci menjadi 3-4 poin/bullet penting (key takeaways) yang mudah dipahami.
 3. Gunakan bahasa Indonesia yang santun, lugas, dan bersahabat.`
 
-    const finalPrompt = await buildPrompt(promptPayload)
-    await hermes.submitPrompt(finalPrompt)
-  } catch (err) {
-    log('avatar', `Gagal memproses pertanyaan web: ${err.message}`)
-    setInputLocked(false)
-  }
+      const finalPrompt = await buildPrompt(promptPayload)
+      await hermes.submitPrompt(finalPrompt)
+    } catch (err) {
+      log('avatar', `Gagal memproses pertanyaan web: ${err.message}`)
+      setInputLocked(false)
+    }
+  })
 })
 

@@ -85,10 +85,20 @@ chrome.commands.onCommand.addListener((command) => {
   }
 })
 
+// Helper ambil token bridge dari chrome.storage.local
+async function getBridgeToken() {
+  try {
+    const data = await chrome.storage.local.get('bridgeToken')
+    return (data?.bridgeToken || '').trim()
+  } catch {
+    return ''
+  }
+}
+
 // Terima pesan dari popup atau content script
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'PING_AVATAR') {
-    checkAvatarOnline().then((online) => sendResponse({ online }))
+    checkAvatarOnline().then((status) => sendResponse(status))
     return true
   }
   if (request.action === 'SEND_PROMPT') {
@@ -100,11 +110,20 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 // Fungsi kirim payload ke Avatar Desktop
 async function sendToAvatar(payload) {
   try {
+    const token = await getBridgeToken()
     const res = await fetch(`${AVATAR_BRIDGE_URL}/api/ask`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Hermes-Bridge-Token': token
+      },
       body: JSON.stringify(payload)
     })
+    if (res.status === 401 || res.status === 403) {
+      console.warn('[Hermes Extension] Token bridge belum diset / salah')
+      notifyAuthError()
+      return { ok: false, error: 'Token bridge belum diset / salah' }
+    }
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
     const data = await res.json()
     return { ok: true, data }
@@ -119,14 +138,32 @@ async function sendToAvatar(payload) {
 // Cek apakah Avatar desktop sedang aktif
 async function checkAvatarOnline() {
   try {
+    const token = await getBridgeToken()
     const res = await fetch(`${AVATAR_BRIDGE_URL}/api/ping`, {
       method: 'GET',
+      headers: {
+        'X-Hermes-Bridge-Token': token
+      },
       cache: 'no-store'
     })
-    return res.ok
+    if (res.status === 401 || res.status === 403) {
+      notifyAuthError()
+      return { online: false, authError: true, error: 'Token bridge belum diset / salah' }
+    }
+    return { online: res.ok }
   } catch {
-    return false
+    return { online: false }
   }
+}
+
+function notifyAuthError() {
+  chrome.action.setBadgeText({ text: 'AUTH' })
+  chrome.action.setBadgeBackgroundColor({ color: '#f59e0b' })
+  chrome.action.setTitle({ title: 'Token bridge belum diset / salah' })
+  setTimeout(() => {
+    chrome.action.setBadgeText({ text: '' })
+    chrome.action.setTitle({ title: 'Hermes Web Companion' })
+  }, 5000)
 }
 
 function notifyOffline() {
@@ -136,3 +173,4 @@ function notifyOffline() {
     chrome.action.setBadgeText({ text: '' })
   }, 4000)
 }
+
