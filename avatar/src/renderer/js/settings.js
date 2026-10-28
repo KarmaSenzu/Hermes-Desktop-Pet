@@ -2050,8 +2050,13 @@ function renderLlmList() {
         settings.llm.activeId = p.id
         saveSettings(settings)
 
-        statusEl.textContent = `✓ Provider "${p.name}" diaktifkan (${p.model}).`
-        showToast('Provider Diaktifkan! ✅', `${p.name} kini aktif sebagai otak percakapan avatar (${p.model})`, 'success', '✨', 4500)
+        if (res.warning) {
+          statusEl.textContent = `✓ Provider "${p.name}" disimpan, tetapi: ${res.warning}`
+          showToast('Perhatian Restart Hermes ⚠️', res.warning, 'warning', '⚠️', 6000)
+        } else {
+          statusEl.textContent = `✓ Provider "${p.name}" diaktifkan (${p.model}).`
+          showToast('Provider Diaktifkan! ✅', `${p.name} kini aktif sebagai otak percakapan avatar (${p.model})`, 'success', '✨', 4500)
+        }
 
         renderLlmList()
         await refreshLlmActive()
@@ -3833,8 +3838,13 @@ llmSwitchBtn.addEventListener('click', async () => {
       saveSettings(settings)
     }
 
-    statusEl.textContent = 'Model diterapkan.'
-    showToast('Model Diterapkan! ✅', `Model LLM aktif: ${value}`, 'success', '🧠')
+    if (res.warning) {
+      statusEl.textContent = `Model diterapkan, tetapi: ${res.warning}`
+      showToast('Perhatian Restart Hermes ⚠️', res.warning, 'warning', '⚠️', 6000)
+    } else {
+      statusEl.textContent = 'Model diterapkan.'
+      showToast('Model Diterapkan! ✅', `Model LLM aktif: ${value}`, 'success', '🧠')
+    }
     await refreshLlmActive()
     await refreshModelOptions()
     await refreshServiceStatus()

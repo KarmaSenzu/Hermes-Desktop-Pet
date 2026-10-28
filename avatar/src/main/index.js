@@ -1759,9 +1759,19 @@ ipcMain.handle('avatar:set-llm-provider', async (_event, payload) => {
     }
 
     // Restart server Hermes agar process runtime memuat konfigurasi baru
-    await restartHermes()
+    const restartRes = await restartHermes()
+    if (restartRes?.ok === false) {
+      return {
+        ok: true,
+        restarted: false,
+        warning: restartRes.error || 'Hermes perlu di-restart manual agar konfigurasi baru terbaca.',
+        model: modelName,
+        name,
+        baseUrl
+      }
+    }
 
-    return { ok: true, model: modelName, name, baseUrl }
+    return { ok: true, restarted: true, model: modelName, name, baseUrl }
   } catch (err) {
     return { ok: false, error: err?.message || String(err) }
   }
