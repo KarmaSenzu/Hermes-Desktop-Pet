@@ -3265,7 +3265,7 @@ function renderPoseListHtml() {
   if (anims.length === 0) {
     return `<div style="text-align:center; padding:24px 12px;">
       <p class="hint" style="margin-bottom:12px;">Belum ada animasi custom yang diunggah.</p>
-      <button type="button" class="mini-btn use" onclick="document.querySelector('[data-sub=\\'add\\']')?.click()">+ Unggah Animasi Baru</button>
+      <button type="button" class="mini-btn use btn-upload-anim-trigger">+ Unggah Animasi Baru</button>
     </div>`
   }
   return anims.map((a) => {
@@ -3291,6 +3291,13 @@ function renderPoseListHtml() {
 function bindPoseListEvents() {
   const container = document.getElementById('pose-list')
   if (!container) return
+
+  // Tombol tambah animasi saat list kosong
+  container.querySelectorAll('.btn-upload-anim-trigger').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      document.querySelector('[data-sub="add"]')?.click()
+    })
+  })
 
   // Uji animasi
   container.querySelectorAll('.anim-test-btn').forEach((btn) => {
@@ -4193,8 +4200,20 @@ function initAppUpdateChecker() {
   })
 }
 
+function initProfileAvatar() {
+  const profileImg = document.querySelector('.profile-avatar-img')
+  if (profileImg) {
+    profileImg.addEventListener('error', () => {
+      profileImg.style.display = 'none'
+      const fallback = profileImg.nextElementSibling
+      if (fallback) fallback.style.display = 'flex'
+    })
+  }
+}
+
 function init() {
   detectPlatform()
+  initProfileAvatar()
   adaptPlatformCommands()
   initThemeSwitcher()
   initWindowControls()

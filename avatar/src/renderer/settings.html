@@ -6,16 +6,6 @@
     <title>Hermes 3D Avatar — Pengaturan</title>
     <script src="./live2dcubismcore.min.js"></script>
     <link rel="stylesheet" href="./styles/launcher.css" />
-    <script>
-      (function () {
-        const isMac = (typeof window !== 'undefined' && window.hermesAvatar && window.hermesAvatar.platform === 'darwin') ||
-          navigator.userAgent.includes('Macintosh') ||
-          (navigator.platform && navigator.platform.toUpperCase().indexOf('MAC') >= 0);
-        if (isMac) {
-          document.documentElement.classList.add('is-mac');
-        }
-      })();
-    </script>
   </head>
   <body>
     <div class="settings">
@@ -39,7 +29,7 @@
         <!-- Profile Card ala macOS Settings -->
         <div class="sidebar-profile">
           <div class="profile-avatar">
-            <img src="./companion-avatar.jpg" alt="Companion Profile" class="profile-avatar-img" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';" />
+            <img src="./companion-avatar.jpg" alt="Companion Profile" class="profile-avatar-img" />
             <div class="profile-avatar-fallback" style="display:none;">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <circle cx="12" cy="8" r="5"></circle>

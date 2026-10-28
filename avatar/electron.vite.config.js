@@ -1,5 +1,19 @@
 import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
 import { resolve } from 'path'
+import { CSP_POLICY } from './csp-policy.js'
+
+function cspPlugin() {
+  return {
+    name: 'vite-plugin-csp',
+    apply: 'build',
+    transformIndexHtml(html) {
+      return html.replace(
+        /(<meta\s+charset=[^>]*>)/i,
+        `$1\n    <meta http-equiv="Content-Security-Policy" content="${CSP_POLICY}">`
+      )
+    }
+  }
+}
 
 export default defineConfig({
   main: {
@@ -25,6 +39,7 @@ export default defineConfig({
   },
   renderer: {
     root: resolve(__dirname, 'src/renderer'),
+    plugins: [cspPlugin()],
     build: {
       rollupOptions: {
         input: {
