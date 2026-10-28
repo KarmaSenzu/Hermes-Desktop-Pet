@@ -11,6 +11,8 @@ describe('cli-args validation tests', () => {
 
   it('2) memvalidasi argumen standar non-query (pdf true, a & calc false)', () => {
     expect(isSafeArg('pdf')).toBe(true)
+    expect(isSafeArg('pdf\n')).toBe(false)
+    expect(isSafeArg(' pdf')).toBe(false)
     expect(isSafeArg('oc-prod/rap/deepseek-v4-pro')).toBe(true)
     expect(isSafeArg('a & calc')).toBe(false)
     expect(isSafeArg('foo;rm -rf')).toBe(false)

@@ -12,12 +12,11 @@ export const SAFE_QUERY = /^[A-Za-z0-9 ._-]{1,64}$/
  * @returns {boolean}
  */
 export function isSafeArg(val, isQuery = false) {
-  const a = String(val ?? '').trim()
-  if (!a) return false
+  if (typeof val !== 'string' || !val) return false
 
-  if (a.startsWith('-')) {
-    return a === '--json'
+  if (val.startsWith('-')) {
+    return val === '--json'
   }
 
-  return isQuery ? SAFE_QUERY.test(a) : SAFE_ARG.test(a)
+  return isQuery ? SAFE_QUERY.test(val) : SAFE_ARG.test(val)
 }
