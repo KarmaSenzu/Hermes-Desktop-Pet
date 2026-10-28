@@ -4,8 +4,8 @@ import { readFile, writeFile, mkdir, rm, copyFile, rename, readdir } from 'fs/pr
 import { existsSync, statSync, readdirSync, cpSync, mkdirSync, createWriteStream } from 'fs'
 import { homedir } from 'os'
 import http from 'http'
-import https from 'https'
 import { execFile, spawn } from 'child_process'
+import { createHash } from 'crypto'
 import {
   startAllServices,
   stopAllServices,
@@ -1011,6 +1011,9 @@ function isNewerVersion(vLatest, vCurrent) {
   return false
 }
 
+let lastRelease = null
+const psq = (s) => String(s ?? '').replace(/'/g, "''")
+
 async function checkAppUpdate() {
   const currentVersion = app.getVersion() || '0.1.4'
   const repoOwner = 'KarmaSenzu'
@@ -1032,6 +1035,12 @@ async function checkAppUpdate() {
           const rawPkg = await rawPkgResp.json()
           const remoteVer = rawPkg.version || ''
           const hasUpdate = isNewerVersion(remoteVer, currentVersion)
+          const fallbackReleaseUrl = `https://github.com/${repoOwner}/${repoName}/releases`
+          lastRelease = {
+            tag: `v${remoteVer}`,
+            releaseUrl: fallbackReleaseUrl,
+            assets: []
+          }
           return {
             ok: true,
             hasUpdate,
@@ -1040,13 +1049,14 @@ async function checkAppUpdate() {
             releaseName: `Hermes Desktop Pet v${remoteVer}`,
             releaseDate: '',
             changelog: 'Pembaruan terkini tersedia di rilis GitHub.',
-            releaseUrl: `https://github.com/${repoOwner}/${repoName}/releases`,
-            downloadUrl: `https://github.com/${repoOwner}/${repoName}/releases`,
+            releaseUrl: fallbackReleaseUrl,
+            downloadUrl: fallbackReleaseUrl,
             assetName: null
           }
         }
       } catch {}
 
+      lastRelease = null
       return {
         ok: true,
         hasUpdate: false,
@@ -1062,6 +1072,19 @@ async function checkAppUpdate() {
     const cleanCurrent = currentVersion.replace(/^v/i, '')
 
     const hasUpdate = isNewerVersion(cleanLatest, cleanCurrent)
+
+    const releaseUrl = data.html_url || `https://github.com/${repoOwner}/${repoName}/releases`
+    lastRelease = {
+      tag: latestTag,
+      releaseUrl,
+      assets: Array.isArray(data.assets)
+        ? data.assets.map((a) => ({
+            name: a.name,
+            url: a.browser_download_url,
+            digest: a.digest ? String(a.digest).trim() : null
+          }))
+        : []
+    }
 
     let downloadUrl = data.html_url
     let matchedAsset = null
@@ -1091,11 +1114,12 @@ async function checkAppUpdate() {
       releaseName: data.name || data.tag_name || `Versi ${latestTag}`,
       releaseDate: data.published_at ? data.published_at.split('T')[0] : '',
       changelog: data.body || 'Pembaruan stabilitas, perbaikan bug, dan peningkatan fitur.',
-      releaseUrl: data.html_url || `https://github.com/${repoOwner}/${repoName}/releases`,
+      releaseUrl,
       downloadUrl,
       assetName: matchedAsset ? matchedAsset.name : null
     }
   } catch (err) {
+    lastRelease = null
     return {
       ok: false,
       currentVersion,
@@ -1128,17 +1152,50 @@ ipcMain.handle('avatar:open-external-url', async (_event, url) => {
 })
 
 // IPC: Unduh dan pasang update secara in-app (OTA Seamless Auto-Update)
-ipcMain.handle('avatar:download-and-apply-update', async (event, downloadUrl, assetName) => {
+ipcMain.handle('avatar:download-and-apply-update', async (event, _downloadUrl, assetName) => {
   try {
-    if (!downloadUrl) return { ok: false, error: 'URL unduhan tidak ditemukan' }
+    if (!assetName || typeof assetName !== 'string') {
+      return { ok: false, error: 'Nama asset tidak valid' }
+    }
 
-    const filename = assetName || downloadUrl.split('/').pop() || 'hermes-update-pkg'
-    const tempDir = join(app.getPath('temp'), `hermes_ota_${Date.now()}`)
-    await mkdir(tempDir, { recursive: true })
-    const targetFilePath = join(tempDir, filename)
+    if (!lastRelease) {
+      await checkAppUpdate()
+    }
+
+    const asset = lastRelease?.assets?.find((a) => a.name === assetName)
+    if (!asset) {
+      return { ok: false, error: 'Asset tidak ditemukan pada rilis terakhir' }
+    }
+
+    // Validasi nama asset: basename, regex pattern, no '..', allowed extensions
+    const filename = asset.name
+    if (
+      basename(filename) !== filename ||
+      !/^[A-Za-z0-9._ -]{1,120}$/.test(filename) ||
+      filename.includes('..') ||
+      !/\.(exe|dmg|zip|AppImage)$/i.test(filename)
+    ) {
+      return { ok: false, error: 'Nama asset tidak valid' }
+    }
+
+    // Validasi URL unduhan: https, github.com, path prefix rilis
+    let assetUrlObj
+    try {
+      assetUrlObj = new URL(asset.url)
+    } catch {
+      return { ok: false, error: 'URL download tidak valid' }
+    }
+
+    if (
+      assetUrlObj.protocol !== 'https:' ||
+      assetUrlObj.hostname !== 'github.com' ||
+      !assetUrlObj.pathname.startsWith('/KarmaSenzu/Hermes-Desktop-Pet/releases/download/')
+    ) {
+      return { ok: false, error: 'URL download tidak diizinkan' }
+    }
 
     // Streaming unduh via fetch bawaan Node.js
-    const resp = await fetch(downloadUrl, {
+    const resp = await fetch(asset.url, {
       headers: {
         'User-Agent': 'Hermes-Desktop-Pet-App'
       }
@@ -1148,16 +1205,39 @@ ipcMain.handle('avatar:download-and-apply-update', async (event, downloadUrl, as
       throw new Error(`Gagal mengunduh paket update: HTTP ${resp.status} ${resp.statusText}`)
     }
 
+    // Validasi redirect hostname
+    let respUrlObj
+    try {
+      respUrlObj = new URL(resp.url)
+    } catch {
+      throw new Error('URL respons unduhan tidak valid')
+    }
+
+    const allowedHosts = [
+      'github.com',
+      'objects.githubusercontent.com',
+      'release-assets.githubusercontent.com'
+    ]
+    if (!allowedHosts.includes(respUrlObj.hostname)) {
+      throw new Error(`Host unduhan tidak diizinkan: ${respUrlObj.hostname}`)
+    }
+
+    const tempDir = join(app.getPath('temp'), `hermes_ota_${Date.now()}`)
+    await mkdir(tempDir, { recursive: true })
+    const targetFilePath = join(tempDir, filename)
+
     const totalBytes = parseInt(resp.headers.get('content-length') || '0', 10)
     let transferredBytes = 0
 
     const fileStream = createWriteStream(targetFilePath)
+    const hash = createHash('sha256')
     const reader = resp.body.getReader()
 
     while (true) {
       const { done, value } = await reader.read()
       if (done) break
       fileStream.write(value)
+      hash.update(value)
       transferredBytes += value.length
       if (totalBytes > 0) {
         const percent = Math.min(100, Math.round((transferredBytes / totalBytes) * 100))
@@ -1167,6 +1247,23 @@ ipcMain.handle('avatar:download-and-apply-update', async (event, downloadUrl, as
       }
     }
     await new Promise((resolve) => fileStream.end(resolve))
+
+    // Validasi Checksum (FAIL CLOSED)
+    const computedDigest = `sha256:${hash.digest('hex').toLowerCase()}`
+    const expectedDigest = asset.digest ? String(asset.digest).trim().toLowerCase() : ''
+    const manualUrl = lastRelease?.releaseUrl || `https://github.com/KarmaSenzu/Hermes-Desktop-Pet/releases`
+
+    if (!expectedDigest || !expectedDigest.startsWith('sha256:') || computedDigest !== expectedDigest) {
+      try {
+        await rm(targetFilePath, { force: true })
+        await rm(tempDir, { recursive: true, force: true })
+      } catch (_) {}
+      return {
+        ok: false,
+        error: 'Checksum tidak tersedia/tidak cocok',
+        manualUrl
+      }
+    }
 
     // Terapkan instalasi berdasarkan platform
     if (process.platform === 'darwin') {
@@ -1216,9 +1313,8 @@ ipcMain.handle('avatar:download-and-apply-update', async (event, downloadUrl, as
         await new Promise((resolve, reject) => {
           execFile('powershell', [
             '-NoProfile',
-            '-ExecutionPolicy', 'Bypass',
             '-Command',
-            `Expand-Archive -Path '${targetFilePath}' -DestinationPath '${stagingDir}' -Force`
+            `Expand-Archive -LiteralPath '${psq(targetFilePath)}' -DestinationPath '${psq(stagingDir)}' -Force`
           ], (err) => {
             if (err) return reject(err)
             resolve()
@@ -1229,10 +1325,12 @@ ipcMain.handle('avatar:download-and-apply-update', async (event, downloadUrl, as
         const updateScriptPath = join(tempDir, 'apply_update.bat')
         const exePath = app.isPackaged ? process.execPath : join(destDir, 'Hermes Desktop Pet.exe')
 
+        const psCopyCmd = `$staging = '${psq(stagingDir)}'; $appDir = '${psq(destDir)}'; $inner = Get-ChildItem -LiteralPath $staging | Where-Object { $_.PSIsContainer -and (Test-Path -LiteralPath (Join-Path $_.FullName 'Hermes Desktop Pet.exe')) } | Select-Object -First 1; $src = if ($inner) { $inner.FullName } else { $staging }; Get-ChildItem -LiteralPath $src | Copy-Item -Destination $appDir -Recurse -Force`
+
         const batContent = [
           '@echo off',
           'timeout /t 2 /nobreak > nul',
-          `powershell -NoProfile -ExecutionPolicy Bypass -Command "$staging = '${stagingDir}'; $appDir = '${destDir}'; $inner = Get-ChildItem -Path $staging | Where-Object { $_.PSIsContainer -and (Test-Path (Join-Path $_.FullName 'Hermes Desktop Pet.exe')) } | Select-Object -First 1; $src = if ($inner) { Join-Path $inner.FullName '*' } else { Join-Path $staging '*' }; Copy-Item -Path $src -Destination $appDir -Recurse -Force"`,
+          `powershell -NoProfile -Command "${psCopyCmd}"`,
           `start "" "${exePath}"`,
           'exit'
         ].join('\r\n')
