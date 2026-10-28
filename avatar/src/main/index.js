@@ -38,6 +38,7 @@ import { parseHttpUrl, isLocalRouterUrl } from './url-guard.js'
 import { applyProviderConfig, setEnvVar } from './hermes-config.js'
 import YAML from 'yaml'
 import { loadOrCreateBridgeToken, BRIDGE_TOKEN_FILE } from './bridge-token.js'
+import { isSafeArg } from './cli-args.js'
 
 // Inisialisasi perbaikan PATH untuk macOS/Windows sedini mungkin
 fixSystemPath()
@@ -1557,15 +1558,16 @@ ipcMain.handle('avatar:test-connection', async (_event, url, model, apiKey) => {
   }
 })
 
-const SAFE_ARG = /^[A-Za-z0-9._:\/@+=-]{1,200}$/
-const SAFE_QUERY = /^[A-Za-z0-9 ._-]{1,64}$/
-
 // Helper: jalankan `hermes` CLI via execFile (dipakai set-model & install-skill).
 function runHermes(args, timeout = 30000, queryIndex = -1) {
   return new Promise((resolve, reject) => {
     for (let i = 0; i < args.length; i++) {
       const a = String(args[i])
-      if (!(i === queryIndex ? SAFE_QUERY : SAFE_ARG).test(a)) {
+      const isQuery = i === queryIndex
+      if (a.startsWith('-') && a !== '--json') {
+        return reject(new Error('Argumen diawali - tidak diizinkan'))
+      }
+      if (!isSafeArg(a, isQuery)) {
         return reject(new Error(`Argumen ke-${i} tidak valid untuk hermes CLI`))
       }
     }
