@@ -17,7 +17,8 @@ export default defineConfig({
     build: {
       rollupOptions: {
         input: {
-          index: resolve(__dirname, 'src/preload/index.js')
+          avatar: resolve(__dirname, 'src/preload/avatar.js'),
+          settings: resolve(__dirname, 'src/preload/settings.js')
         }
       }
     }

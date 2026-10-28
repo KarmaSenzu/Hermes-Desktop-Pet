@@ -41,6 +41,7 @@ import { loadOrCreateBridgeToken, BRIDGE_TOKEN_FILE } from './bridge-token.js'
 import { isSafeArg } from './cli-args.js'
 import { createSecretStore } from './secret-store.js'
 import { createSecureIpc } from './secure-ipc.js'
+import { RPC_ALLOWED_METHODS } from './ipc-policy.js'
 
 const secretStore = createSecretStore(safeStorage)
 
@@ -170,7 +171,6 @@ export function ensureDeployedCompanionAndScripts() {
 let launcherWindow = null
 let avatarWindow = null
 
-const ALL_WINDOWS = ['avatar', 'settings', 'launcher']
 const { secureHandle, secureOn } = createSecureIpc({
   ipcMain,
   getWindows: () => ({
@@ -255,7 +255,7 @@ function createLauncherWindow() {
     backgroundColor: '#1e1e20', // Warna background dark mode identik launcher.css (cegah buffer hitam saat show)
     show: true,
     webPreferences: {
-      preload: join(__dirname, '../preload/index.mjs'),
+      preload: join(__dirname, '../preload/settings.mjs'),
       contextIsolation: true,
       sandbox: false,
       backgroundThrottling: false // Cegah pembekuan rendering oleh Chromium saat window di-hide
@@ -313,7 +313,7 @@ function createAvatarWindow(modelPath) {
     focusable: true, // Tetap focusable agar saat diklik avatar tidak tenggelam/hilang di Windows DWM
     resizable: false,
     webPreferences: {
-      preload: join(__dirname, '../preload/index.mjs'),
+      preload: join(__dirname, '../preload/avatar.mjs'),
       contextIsolation: true,
       sandbox: false
     }
@@ -442,12 +442,12 @@ function unregisterGlobalShortcuts() {
 }
 
 // IPC: daftar shortcut (untuk settings panel).
-secureHandle('avatar:shortcuts', ALL_WINDOWS, () => {
+secureHandle('avatar:shortcuts', () => {
   return getShortcutList()
 })
 
 // IPC: ubah kombinasi shortcut (custom user).
-secureHandle('avatar:set-shortcut', ALL_WINDOWS, (_event, id, accel) => {
+secureHandle('avatar:set-shortcut', (_event, id, accel) => {
   try {
     const list = updateShortcut(id, accel)
     // Re-register agar perubahan langsung aktif.
@@ -510,7 +510,7 @@ export function getFixedRoots() {
 }
 
 // IPC: launcher → main → buka avatar window dengan model terpilih.
-secureHandle('avatar:start', ALL_WINDOWS, (_event, modelPath) => {
+secureHandle('avatar:start', (_event, modelPath) => {
   const defaultRelPath = 'assets/live2d/mother/20250106.model3.json'
   const resolvedPath = resolveModelPath(modelPath || defaultRelPath)
 
@@ -530,7 +530,7 @@ secureHandle('avatar:start', ALL_WINDOWS, (_event, modelPath) => {
 })
 
 // IPC: jalankan daemon Hermes AI (port 9119) secara on-demand
-secureHandle('avatar:start-hermes-server', ALL_WINDOWS, async () => {
+secureHandle('avatar:start-hermes-server', async () => {
   try {
     const res = await startHermes()
     return res
@@ -540,13 +540,13 @@ secureHandle('avatar:start-hermes-server', ALL_WINDOWS, async () => {
 })
 
 // IPC: avatar window bisa minta fokus/drag via OS-native (drag region).
-secureHandle('avatar:close', ALL_WINDOWS, () => {
+secureHandle('avatar:close', () => {
   if (avatarWindow && !avatarWindow.isDestroyed()) avatarWindow.close()
   showLauncherWindow()
 })
 
 // IPC: berikan fokus keyboard ke window avatar (untuk mengetik chat).
-secureOn('avatar:focus-window', ALL_WINDOWS, () => {
+secureOn('avatar:focus-window', () => {
   if (avatarWindow && !avatarWindow.isDestroyed()) {
     avatarWindow.setFocusable(true)
     avatarWindow.setAlwaysOnTop(true, 'screen-saver')
@@ -555,7 +555,7 @@ secureOn('avatar:focus-window', ALL_WINDOWS, () => {
 })
 
 // IPC: kontrol fokus khusus saat chat dibuka/ditutup (agar bisa mengetik tanpa merusak z-order).
-secureOn('avatar:chat-focus', ALL_WINDOWS, (_event, enable) => {
+secureOn('avatar:chat-focus', (_event, enable) => {
   if (!avatarWindow || avatarWindow.isDestroyed()) return
   avatarWindow.setAlwaysOnTop(true, 'screen-saver')
   if (enable) {
@@ -564,21 +564,21 @@ secureOn('avatar:chat-focus', ALL_WINDOWS, (_event, enable) => {
 })
 
 // IPC: trigger animasi DVD bounce (fitur/emote).
-secureHandle('avatar:dvd-bounce', ALL_WINDOWS, () => {
+secureHandle('avatar:dvd-bounce', () => {
   runDvdBounce()
   return { ok: true }
 })
 
 // IPC: drag manual window (gantikan app-region: drag).
 // Renderer mengirim delta perpindahan mouse; main memindahkan window sesuai.
-secureOn('avatar:drag-move', ALL_WINDOWS, (_event, dx, dy) => {
+secureOn('avatar:drag-move', (_event, dx, dy) => {
   if (!avatarWindow || avatarWindow.isDestroyed()) return
   const b = avatarWindow.getBounds()
   avatarWindow.setPosition(b.x + Math.round(dx), b.y + Math.round(dy))
 })
 
 // IPC: toggle click-through (klik tembus ke desktop saat di area kosong).
-secureOn('avatar:set-ignore-mouse', ALL_WINDOWS, (_event, ignore, forward) => {
+secureOn('avatar:set-ignore-mouse', (_event, ignore, forward) => {
   if (!avatarWindow || avatarWindow.isDestroyed()) return
   avatarWindow.setIgnoreMouseEvents(ignore, { forward: forward !== false })
   // Pastikan Z-order tetap di puncak saat mouse menyentuh area interaktif/avatar
@@ -588,25 +588,25 @@ secureOn('avatar:set-ignore-mouse', ALL_WINDOWS, (_event, ignore, forward) => {
 })
 
 // IPC: buka jendela pengaturan (launcher) dari avatar HUD.
-secureHandle('avatar:open-settings', ALL_WINDOWS, () => {
+secureHandle('avatar:open-settings', () => {
   showLauncherWindow()
   return { ok: true }
 })
 
 // IPC: kontrol window kustom (ala macOS traffic lights)
-secureHandle('avatar:window-close', ALL_WINDOWS, (event) => {
+secureHandle('avatar:window-close', (event) => {
   const win = BrowserWindow.fromWebContents(event.sender)
   if (win) win.close()
   return { ok: true }
 })
 
-secureHandle('avatar:window-minimize', ALL_WINDOWS, (event) => {
+secureHandle('avatar:window-minimize', (event) => {
   const win = BrowserWindow.fromWebContents(event.sender)
   if (win) win.minimize()
   return { ok: true }
 })
 
-secureHandle('avatar:window-maximize', ALL_WINDOWS, (event) => {
+secureHandle('avatar:window-maximize', (event) => {
   const win = BrowserWindow.fromWebContents(event.sender)
   if (win) {
     if (win.isMaximized()) {
@@ -619,7 +619,7 @@ secureHandle('avatar:window-maximize', ALL_WINDOWS, (event) => {
 })
 
 // IPC: jalankan perintah di terminal sistem baru (PowerShell di Windows, Terminal.app di macOS via AppleScript)
-secureHandle('avatar:run-in-terminal', ALL_WINDOWS, async (_event, cmd, workingDir) => {
+secureHandle('avatar:run-in-terminal', async (_event, cmd, workingDir) => {
   try {
     ensureDeployedCompanionAndScripts()
     const candidateRoots = [
@@ -675,13 +675,13 @@ secureHandle('avatar:run-in-terminal', ALL_WINDOWS, async (_event, cmd, workingD
 })
 
 // IPC: path model default (dipakai launcher untuk pre-select).
-secureHandle('avatar:default-model', ALL_WINDOWS, () => {
+secureHandle('avatar:default-model', () => {
   return resolveModelPath('assets/live2d/mother/20250106.model3.json')
 })
 
 // IPC: buka dialog pilih file model (native Finder/Explorer).
 // Mengembalikan path file yang dipilih, atau null jika batal.
-secureHandle('avatar:pick-model', ALL_WINDOWS, async () => {
+secureHandle('avatar:pick-model', async () => {
   const result = await dialog.showOpenDialog({
     title: 'Pilih model avatar (3D / Live2D)',
     properties: ['openFile'],
@@ -697,7 +697,7 @@ secureHandle('avatar:pick-model', ALL_WINDOWS, async () => {
 })
 
 // IPC: buka dialog pilih file audio musik lokal (mp3, wav, ogg, flac, m4a, aac).
-secureHandle('avatar:pick-audio-files', ALL_WINDOWS, async () => {
+secureHandle('avatar:pick-audio-files', async () => {
   const result = await dialog.showOpenDialog({
     title: 'Pilih File Lagu / Musik',
     properties: ['openFile', 'multiSelections'],
@@ -774,7 +774,7 @@ export function approveStartupRoots() {
 }
 
 // IPC: Memuat pustaka musik permanen (~/.hermes-avatar/music_library.json)
-secureHandle('avatar:music-load-library', ALL_WINDOWS, async () => {
+secureHandle('avatar:music-load-library', async () => {
   try {
     if (!existsSync(MUSIC_LIBRARY_FILE)) {
       return { ok: false, notFound: true, path: MUSIC_LIBRARY_FILE }
@@ -789,7 +789,7 @@ secureHandle('avatar:music-load-library', ALL_WINDOWS, async () => {
 })
 
 // IPC: Menyimpan pustaka musik permanen (~/.hermes-avatar/music_library.json)
-secureHandle('avatar:music-save-library', ALL_WINDOWS, async (_event, payload) => {
+secureHandle('avatar:music-save-library', async (_event, payload) => {
   try {
     const dir = join(homedir(), '.hermes-avatar')
     await mkdir(dir, { recursive: true })
@@ -802,7 +802,7 @@ secureHandle('avatar:music-save-library', ALL_WINDOWS, async (_event, payload) =
 })
 
 // IPC: Informasi pustaka musik (lokasi berkas, keberadaan berkas, ukuran)
-secureHandle('avatar:music-library-info', ALL_WINDOWS, async () => {
+secureHandle('avatar:music-library-info', async () => {
   try {
     const exists = existsSync(MUSIC_LIBRARY_FILE)
     let stats = null
@@ -822,7 +822,7 @@ secureHandle('avatar:music-library-info', ALL_WINDOWS, async () => {
 })
 
 // IPC: Buka folder ~/.hermes-avatar di Explorer / Finder
-secureHandle('avatar:music-open-folder', ALL_WINDOWS, async () => {
+secureHandle('avatar:music-open-folder', async () => {
   try {
     const dir = join(homedir(), '.hermes-avatar')
     await mkdir(dir, { recursive: true })
@@ -836,7 +836,7 @@ secureHandle('avatar:music-open-folder', ALL_WINDOWS, async () => {
 
 // IPC: token Hermes gateway — pakai SESSION_TOKEN dari service-manager
 // (konsisten antara avatar & hermes serve yang di-spawn otomatis).
-secureHandle('avatar:hermes-config', ALL_WINDOWS, () => {
+secureHandle('avatar:hermes-config', () => {
   return {
     wsUrl: process.env['HERMES_WS_URL'] || 'ws://127.0.0.1:9119/api/ws',
     token: SESSION_TOKEN
@@ -868,7 +868,7 @@ async function checkKokoroPipInstalled(pyCmd, force = false) {
 }
 
 // IPC: status service (9Router, Hermes, Kokoro, Companion Bridge) — murni cek port via TCP non-blocking (<0.1ms)
-secureHandle('avatar:service-status', ALL_WINDOWS, async () => {
+secureHandle('avatar:service-status', async () => {
   const router = await isPortOpen(ROUTER_PORT)
   const hermes = await isPortOpen(HERMES_PORT)
   const kokoro = await isPortOpen(KOKORO_PORT)
@@ -883,7 +883,7 @@ secureHandle('avatar:service-status', ALL_WINDOWS, async () => {
 })
 
 // IPC: ambil seluruh status jalur yang terdeteksi di komputer (hanya dipanggil 1x saat inisialisasi / permintaan)
-secureHandle('avatar:get-detected-paths', ALL_WINDOWS, async () => {
+secureHandle('avatar:get-detected-paths', async () => {
   const paths = await getAllDetectedPaths(false)
   let kokoroInstalled = false
   if (paths.python?.ok && paths.python?.cmd) {
@@ -893,7 +893,7 @@ secureHandle('avatar:get-detected-paths', ALL_WINDOWS, async () => {
 })
 
 // IPC: simpan jalur kustom pengguna (~/.hermes-avatar/paths.json)
-secureHandle('avatar:set-custom-path', ALL_WINDOWS, async (_event, key, val) => {
+secureHandle('avatar:set-custom-path', async (_event, key, val) => {
   try {
     const ok = savePersistedPath(key, val)
     const all = await getAllDetectedPaths(true)
@@ -904,7 +904,7 @@ secureHandle('avatar:set-custom-path', ALL_WINDOWS, async (_event, key, val) => 
 })
 
 // IPC: buka dialog pemilihan berkas/folder kustom native OS
-secureHandle('avatar:browse-custom-path', ALL_WINDOWS, async (_event, key, type = 'file') => {
+secureHandle('avatar:browse-custom-path', async (_event, key, type = 'file') => {
   try {
     const isDir = type === 'dir' || type === 'folder'
     const properties = [isDir ? 'openDirectory' : 'openFile']
@@ -933,7 +933,7 @@ secureHandle('avatar:browse-custom-path', ALL_WINDOWS, async (_event, key, type 
 })
 
 // IPC: pindai ulang seluruh jalur dan logical drive secara dinamis (Hanya berjalan saat tombol ditekan manual)
-secureHandle('avatar:rescan-paths', ALL_WINDOWS, async () => {
+secureHandle('avatar:rescan-paths', async () => {
   try {
     cachedKokoroPip.installed = null
     const paths = await getAllDetectedPaths(true)
@@ -948,7 +948,7 @@ secureHandle('avatar:rescan-paths', ALL_WINDOWS, async () => {
 })
 
 // IPC: jalankan 9Router daemon jika terpasang
-secureHandle('avatar:start-router', ALL_WINDOWS, async () => {
+secureHandle('avatar:start-router', async () => {
   try {
     const res = await startRouter()
     return res
@@ -958,7 +958,7 @@ secureHandle('avatar:start-router', ALL_WINDOWS, async () => {
 })
 
 // IPC: jalankan script server Kokoro-TTS (Lokal)
-secureHandle('avatar:start-kokoro-server', ALL_WINDOWS, async () => {
+secureHandle('avatar:start-kokoro-server', async () => {
   try {
     const res = await startKokoro()
     return res
@@ -968,7 +968,7 @@ secureHandle('avatar:start-kokoro-server', ALL_WINDOWS, async () => {
 })
 
 // IPC: install dependensi Kokoro via pip (mendukung Windows, macOS & Linux termasuk flag --break-system-packages bila diperlukan)
-secureHandle('avatar:install-kokoro-deps', ALL_WINDOWS, async () => {
+secureHandle('avatar:install-kokoro-deps', async () => {
   try {
     const pyInfo = await resolvePythonCmd()
     const pyCmd = pyInfo.cmd
@@ -1004,7 +1004,7 @@ secureHandle('avatar:install-kokoro-deps', ALL_WINDOWS, async () => {
 })
 
 // IPC: uninstall dependensi Kokoro via pip
-secureHandle('avatar:uninstall-kokoro-deps', ALL_WINDOWS, async () => {
+secureHandle('avatar:uninstall-kokoro-deps', async () => {
   try {
     const pyInfo = await resolvePythonCmd()
     const pyCmd = pyInfo.cmd
@@ -1034,7 +1034,7 @@ secureHandle('avatar:uninstall-kokoro-deps', ALL_WINDOWS, async () => {
 })
 
 // IPC: buka folder penyimpanan paket di File Explorer / Finder
-secureHandle('avatar:open-package-folder', ALL_WINDOWS, async (_event, pkgName = 'kokoro') => {
+secureHandle('avatar:open-package-folder', async (_event, pkgName = 'kokoro') => {
   try {
     let targetDir = join(homedir(), '.hermes-avatar', 'packages', pkgName)
     if (pkgName === 'hermes') targetDir = join(homedir(), '.hermes')
@@ -1060,7 +1060,7 @@ secureHandle('avatar:open-package-folder', ALL_WINDOWS, async (_event, pkgName =
 })
 
 // IPC: hapus cache model paket untuk menghemat ruang disk
-secureHandle('avatar:clean-package', ALL_WINDOWS, async (_event, pkgName = 'kokoro') => {
+secureHandle('avatar:clean-package', async (_event, pkgName = 'kokoro') => {
   try {
     const targetDir = join(homedir(), '.hermes-avatar', 'packages', pkgName)
     await rm(targetDir, { recursive: true, force: true })
@@ -1073,7 +1073,7 @@ secureHandle('avatar:clean-package', ALL_WINDOWS, async (_event, pkgName = 'koko
 })
 
 // IPC: trigger tes pengingat idle secara instan dari jendela Pengaturan ke Avatar
-secureHandle('avatar:trigger-idle-chatter', ALL_WINDOWS, (_event, line) => {
+secureHandle('avatar:trigger-idle-chatter', (_event, line) => {
   if (avatarWindow && !avatarWindow.isDestroyed()) {
     avatarWindow.webContents.send('avatar:trigger-idle-chatter', line)
     return { ok: true }
@@ -1212,17 +1212,17 @@ async function checkAppUpdate() {
 }
 
 // IPC: periksa pembaruan rilis aplikasi
-secureHandle('avatar:check-update', ALL_WINDOWS, async () => {
+secureHandle('avatar:check-update', async () => {
   return await checkAppUpdate()
 })
 
 // IPC: ambil versi aplikasi saat ini
-secureHandle('avatar:get-app-version', ALL_WINDOWS, () => {
+secureHandle('avatar:get-app-version', () => {
   return app.getVersion()
 })
 
 // IPC: buka URL rilis / download file installer di browser
-secureHandle('avatar:open-external-url', ALL_WINDOWS, async (_event, url) => {
+secureHandle('avatar:open-external-url', async (_event, url) => {
   try {
     if (url && (url.startsWith('https://') || url.startsWith('http://'))) {
       await shell.openExternal(url)
@@ -1235,7 +1235,7 @@ secureHandle('avatar:open-external-url', ALL_WINDOWS, async (_event, url) => {
 })
 
 // IPC: Unduh dan pasang update secara in-app (OTA Seamless Auto-Update)
-secureHandle('avatar:download-and-apply-update', ALL_WINDOWS, async (event, _downloadUrl, assetName) => {
+secureHandle('avatar:download-and-apply-update', async (event, _downloadUrl, assetName) => {
   try {
     if (!assetName || typeof assetName !== 'string') {
       return { ok: false, error: 'Nama asset tidak valid' }
@@ -1444,7 +1444,7 @@ secureHandle('avatar:download-and-apply-update', ALL_WINDOWS, async (event, _dow
 })
 
 // IPC: Relaunch aplikasi untuk menerapkan update
-secureHandle('avatar:relaunch-app', ALL_WINDOWS, () => {
+secureHandle('avatar:relaunch-app', () => {
   if (process.platform === 'win32' && pendingWindowsInstaller) {
     if (pendingWindowsInstaller.endsWith('.bat')) {
       spawn('cmd.exe', ['/c', pendingWindowsInstaller], { detached: true, stdio: 'ignore' }).unref()
@@ -1459,7 +1459,11 @@ secureHandle('avatar:relaunch-app', ALL_WINDOWS, () => {
 })
 
 // IPC: RPC config/model ke Hermes (shared gateway) — untuk LLM section.
-secureHandle('avatar:rpc', ALL_WINDOWS, async (_event, method, params) => {
+secureHandle('avatar:rpc', async (_event, method, params) => {
+  if (!RPC_ALLOWED_METHODS.includes(method)) {
+    console.warn('[rpc] DITOLAK: method tidak diizinkan', method)
+    return { ok: false, error: 'RPC method ditolak' }
+  }
   try {
     if (!isGatewayConnected()) {
       await connectGateway(SESSION_TOKEN)
@@ -1472,7 +1476,7 @@ secureHandle('avatar:rpc', ALL_WINDOWS, async (_event, method, params) => {
 })
 
 // IPC: tambah skill custom → tulis SKILL.md ke ~/.hermes/skills/<category>/<name>/.
-secureHandle('avatar:add-skill', ALL_WINDOWS, async (_event, { name, category, content }) => {
+secureHandle('avatar:add-skill', async (_event, { name, category, content }) => {
   try {
     if (!name || !content) {
       return { ok: false, error: 'Nama & isi skill wajib diisi.' }
@@ -1496,7 +1500,7 @@ secureHandle('avatar:add-skill', ALL_WINDOWS, async (_event, { name, category, c
 })
 
 // IPC: hapus skill custom → hapus folder ~/.hermes/skills/<category>/<name>.
-secureHandle('avatar:delete-skill', ALL_WINDOWS, async (_event, { name, category }) => {
+secureHandle('avatar:delete-skill', async (_event, { name, category }) => {
   try {
     const safeName = String(name || '').replace(/[^a-zA-Z0-9_-]/g, '-').replace(/^-+/, '')
     const safeCat = (category || 'general').replace(/[^a-zA-Z0-9_-]/g, '-').replace(/^-+/, '') || 'general'
@@ -1518,7 +1522,7 @@ secureHandle('avatar:delete-skill', ALL_WINDOWS, async (_event, { name, category
 
 // IPC: tes koneksi model (chat completion sungguhan ke provider).
 // Kirim request "ping" ke model → verifikasi model benar-benar berfungsi.
-secureHandle('avatar:test-connection', ALL_WINDOWS, async (_event, url, model, apiKey) => {
+secureHandle('avatar:test-connection', async (_event, url, model, apiKey) => {
   try {
     const target = String(url || '').trim()
     const modelName = String(model || '').trim()
@@ -1765,7 +1769,7 @@ async function updateModelConfigYaml(modelName) {
 }
 
 // IPC: set full LLM provider ke Hermes (config.yaml + .env + RPC gateway)
-secureHandle('avatar:set-llm-provider', ALL_WINDOWS, async (_event, payload) => {
+secureHandle('avatar:set-llm-provider', async (_event, payload) => {
   try {
     const { name, baseUrl, apiKey, model } = payload || {}
     const modelName = String(model || '').trim()
@@ -1812,7 +1816,7 @@ secureHandle('avatar:set-llm-provider', ALL_WINDOWS, async (_event, payload) => 
 })
 
 // IPC: restart Hermes daemon
-secureHandle('avatar:restart-hermes', ALL_WINDOWS, async () => {
+secureHandle('avatar:restart-hermes', async () => {
   try {
     const res = await restartHermes()
     return { ok: res.ok, already: res.already, error: res.error }
@@ -1822,7 +1826,7 @@ secureHandle('avatar:restart-hermes', ALL_WINDOWS, async () => {
 })
 
 // IPC: ambil model aktual langsung dari endpoint OpenAI-compatible (9Router, Ollama, dll)
-secureHandle('avatar:fetch-endpoint-models', ALL_WINDOWS, async (_event, baseUrl, apiKey) => {
+secureHandle('avatar:fetch-endpoint-models', async (_event, baseUrl, apiKey) => {
   try {
     const targetUrl = String(baseUrl || '').trim()
     if (!targetUrl) return { ok: false, error: 'Base URL kosong' }
@@ -1863,7 +1867,7 @@ secureHandle('avatar:fetch-endpoint-models', ALL_WINDOWS, async (_event, baseUrl
 })
 
 // IPC: set model aktif via 3-layer (RPC gateway -> hermes CLI -> config.yaml fallback).
-secureHandle('avatar:set-model', ALL_WINDOWS, async (_event, model) => {
+secureHandle('avatar:set-model', async (_event, model) => {
   try {
     const modelName = String(model || '').trim()
     if (!modelName) return { ok: false, error: 'Model kosong.' }
@@ -1906,7 +1910,7 @@ secureHandle('avatar:set-model', ALL_WINDOWS, async (_event, model) => {
 })
 
 // IPC: ambil info model LLM aktif (dari Gateway bila online, atau config.yaml langsung)
-secureHandle('avatar:get-current-model', ALL_WINDOWS, async () => {
+secureHandle('avatar:get-current-model', async () => {
   try {
     if (isGatewayConnected()) {
       try {
@@ -1940,7 +1944,7 @@ secureHandle('avatar:get-current-model', ALL_WINDOWS, async () => {
 })
 
 // IPC: set TTS config (voice) ke Hermes — tulis config.yaml langsung.
-secureHandle('avatar:set-tts-config', ALL_WINDOWS, async (_event, { voice }) => {
+secureHandle('avatar:set-tts-config', async (_event, { voice }) => {
   try {
     if (!voice) return { ok: true }
 
@@ -1967,7 +1971,7 @@ secureHandle('avatar:set-tts-config', ALL_WINDOWS, async (_event, { voice }) => 
 })
 
 // IPC: set STT config (model + bahasa) — tulis config.yaml langsung.
-secureHandle('avatar:set-stt-config', ALL_WINDOWS, async (_event, { model, language }) => {
+secureHandle('avatar:set-stt-config', async (_event, { model, language }) => {
   try {
     const cfgPath = resolveHermesConfigPath()
     let cfg = ''
@@ -2043,7 +2047,7 @@ function updateYamlNested(yaml, section, sub, key, value) {  const lines = yaml.
 }
 
 // IPC: install skill dari hub → `hermes skills install <skill-id>`.
-secureHandle('avatar:install-skill', ALL_WINDOWS, async (_event, skillId) => {
+secureHandle('avatar:install-skill', async (_event, skillId) => {
   try {
     const id = String(skillId || '').trim()
     if (!id) return { ok: false, error: 'Skill ID kosong.' }
@@ -2056,7 +2060,7 @@ secureHandle('avatar:install-skill', ALL_WINDOWS, async (_event, skillId) => {
 })
 
 // IPC: browse/search skill di hub → `hermes skills browse --json` (atau search).
-secureHandle('avatar:browse-skills', ALL_WINDOWS, async (_event, query) => {
+secureHandle('avatar:browse-skills', async (_event, query) => {
   try {
     const q = String(query || '').trim()
     if (q) {
@@ -2074,7 +2078,7 @@ secureHandle('avatar:browse-skills', ALL_WINDOWS, async (_event, query) => {
 })
 
 // IPC: encrypt secret via origin-bound secretStore.
-secureHandle('avatar:encrypt-secret', ALL_WINDOWS, (_event, plaintext, baseUrl) => {
+secureHandle('avatar:encrypt-secret', (_event, plaintext, baseUrl) => {
   try {
     return { ok: true, value: secretStore.seal(plaintext, baseUrl) }
   } catch (err) {
@@ -2083,7 +2087,7 @@ secureHandle('avatar:encrypt-secret', ALL_WINDOWS, (_event, plaintext, baseUrl) 
 })
 
 // IPC: pilih file aplikasi (native dialog) → path.
-secureHandle('avatar:pick-app', ALL_WINDOWS, async () => {  const filters = process.platform === 'darwin'
+secureHandle('avatar:pick-app', async () => {  const filters = process.platform === 'darwin'
     ? [{ name: 'Aplikasi', extensions: ['app'] }]
     : process.platform === 'win32'
       ? [{ name: 'Aplikasi', extensions: ['exe', 'lnk'] }]
@@ -2196,7 +2200,7 @@ function scanWindowsShortcuts() {
 }
 
 // IPC: jalankan aplikasi secara cross-platform (Windows, macOS, Linux) dengan fast fallback.
-secureHandle('avatar:launch-app', ALL_WINDOWS, async (_event, targetPath) => {
+secureHandle('avatar:launch-app', async (_event, targetPath) => {
   try {
     if (!targetPath) return { ok: false, error: 'Path aplikasi kosong' }
     const p = String(targetPath).trim()
@@ -2233,7 +2237,7 @@ secureHandle('avatar:launch-app', ALL_WINDOWS, async (_event, targetPath) => {
 })
 
 // IPC: Scan semua aplikasi terpasang di Windows (Start Menu & Builtins)
-secureHandle('avatar:scan-installed-apps', ALL_WINDOWS, async () => {
+secureHandle('avatar:scan-installed-apps', async () => {
   try {
     const apps = scanWindowsShortcuts()
     await mkdir(join(homedir(), '.hermes-avatar'), { recursive: true })
@@ -2245,7 +2249,7 @@ secureHandle('avatar:scan-installed-apps', ALL_WINDOWS, async () => {
 })
 
 // IPC: Ambil cache aplikasi terpasang (jika belum ada, lakukan auto-scan)
-secureHandle('avatar:get-installed-apps', ALL_WINDOWS, async () => {
+secureHandle('avatar:get-installed-apps', async () => {
   try {
     if (existsSync(APPS_CACHE_FILE)) {
       const data = await readFile(APPS_CACHE_FILE, 'utf-8')
@@ -2262,7 +2266,7 @@ secureHandle('avatar:get-installed-apps', ALL_WINDOWS, async () => {
 })
 
 // IPC: Belajar / simpan aplikasi baru secara permanen
-secureHandle('avatar:learn-app', ALL_WINDOWS, async (_event, appData) => {
+secureHandle('avatar:learn-app', async (_event, appData) => {
   try {
     if (!appData || !appData.name || !appData.command) {
       return { ok: false, error: 'Nama dan path/command aplikasi wajib diisi' }
@@ -2290,7 +2294,7 @@ secureHandle('avatar:learn-app', ALL_WINDOWS, async (_event, appData) => {
 })
 
 // IPC: Cuaca real-time live (Open-Meteo / WMO — gratis, response cepat <300ms)
-secureHandle('avatar:get-live-weather', ALL_WINDOWS, async (_event, city = 'Jakarta') => {
+secureHandle('avatar:get-live-weather', async (_event, city = 'Jakarta') => {
   try {
     const lat = -6.2
     const lon = 106.8
@@ -2337,7 +2341,7 @@ secureHandle('avatar:get-live-weather', ALL_WINDOWS, async (_event, city = 'Jaka
 })
 
 // IPC: Berita terkini Indonesia live hari ini (Google News RSS Indonesia)
-secureHandle('avatar:get-live-news', ALL_WINDOWS, async () => {
+secureHandle('avatar:get-live-news', async () => {
   try {
     const url = 'https://news.google.com/rss?hl=id&gl=ID&ceid=ID:id'
     const resp = await fetch(url, {
@@ -2371,7 +2375,7 @@ secureHandle('avatar:get-live-news', ALL_WINDOWS, async () => {
 })
 
 // IPC: ambil icon aplikasi (NativeImage → data URL PNG).
-secureHandle('avatar:app-icon', ALL_WINDOWS, async (_event, filePath) => {
+secureHandle('avatar:app-icon', async (_event, filePath) => {
   try {
     const icon = await app.getFileIcon(String(filePath), { size: 'normal' })
     if (!icon || icon.isEmpty()) return { ok: false, error: 'Icon tidak ditemukan' }
@@ -2383,7 +2387,7 @@ secureHandle('avatar:app-icon', ALL_WINDOWS, async (_event, filePath) => {
 })
 
 // IPC: pilih file animasi (native dialog, filter GLB/VMD).
-secureHandle('avatar:pick-animation', ALL_WINDOWS, async () => {
+secureHandle('avatar:pick-animation', async () => {
   const result = await dialog.showOpenDialog({
     title: 'Pilih file animasi gerakan atau pose',
     properties: ['openFile'],
@@ -2397,7 +2401,7 @@ secureHandle('avatar:pick-animation', ALL_WINDOWS, async () => {
 })
 
 // IPC: kirim preview / uji animasi langsung ke jendela avatar aktif
-secureHandle('avatar:preview-animation', ALL_WINDOWS, async (_event, data) => {
+secureHandle('avatar:preview-animation', async (_event, data) => {
   if (avatarWindow && !avatarWindow.isDestroyed()) {
     avatarWindow.webContents.send('avatar:preview-animation', data)
     return { ok: true }
@@ -2423,7 +2427,7 @@ function resolveTtsUrl() {
   }
 }
 
-secureHandle('avatar:tts', ALL_WINDOWS, async (_event, text, voice, options = {}) => {
+secureHandle('avatar:tts', async (_event, text, voice, options = {}) => {
   const chosenVoice = voice || 'af_heart'
   const isKokoro = options.provider === 'kokoro' || /^[a-z]{2}_/i.test(chosenVoice)
 
@@ -2582,7 +2586,7 @@ secureHandle('avatar:tts', ALL_WINDOWS, async (_event, text, voice, options = {}
 
 // IPC: baca file model dari disk → kirim base64 + nama file ke renderer.
 // Renderer tidak bisa akses filesystem langsung, jadi main yang membacakan.
-secureHandle('avatar:read-model', ALL_WINDOWS, async (_event, modelPath) => {
+secureHandle('avatar:read-model', async (_event, modelPath) => {
   try {
     const targetPath = resolveModelPath(modelPath)
     if (!existsSync(targetPath)) {
@@ -2613,7 +2617,7 @@ secureHandle('avatar:read-model', ALL_WINDOWS, async (_event, modelPath) => {
 })
 
 // IPC: ubah path filesystem model → URL `model://` (untuk MMD/Live2D yang butuh texture relatif).
-secureHandle('avatar:model-url', ALL_WINDOWS, (_event, modelPath) => {
+secureHandle('avatar:model-url', (_event, modelPath) => {
   const targetPath = resolveModelPath(modelPath)
   // Normalize Windows backslashes dan encode segmen path
   const normalized = targetPath.replace(/\\/g, '/')

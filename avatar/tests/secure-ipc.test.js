@@ -92,8 +92,17 @@ describe('secure-ipc: validateSender', () => {
   })
 })
 
-describe('secure-ipc: createSecureIpc wrapper', () => {
-  it('(f) allow tidak memuat nama window -> secureHandle melempar error dan mencetak warning', () => {
+describe('secure-ipc: createSecureIpc wrapper with policy', () => {
+  it('registrasi channel yang tidak ada di policy -> fail fast (throw error)', () => {
+    const mockIpc = { handle() {}, on() {} }
+    const policy = { 'test:allowed': ['settings'] }
+    const { secureHandle, secureOn } = createSecureIpc({ ipcMain: mockIpc, getWindows: () => ({}), policy })
+
+    expect(() => secureHandle('test:unregistered', () => {})).toThrow(/Channel IPC tidak terdaftar dalam kebijakan/)
+    expect(() => secureOn('test:unregistered', () => {})).toThrow(/Channel IPC tidak terdaftar dalam kebijakan/)
+  })
+
+  it('(f) policy tidak memuat nama window pemanggil -> secureHandle melempar error dan mencetak warning', () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const mockIpc = {
       handlers: {},
@@ -102,9 +111,10 @@ describe('secure-ipc: createSecureIpc wrapper', () => {
 
     const avatarWin = createMockWindow(1)
     const getWindows = () => ({ avatar: avatarWin, settings: createMockWindow(2) })
+    const policy = { 'test:channel': ['settings'] }
 
-    const { secureHandle } = createSecureIpc({ ipcMain: mockIpc, getWindows })
-    secureHandle('test:channel', ['settings'], () => 'secret_data')
+    const { secureHandle } = createSecureIpc({ ipcMain: mockIpc, getWindows, policy })
+    secureHandle('test:channel', () => 'secret_data')
 
     const event = createMockEvent({ id: 1, url: 'file:///C:/app/renderer/index.html' })
     expect(() => mockIpc.handlers['test:channel'](event, 'arg1', 'arg2')).toThrow('IPC ditolak')
@@ -113,7 +123,7 @@ describe('secure-ipc: createSecureIpc wrapper', () => {
     warnSpy.mockRestore()
   })
 
-  it('(g) allow = any -> diizinkan untuk semua window terdaftar', () => {
+  it('(g) policy allow = any -> diizinkan untuk semua window terdaftar', () => {
     const mockIpc = {
       handlers: {},
       handle(channel, fn) { this.handlers[channel] = fn }
@@ -121,9 +131,10 @@ describe('secure-ipc: createSecureIpc wrapper', () => {
 
     const avatarWin = createMockWindow(1)
     const getWindows = () => ({ avatar: avatarWin })
+    const policy = { 'test:any': 'any' }
 
-    const { secureHandle } = createSecureIpc({ ipcMain: mockIpc, getWindows })
-    secureHandle('test:any', 'any', (_event, arg) => `echo:${arg}`)
+    const { secureHandle } = createSecureIpc({ ipcMain: mockIpc, getWindows, policy })
+    secureHandle('test:any', (_event, arg) => `echo:${arg}`)
 
     const event = createMockEvent({ id: 1, url: 'file:///C:/app/renderer/index.html' })
     const res = mockIpc.handlers['test:any'](event, 'hello')
@@ -139,10 +150,11 @@ describe('secure-ipc: createSecureIpc wrapper', () => {
 
     const avatarWin = createMockWindow(1)
     const getWindows = () => ({ avatar: avatarWin })
+    const policy = { 'test:event': ['settings'] }
 
-    const { secureOn } = createSecureIpc({ ipcMain: mockIpc, getWindows })
+    const { secureOn } = createSecureIpc({ ipcMain: mockIpc, getWindows, policy })
     let executed = false
-    secureOn('test:event', ['settings'], () => { executed = true })
+    secureOn('test:event', () => { executed = true })
 
     const event = createMockEvent({ id: 1, url: 'file:///C:/app/renderer/index.html' })
     expect(() => mockIpc.listeners['test:event'](event)).not.toThrow()

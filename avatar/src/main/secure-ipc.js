@@ -1,12 +1,14 @@
 /**
- * secure-ipc.js — Sender frame and origin validation for all Electron IPC channels.
+ * secure-ipc.js — Sender frame, URL, dan window policy enforcement untuk semua IPC Electron.
  *
- * Ensures IPC messages originate from the main frame of known, registered
- * application windows and trusted URLs (file:// in production, ELECTRON_RENDERER_URL in dev).
+ * Mengikat registrasi IPC ke IPC_POLICY (kebijakan per-window) dan fail-fast
+ * jika channel belum didefinisikan dalam kebijakan izin.
  */
 
+import { IPC_POLICY } from './ipc-policy.js'
+
 /**
- * Validates the sender of an IPC event.
+ * Validasi pengirim frame IPC.
  *
  * @param {import('electron').IpcMainInvokeEvent | import('electron').IpcMainEvent} event
  * @param {Record<string, import('electron').BrowserWindow | null>} windows
@@ -64,20 +66,27 @@ export function validateSender(event, windows = {}, { devUrl } = {}) {
 }
 
 /**
- * Creates secure wrapper functions for ipcMain.
+ * Membuat wrapper secureHandle dan secureOn yang terikat pada IPC_POLICY.
  *
  * @param {{
  *   ipcMain: import('electron').IpcMain,
  *   getWindows: () => Record<string, import('electron').BrowserWindow | null>,
- *   devUrl?: string
+ *   devUrl?: string,
+ *   policy?: Record<string, string[]>
  * }} config
  * @returns {{
- *   secureHandle: (channel: string, allow: string[] | string, fn: Function) => void,
- *   secureOn: (channel: string, allow: string[] | string, fn: Function) => void
+ *   secureHandle: (channel: string, fn: Function) => void,
+ *   secureOn: (channel: string, fn: Function) => void
  * }}
  */
-export function createSecureIpc({ ipcMain, getWindows, devUrl }) {
-  function verify(channel, allow, event) {
+export function createSecureIpc({ ipcMain, getWindows, devUrl, policy = IPC_POLICY }) {
+  function verify(channel, event) {
+    const allowed = policy[channel]
+    if (!allowed) {
+      console.warn('[ipc] DITOLAK', channel, 'Channel tidak terdaftar di kebijakan')
+      return { ok: false, reason: 'Channel tidak terdaftar dalam kebijakan' }
+    }
+
     const windows = typeof getWindows === 'function' ? getWindows() : (getWindows || {})
     const v = validateSender(event, windows, { devUrl })
     if (!v.ok) {
@@ -85,20 +94,21 @@ export function createSecureIpc({ ipcMain, getWindows, devUrl }) {
       return { ok: false, reason: v.reason }
     }
 
-    if (allow !== 'any') {
-      const allowedList = Array.isArray(allow) ? allow : [allow]
-      if (!allowedList.includes(v.windowName)) {
-        console.warn('[ipc] DITOLAK', channel, v.windowName || v.reason)
-        return { ok: false, reason: `Window ${v.windowName} tidak diizinkan` }
-      }
+    if (allowed !== 'any' && !allowed.includes(v.windowName)) {
+      console.warn('[ipc] DITOLAK', channel, v.windowName || v.reason)
+      return { ok: false, reason: `Window ${v.windowName} tidak diizinkan` }
     }
 
     return { ok: true, windowName: v.windowName }
   }
 
-  function secureHandle(channel, allow, fn) {
+  function secureHandle(channel, fn) {
+    if (!policy || !(channel in policy)) {
+      throw new Error(`Channel IPC tidak terdaftar dalam kebijakan: ${channel}`)
+    }
+
     ipcMain.handle(channel, (event, ...args) => {
-      const res = verify(channel, allow, event)
+      const res = verify(channel, event)
       if (!res.ok) {
         throw new Error('IPC ditolak')
       }
@@ -106,9 +116,13 @@ export function createSecureIpc({ ipcMain, getWindows, devUrl }) {
     })
   }
 
-  function secureOn(channel, allow, fn) {
+  function secureOn(channel, fn) {
+    if (!policy || !(channel in policy)) {
+      throw new Error(`Channel IPC tidak terdaftar dalam kebijakan: ${channel}`)
+    }
+
     ipcMain.on(channel, (event, ...args) => {
-      const res = verify(channel, allow, event)
+      const res = verify(channel, event)
       if (!res.ok) {
         return
       }
