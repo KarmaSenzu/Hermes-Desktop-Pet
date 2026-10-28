@@ -2697,6 +2697,9 @@ app.on('web-contents-created', (_e, wc) => {
 })
 
 app.whenReady().then(() => {
+  if (process.env.HERMES_DEBUG) {
+    console.log('[env]', process.versions.electron, process.versions.node, process.versions.chrome)
+  }
   session.defaultSession.setPermissionRequestHandler((_wc, permission, cb) => cb(permission === 'media'))
   session.defaultSession.setPermissionCheckHandler((_wc, permission) => permission === 'media')
   Menu.setApplicationMenu(null)

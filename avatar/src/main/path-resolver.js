@@ -454,6 +454,9 @@ export async function resolveRouterApiKey() {
 
     try {
       const { DatabaseSync } = await import('node:sqlite')
+      if (process.env.HERMES_DEBUG) {
+        console.log('[HERMES_DEBUG] node:sqlite import berhasil, DatabaseSync:', typeof DatabaseSync)
+      }
       const db = new DatabaseSync(dbPath, { readOnly: true })
       // Prioritaskan key yang namanya mengandung 'hermes', atau key aktif yang paling baru dibuat
       const row = db.prepare(`
