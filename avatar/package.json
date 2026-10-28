@@ -17,6 +17,7 @@
     "build": "electron-vite build",
     "preview": "electron-vite preview",
     "start": "electron-vite preview",
+    "test": "vitest run",
     "doctor": "node scripts/doctor.mjs"
   },
   "engines": {
@@ -28,13 +29,15 @@
     "pixi-live2d-display": "^0.4.0",
     "pixi.js": "^6.5.10",
     "three": "^0.170.0",
-    "ws": "^8.18.0"
+    "ws": "^8.18.0",
+    "yaml": "^2.9.1"
   },
   "devDependencies": {
     "electron": "33.0.0",
     "electron-builder": "^26.18.0",
     "electron-vite": "^2.3.0",
-    "vite": "^5.4.0"
+    "vite": "^5.4.0",
+    "vitest": "^2.1.9"
   },
   "build": {
     "appId": "com.karmasenzu.hermesdesktoppet",
@@ -53,7 +56,9 @@
       {
         "from": "scripts",
         "to": "scripts",
-        "filter": ["*.py"]
+        "filter": [
+          "*.py"
+        ]
       },
       {
         "from": "extensions",
