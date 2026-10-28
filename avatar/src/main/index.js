@@ -1400,11 +1400,23 @@ ipcMain.handle('avatar:test-connection', async (_event, url, model, apiKey) => {
   }
 })
 
+const SAFE_ARG = /^[A-Za-z0-9._:\/@+=-]{1,200}$/
+const SAFE_QUERY = /^[A-Za-z0-9 ._-]{1,64}$/
+
 // Helper: jalankan `hermes` CLI via execFile (dipakai set-model & install-skill).
-function runHermes(args, timeout = 30000) {
-  const hermesCmd = resolveHermesCmd()
+function runHermes(args, timeout = 30000, queryIndex = -1) {
   return new Promise((resolve, reject) => {
-    execFile(hermesCmd, args, { timeout, shell: process.platform === 'win32', env: process.env }, (err, stdout, stderr) => {
+    for (let i = 0; i < args.length; i++) {
+      const a = String(args[i])
+      if (!(i === queryIndex ? SAFE_QUERY : SAFE_ARG).test(a)) {
+        return reject(new Error(`Argumen ke-${i} tidak valid untuk hermes CLI`))
+      }
+    }
+    const hermesCmd = resolveHermesCmd()
+    const needShell = process.platform === 'win32' && /\.(cmd|bat)$/i.test(hermesCmd)
+    const cmd = needShell ? `"${hermesCmd}"` : hermesCmd
+    const finalArgs = needShell ? args.map((a, i) => (i === queryIndex ? `"${a}"` : String(a))) : args.map(String)
+    execFile(cmd, finalArgs, { timeout, shell: needShell, env: process.env }, (err, stdout, stderr) => {
       if (err) reject(new Error(stderr?.trim() || err.message))
       else resolve(stdout?.trim() || '')
     })
@@ -1858,8 +1870,14 @@ ipcMain.handle('avatar:install-skill', async (_event, skillId) => {
 ipcMain.handle('avatar:browse-skills', async (_event, query) => {
   try {
     const q = String(query || '').trim()
-    const args = q ? ['skills', 'search', q, '--json'] : ['skills', 'browse', '--json']
-    const out = await runHermes(args, 60000)
+    if (q) {
+      if (!SAFE_QUERY.test(q)) {
+        return { ok: false, error: 'Kata kunci mengandung karakter yang tidak diizinkan' }
+      }
+      const out = await runHermes(['skills', 'search', q, '--json'], 60000, 2)
+      return { ok: true, output: out }
+    }
+    const out = await runHermes(['skills', 'browse', '--json'], 60000)
     return { ok: true, output: out }
   } catch (err) {
     return { ok: false, error: err?.message || String(err) }
