@@ -1,5 +1,5 @@
 import { realpathSync } from 'node:fs'
-import { relative, isAbsolute, sep } from 'node:path'
+import { relative, isAbsolute, sep, extname } from 'node:path'
 
 export const ENFORCE = false
 
@@ -44,7 +44,7 @@ export function isPathAllowed(target, fixedRoots = []) {
   const norm = String(target || '').trim().toLowerCase()
   const segments = norm.split(/[/\\]+/).filter(Boolean)
   const base = segments[segments.length - 1] || ''
-  const ext = base.includes('.') ? base.split('.').pop() : ''
+  const ext = extname(norm) || base
 
   if (DENY_BASENAMES.has(base) || segments.some((s) => DENY_SEGMENTS.has(s))) {
     console.warn('[path-guard] DENY (selalu)', ext)
@@ -56,8 +56,9 @@ export function isPathAllowed(target, fixedRoots = []) {
     const real = realpathSync(target).toLowerCase()
     const realSegments = real.split(/[/\\]+/).filter(Boolean)
     const realBase = realSegments[realSegments.length - 1] || ''
+    const realExt = extname(real) || realBase
     if (DENY_BASENAMES.has(realBase) || realSegments.some((s) => DENY_SEGMENTS.has(s))) {
-      console.warn('[path-guard] DENY (selalu)', ext)
+      console.warn('[path-guard] DENY (selalu)', realExt)
       return false
     }
   } catch {}
