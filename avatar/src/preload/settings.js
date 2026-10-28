@@ -56,7 +56,7 @@ const settingsApi = {
 
   // Aplikasi & Shortcut
   pickApp: () => ipcRenderer.invoke('avatar:pick-app'),
-  getAppIcon: (filePath) => ipcRenderer.invoke('avatar:app-icon', filePath),
+  getAppIcon: (appId) => ipcRenderer.invoke('avatar:app-icon', appId),
   scanInstalledApps: () => ipcRenderer.invoke('avatar:scan-installed-apps'),
   getShortcuts: () => ipcRenderer.invoke('avatar:shortcuts'),
   setShortcut: (id, accel) => ipcRenderer.invoke('avatar:set-shortcut', id, accel),
@@ -74,7 +74,7 @@ const settingsApi = {
   windowMaximize: () => ipcRenderer.invoke('avatar:window-maximize'),
 
   // Terminal Execution
-  runInTerminal: (cmd, cwd) => ipcRenderer.invoke('avatar:run-in-terminal', cmd, cwd),
+  runInTerminal: (actionId) => ipcRenderer.invoke('avatar:run-in-terminal', actionId),
 
   // Update Rilis (OTA Auto-Update)
   checkAppUpdate: () => ipcRenderer.invoke('avatar:check-update'),

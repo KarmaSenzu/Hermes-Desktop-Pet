@@ -773,7 +773,7 @@ function bindPackageActions() {
   document.querySelectorAll('[data-terminal-cmd]').forEach((btn) => {
     btn.addEventListener('click', async (e) => {
       e.stopPropagation()
-      const cmd = btn.dataset.terminalCmd
+      const cmd = btn.dataset.terminalAction || btn.dataset.terminalCmd
       if (!cmd) return
 
       const actionTitle = btn.dataset.actionTitle || 'Membuka Terminal PowerShell...'
@@ -3506,7 +3506,7 @@ function renderAppList() {
         <div class="format-title-line">
           <span class="format-title">${escapeHtml(a.name)}</span>
         </div>
-        <p class="format-desc-text" style="font-family:'SF Mono', monospace; font-size:11px;">${escapeHtml(a.command || 'Executable path')}</p>
+        <p class="format-desc-text" style="font-family:'SF Mono', monospace; font-size:11px;">${escapeHtml(a.id ? 'ID: ' + a.id : (a.command || 'Aplikasi terdaftar'))}</p>
       </div>
       <div class="format-status-col">
         <button class="mini-btn del app-del" data-id="${escapeHtml(a.id)}" title="Hapus aplikasi">${renderIcon('trash-2', { size: 13 })} Hapus</button>

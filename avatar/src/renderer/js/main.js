@@ -1834,7 +1834,14 @@ async function executeSelectedCapabilities(selectedIds, cardRef = null) {
   let appsResult = null
   if (selectedIds.includes('apps')) {
     try {
-      await window.hermesAvatar?.launchApp?.('taskmgr.exe')
+      if (!cachedInstalledApps || cachedInstalledApps.length === 0) {
+        const appsRes = await window.hermesAvatar?.getInstalledApps?.()
+        if (appsRes?.ok && Array.isArray(appsRes.apps)) cachedInstalledApps = appsRes.apps
+      }
+      const taskMgrApp = (cachedInstalledApps || []).find((a) => a.name.toLowerCase().includes('task manager'))
+      if (taskMgrApp) {
+        await window.hermesAvatar?.launchApp?.(taskMgrApp.id)
+      }
       appsResult = { launched: ['Task Manager'] }
     } catch (err) {
       appsResult = { error: err.message }
@@ -2926,7 +2933,7 @@ async function tryFastLaunchApp(text) {
   // Luncurkan seluruh aplikasi yang cocok
   for (const app of matchedApps) {
     try {
-      const res = await window.hermesAvatar?.launchApp(app.command || app.path)
+      const res = await window.hermesAvatar?.launchApp(app.id || app.command || app.path)
       if (!res?.ok) {
         log('avatar', `⚠️ Gagal membuka ${app.name}: ${res?.error || 'Unknown error'}`)
       }

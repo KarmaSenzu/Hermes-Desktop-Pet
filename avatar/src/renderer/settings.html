@@ -288,7 +288,7 @@
               <div class="pkg-tab-panel active" data-panel="install">
                 <p class="row-desc">Jika Hermes CLI belum terpasang di komputer Anda, buka terminal PowerShell dan jalankan penginstalan:</p>
                 <div style="display:flex; gap:8px; margin: 4px 0 8px;">
-                  <button type="button" class="terminal-action-btn" data-terminal-cmd="npm install -g @nousresearch/hermes">🚀 Buka di Terminal & Install (NPM)</button>
+                  <button type="button" class="terminal-action-btn" data-terminal-action="install-hermes" data-terminal-cmd="npm install -g @nousresearch/hermes">🚀 Buka di Terminal & Install (NPM)</button>
                 </div>
                 <div class="command-box-group">
                   <span class="command-box-label">Salin Perintah Manual (PowerShell):</span>
@@ -315,7 +315,7 @@
                 </div>
                 <p class="row-desc">Hermes otomatis dijalankan oleh aplikasi ini. Jika Anda ingin menjalankannya secara manual di jendela terminal terpisah:</p>
                 <div style="display:flex; gap:8px; margin: 4px 0 8px;">
-                  <button type="button" class="terminal-action-btn secondary-term" data-terminal-cmd="hermes serve">⚡ Buka Terminal & Jalankan (hermes serve)</button>
+                  <button type="button" class="terminal-action-btn secondary-term" data-terminal-action="start-hermes" data-terminal-cmd="hermes serve">⚡ Buka Terminal & Jalankan (hermes serve)</button>
                 </div>
                 <div class="command-box-group">
                   <span class="command-box-label">Perintah Terminal:</span>
@@ -355,7 +355,7 @@
               <div class="pkg-tab-panel active" data-panel="install">
                 <p class="row-desc">9Router adalah gateway cerdas yang mengarahkan prompt ke berbagai provider AI pilihan Anda:</p>
                 <div style="display:flex; gap:8px; margin: 4px 0 8px;">
-                  <button type="button" class="terminal-action-btn" data-terminal-cmd="npm install -g 9router">🚀 Buka di Terminal & Install (NPM)</button>
+                  <button type="button" class="terminal-action-btn" data-terminal-action="install-router" data-terminal-cmd="npm install -g 9router">🚀 Buka di Terminal & Install (NPM)</button>
                 </div>
                 <div class="command-box-group">
                   <span class="command-box-label">Salin Perintah Manual (PowerShell):</span>
@@ -383,7 +383,7 @@
                 </div>
                 <p class="row-desc">Jalankan service 9Router sebelum menghubungkan avatar ke model LLM:</p>
                 <div style="display:flex; gap:8px; margin: 4px 0 8px;">
-                  <button type="button" class="terminal-action-btn secondary-term" data-terminal-cmd="9router -n --skip-update">Buka Terminal (Debugging)</button>
+                  <button type="button" class="terminal-action-btn secondary-term" data-terminal-action="start-router" data-terminal-cmd="9router -n --skip-update">Buka Terminal (Debugging)</button>
                 </div>
                 <div class="command-box-group">
                   <span class="command-box-label">Perintah Terminal:</span>
@@ -427,7 +427,7 @@
                 </div>
                 <p class="row-desc">Kokoro membutuhkan paket python <code>kokoro-onnx</code> dan <code>soundfile</code>. Anda bisa menginstallnya langsung di terminal:</p>
                 <div style="display:flex; gap:8px; margin: 6px 0 10px; flex-wrap:wrap;">
-                  <button type="button" class="terminal-action-btn" data-terminal-cmd="py -m pip install kokoro-onnx soundfile">🚀 Buka di Terminal & Install Pip</button>
+                  <button type="button" class="terminal-action-btn" data-terminal-action="install-kokoro" data-terminal-cmd="py -m pip install kokoro-onnx soundfile">🚀 Buka di Terminal & Install Pip</button>
                   <button type="button" id="pkg-install-kokoro-btn" class="mini-btn use">Otomatis Install di Background App</button>
                 </div>
                 <div class="command-box-group">
@@ -453,7 +453,7 @@
                 <p class="row-desc">Jalankan daemon server audio Kokoro agar avatar dapat bersuara anime:</p>
                 <div style="display:flex; gap:8px; margin: 6px 0 10px; flex-wrap:wrap;">
                   <button type="button" id="pkg-start-kokoro-btn" class="mini-btn primary">⚡ Jalankan di Background (Senyap)</button>
-                  <button type="button" class="terminal-action-btn secondary-term" data-terminal-cmd="py scripts/kokoro_server.py">Buka Terminal (Debugging)</button>
+                  <button type="button" class="terminal-action-btn secondary-term" data-terminal-action="start-kokoro" data-terminal-cmd="py scripts/kokoro_server.py">Buka Terminal (Debugging)</button>
                 </div>
                 <div class="package-actions-row" style="margin-top: 8px;">
                   <button type="button" id="pkg-open-folder-btn" class="mini-btn edit">Buka Folder Paket 📁</button>
@@ -492,7 +492,7 @@
               <div class="pkg-tab-panel active" data-panel="install">
                 <p class="row-desc">Jika Python belum terpasang, unduh dari situs resmi Python. <strong>PENTING:</strong> Centang opsi <em>"Add Python to PATH"</em> saat instalasi.</p>
                 <div style="display:flex; gap:8px; margin: 6px 0 8px;">
-                  <button type="button" class="terminal-action-btn" data-terminal-cmd="python --version; py --version">🚀 Buka Terminal & Tes Python</button>
+                  <button type="button" class="terminal-action-btn" data-terminal-action="test-python" data-terminal-cmd="python --version; py --version">🚀 Buka Terminal & Tes Python</button>
                 </div>
                 <div class="command-box-group">
                   <span class="command-box-label">Perintah Terminal Cek Versi:</span>
@@ -566,7 +566,7 @@
               </div>
               <p class="row-desc" style="margin-top:6px;">Memori percakapan disimpan secara 100% offline dan privat di perangkat Anda.</p>
               <div style="display:flex; gap:8px; margin: 6px 0 8px;">
-                <button type="button" class="terminal-action-btn secondary-term" data-terminal-cmd="hermes memory status">⚡ Cek Status Memori di Terminal</button>
+                <button type="button" class="terminal-action-btn secondary-term" data-terminal-action="memory-status" data-terminal-cmd="hermes memory status">⚡ Cek Status Memori di Terminal</button>
               </div>
               <div class="command-box-group">
                 <span class="command-box-label">Perintah Terminal:</span>
@@ -652,7 +652,7 @@
                 <p class="row-desc">Bridge HTTP lokal berjalan di port 9124 untuk menghubungkan browser dengan avatar secara aman (hanya localhost):</p>
                 <div style="display:flex; gap:8px; margin: 8px 0 10px; flex-wrap:wrap;">
                   <button type="button" id="pkg-test-bridge-btn" class="mini-btn primary">⚡ Tes Koneksi Bridge</button>
-                  <button type="button" class="terminal-action-btn secondary-term" data-terminal-cmd="curl http://127.0.0.1:9124/api/ping">Cek via Curl di Terminal</button>
+                  <button type="button" class="terminal-action-btn secondary-term" data-terminal-action="ping-bridge" data-terminal-cmd="curl http://127.0.0.1:9124/api/ping">Cek via Curl di Terminal</button>
                 </div>
                 <div class="command-box-group">
                   <span class="command-box-label">Fitur Ekstensi:</span>

@@ -41,6 +41,8 @@ import { loadOrCreateBridgeToken, BRIDGE_TOKEN_FILE } from './bridge-token.js'
 import { isSafeArg } from './cli-args.js'
 import { createSecretStore } from './secret-store.js'
 import { createSecureIpc } from './secure-ipc.js'
+import { resolveTerminalAction } from './actions.js'
+import { createAppRegistry } from './app-registry.js'
 import { RPC_ALLOWED_METHODS } from './ipc-policy.js'
 
 const secretStore = createSecretStore(safeStorage)
@@ -618,9 +620,15 @@ secureHandle('avatar:window-maximize', (event) => {
   return { ok: true }
 })
 
-// IPC: jalankan perintah di terminal sistem baru (PowerShell di Windows, Terminal.app di macOS via AppleScript)
-secureHandle('avatar:run-in-terminal', async (_event, cmd, workingDir) => {
+// IPC: jalankan aksi terminal bernama yang terdaftar secara statis
+secureHandle('avatar:run-in-terminal', async (_event, actionId) => {
   try {
+    const resolved = resolveTerminalAction(actionId)
+    if (!resolved) {
+      return { ok: false, error: 'Aksi tidak dikenal' }
+    }
+    const { cmd, args } = resolved
+
     ensureDeployedCompanionAndScripts()
     const candidateRoots = [
       process.resourcesPath,
@@ -630,11 +638,13 @@ secureHandle('avatar:run-in-terminal', async (_event, cmd, workingDir) => {
       process.cwd()
     ].filter(Boolean)
     const repoRoot = candidateRoots.find((dir) => existsSync(join(dir, 'scripts', 'kokoro_server.py'))) || candidateRoots[0]
-    const cwd = workingDir || repoRoot
+    const cwd = repoRoot
 
     if (process.platform === 'win32') {
+      const safeArgs = args.map(a => `'${a.replace(/'/g, "''")}'`).join(' ')
+      const commandLine = `${cmd} ${safeArgs}`
       const safeCwd = cwd.replace(/'/g, "''")
-      const safeCmd = `Set-Location '${safeCwd}'; ${cmd}`
+      const safeCmd = `Set-Location '${safeCwd}'; ${commandLine}`
       const child = spawn('cmd.exe', ['/c', 'start', 'Hermes Terminal', 'powershell', '-NoExit', '-Command', safeCmd], {
         cwd,
         detached: true,
@@ -642,13 +652,9 @@ secureHandle('avatar:run-in-terminal', async (_event, cmd, workingDir) => {
       })
       child.unref()
     } else if (process.platform === 'darwin') {
-      // macOS: Buka Terminal.app interaktif sungguhan via osascript
-      let macCmd = cmd.replace(/^py\s+/, 'python3 ')
-      if (macCmd.includes('pip install') && !macCmd.includes('--break-system-packages')) {
-        macCmd += ' --break-system-packages'
-      }
-      const safeMacCmd = macCmd.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
-      const safeCwd = cwd.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
+      const commandLine = `${cmd} ${args.map(a => `"${a.replace(/"/g, '\\"')}"`).join(' ')}`
+      const safeMacCmd = commandLine.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
+      const safeCwd = cwd.replace(/\\/g, '\\\\').replace(/"/g, '\"')
       const appleScript = `tell application "Terminal"
         activate
         do script "cd \\"${safeCwd}\\" && ${safeMacCmd}"
@@ -659,8 +665,7 @@ secureHandle('avatar:run-in-terminal', async (_event, cmd, workingDir) => {
       })
       child.unref()
     } else {
-      let linuxCmd = cmd.replace(/^py\s+/, 'python3 ')
-      const child = spawn('bash', ['-c', `cd "${cwd}" && ${linuxCmd}`], {
+      const child = spawn('x-terminal-emulator', ['-e', cmd, ...args], {
         cwd,
         detached: true,
         stdio: 'ignore'
@@ -2086,12 +2091,13 @@ secureHandle('avatar:encrypt-secret', (_event, plaintext, baseUrl) => {
   }
 })
 
-// IPC: pilih file aplikasi (native dialog) → path.
-secureHandle('avatar:pick-app', async () => {  const filters = process.platform === 'darwin'
+// IPC: pilih file aplikasi (native dialog) → mendaftarkan ke registry & mengembalikan { id, name }
+secureHandle('avatar:pick-app', async () => {
+  const filters = process.platform === 'darwin'
     ? [{ name: 'Aplikasi', extensions: ['app'] }]
     : process.platform === 'win32'
       ? [{ name: 'Aplikasi', extensions: ['exe', 'lnk'] }]
-      : [{ name: 'Aplikasi', extensions: ['desktop'] }]
+      : [{ name: 'Aplikasi', extensions: ['desktop', 'appimage'] }]
 
   const result = await dialog.showOpenDialog({
     title: 'Pilih aplikasi',
@@ -2099,10 +2105,21 @@ secureHandle('avatar:pick-app', async () => {  const filters = process.platform 
     filters
   })
   if (result.canceled || result.filePaths.length === 0) return null
-  return result.filePaths[0]
+  const filePath = result.filePaths[0]
+  const regRes = await appRegistry.registerApp(filePath, '', 'user')
+  if (!regRes.ok) return null
+  return regRes.app
 })
 
 const APPS_CACHE_FILE = join(homedir(), '.hermes-avatar', 'apps_cache.json')
+
+const appRegistry = createAppRegistry({
+  cacheFile: APPS_CACHE_FILE,
+  fs: { existsSync, readFileSync, writeFileSync },
+  shell,
+  dialog,
+  execFile
+})
 
 // Pindai shortcut aplikasi Windows di Start Menu & aplikasi bawaan resmi
 function scanWindowsShortcuts() {
@@ -2199,38 +2216,10 @@ function scanWindowsShortcuts() {
   return results
 }
 
-// IPC: jalankan aplikasi secara cross-platform (Windows, macOS, Linux) dengan fast fallback.
-secureHandle('avatar:launch-app', async (_event, targetPath) => {
+// IPC: jalankan aplikasi berdasarkan appId aman yang terdaftar di registry
+secureHandle('avatar:launch-app', async (_event, appId) => {
   try {
-    if (!targetPath) return { ok: false, error: 'Path aplikasi kosong' }
-    const p = String(targetPath).trim()
-
-    // 1. URL / protocol URI (misal ms-settings:, spotify:, https://)
-    if (/^[a-zA-Z0-9\-_]+:/.test(p) && !p.includes('\\') && !p.includes('/')) {
-      await shell.openExternal(p)
-      return { ok: true }
-    }
-
-    // 2. File / shortcut path langsung jika ada di disk
-    if (existsSync(p)) {
-      const err = await shell.openPath(p)
-      if (!err) return { ok: true }
-    }
-
-    // 3. Fallback: Eksekusi command langsung di OS (misal "notepad.exe", "calc.exe", atau nama aplikasi)
-    const { exec } = await import('child_process')
-    return new Promise((resolve) => {
-      exec(`start "" "${p}"`, { windowsHide: true }, (error) => {
-        if (error) {
-          exec(p, { windowsHide: true }, (err2) => {
-            if (err2) resolve({ ok: false, error: err2.message || String(err2) })
-            else resolve({ ok: true })
-          })
-        } else {
-          resolve({ ok: true })
-        }
-      })
-    })
+    return await appRegistry.launchById(appId)
   } catch (err) {
     return { ok: false, error: err?.message || String(err) }
   }
@@ -2239,9 +2228,8 @@ secureHandle('avatar:launch-app', async (_event, targetPath) => {
 // IPC: Scan semua aplikasi terpasang di Windows (Start Menu & Builtins)
 secureHandle('avatar:scan-installed-apps', async () => {
   try {
-    const apps = scanWindowsShortcuts()
-    await mkdir(join(homedir(), '.hermes-avatar'), { recursive: true })
-    await writeFile(APPS_CACHE_FILE, JSON.stringify(apps, null, 2), 'utf-8')
+    const scanned = scanWindowsShortcuts()
+    const apps = appRegistry.setScannedApps(scanned)
     return { ok: true, apps, count: apps.length }
   } catch (err) {
     return { ok: false, error: err?.message || String(err) }
@@ -2251,43 +2239,23 @@ secureHandle('avatar:scan-installed-apps', async () => {
 // IPC: Ambil cache aplikasi terpasang (jika belum ada, lakukan auto-scan)
 secureHandle('avatar:get-installed-apps', async () => {
   try {
-    if (existsSync(APPS_CACHE_FILE)) {
-      const data = await readFile(APPS_CACHE_FILE, 'utf-8')
-      const apps = JSON.parse(data)
-      return { ok: true, apps, count: apps.length }
+    let apps = appRegistry.getPublicList()
+    if (apps.length === 0) {
+      const scanned = scanWindowsShortcuts()
+      apps = appRegistry.setScannedApps(scanned)
     }
-    const apps = scanWindowsShortcuts()
-    await mkdir(join(homedir(), '.hermes-avatar'), { recursive: true })
-    await writeFile(APPS_CACHE_FILE, JSON.stringify(apps, null, 2), 'utf-8')
     return { ok: true, apps, count: apps.length }
   } catch (err) {
     return { ok: false, error: err?.message || String(err) }
   }
 })
 
-// IPC: Belajar / simpan aplikasi baru secara permanen
+// IPC: Belajar / simpan aplikasi baru dengan konfirmasi native user
 secureHandle('avatar:learn-app', async (_event, appData) => {
   try {
-    if (!appData || !appData.name || !appData.command) {
-      return { ok: false, error: 'Nama dan path/command aplikasi wajib diisi' }
-    }
-    let list = []
-    if (existsSync(APPS_CACHE_FILE)) {
-      try {
-        list = JSON.parse(await readFile(APPS_CACHE_FILE, 'utf-8'))
-      } catch {}
-    }
-    list = list.filter((a) => a.name.toLowerCase() !== appData.name.toLowerCase())
-    list.unshift({
-      name: appData.name,
-      command: appData.command,
-      aliases: appData.aliases || [],
-      source: 'user-learned',
-      updatedAt: Date.now()
-    })
-    await mkdir(join(homedir(), '.hermes-avatar'), { recursive: true })
-    await writeFile(APPS_CACHE_FILE, JSON.stringify(list, null, 2), 'utf-8')
-    return { ok: true, count: list.length }
+    const targetPath = typeof appData === 'string' ? appData : appData?.path || appData?.command
+    const name = typeof appData === 'object' ? appData?.name : ''
+    return await appRegistry.learnAppWithConfirmation(targetPath, name)
   } catch (err) {
     return { ok: false, error: err?.message || String(err) }
   }
@@ -2374,13 +2342,14 @@ secureHandle('avatar:get-live-news', async () => {
   }
 })
 
-// IPC: ambil icon aplikasi (NativeImage → data URL PNG).
-secureHandle('avatar:app-icon', async (_event, filePath) => {
+// IPC: ambil icon aplikasi berdasarkan appId (NativeImage → data URL PNG)
+secureHandle('avatar:app-icon', async (_event, appId) => {
   try {
-    const icon = await app.getFileIcon(String(filePath), { size: 'normal' })
+    const entry = appRegistry.findById(appId)
+    if (!entry || !entry.path || !existsSync(entry.path)) return { ok: false, error: 'Aplikasi tidak ditemukan' }
+    const icon = await app.getFileIcon(entry.path, { size: 'normal' })
     if (!icon || icon.isEmpty()) return { ok: false, error: 'Icon tidak ditemukan' }
-    const png = icon.toDataURL()
-    return { ok: true, dataUrl: png }
+    return { ok: true, dataUrl: icon.toDataURL() }
   } catch (err) {
     return { ok: false, error: err?.message || String(err) }
   }
