@@ -8,6 +8,7 @@
 import * as PIXI from 'pixi.js'
 import { Live2DModel } from 'pixi-live2d-display/cubism4'
 import { voiceManager } from './voice-manager.js'
+import { PERF } from './perf-config.js'
 
 Live2DModel.registerTicker(PIXI.Ticker)
 
@@ -30,8 +31,12 @@ export class Live2DAvatar {
       antialias: true,
       autoStart: true,
       clearBeforeRender: true,
-      resolution: window.devicePixelRatio || 1
+      resolution: Math.min(window.devicePixelRatio || 1, PERF.MAX_DPR),
+      autoDensity: true,
+      powerPreference: 'low-power'
     })
+
+    this.app.ticker.maxFPS = PERF.ACTIVE_FPS
 
     this.view = this.app.view
     this.view.id = 'live2d-canvas'
@@ -58,10 +63,31 @@ export class Live2DAvatar {
     this._dragStartModel = { x: 0, y: 0 }
     this._motionTimer = null
 
-    this.app.ticker.add((delta) => this.update(delta * 16.6))
+    this._tickerFn = (delta) => this.update(delta * 16.6)
+    this.app.ticker.add(this._tickerFn)
 
     this._bindEvents()
-    window.addEventListener('resize', () => this.handleResize())
+    this._onResize = () => this.handleResize()
+    window.addEventListener('resize', this._onResize)
+
+    this._onVisibilityChange = () => {
+      if (!this.app || !this.app.ticker) return
+      if (document.hidden) {
+        this.app.ticker.stop()
+      } else {
+        this.app.ticker.start()
+      }
+    }
+    document.addEventListener('visibilitychange', this._onVisibilityChange)
+  }
+
+  setPerfMode(mode) {
+    if (!this.app || !this.app.ticker) return
+    if (mode === 'idle') {
+      this.app.ticker.maxFPS = PERF.IDLE_FPS
+    } else {
+      this.app.ticker.maxFPS = PERF.ACTIVE_FPS
+    }
   }
 
   async load(url) {
@@ -819,7 +845,7 @@ export class Live2DAvatar {
     }
 
     // 1. Mouse move: Hit test presisi + Click-Through OS + Smooth Dragging
-    window.addEventListener('mousemove', (e) => {
+    this._onMouseMove = (e) => {
       const hitChar = this._hitTestModel(e.clientX, e.clientY)
       const hitUI = !!e.target.closest('.interactive-ui')
 
@@ -863,10 +889,11 @@ export class Live2DAvatar {
           this.onDrag(this.model.x, this.model.y)
         }
       }
-    })
+    }
+    window.addEventListener('mousemove', this._onMouseMove)
 
     // 2. Mouse down: Mulai drag
-    window.addEventListener('mousedown', (e) => {
+    this._onMouseDown = (e) => {
       if (e.target.closest('.interactive-ui')) return
 
       const hit = this._hitTestModel(e.clientX, e.clientY)
@@ -882,10 +909,11 @@ export class Live2DAvatar {
       this._dragStartMouse = { x: e.clientX, y: e.clientY }
       this._dragStartModel = { x: this.model.x, y: this.model.y }
       document.body.style.cursor = 'grabbing'
-    })
+    }
+    window.addEventListener('mousedown', this._onMouseDown)
 
     // 3. Mouse up: Selesai drag atau deteksi klik
-    window.addEventListener('mouseup', (e) => {
+    this._onMouseUp = (e) => {
       if (!this.isDragging) return
       this.isDragging = false
 
@@ -903,20 +931,22 @@ export class Live2DAvatar {
           this.onAvatarClick(e.clientX, e.clientY)
         }
       }
-    })
+    }
+    window.addEventListener('mouseup', this._onMouseUp)
 
     // 4. Mouse leave: Reset kursor & aktifkan click-through ke desktop
-    window.addEventListener('mouseleave', () => {
+    this._onMouseLeave = () => {
       if (!this.isDragging && !this.ignoringMouse) {
         window.hermesAvatar?.setIgnoreMouse(true, true)
         this.ignoringMouse = true
         this.clearPointerLookAt()
         document.body.style.cursor = 'default'
       }
-    })
+    }
+    window.addEventListener('mouseleave', this._onMouseLeave)
 
     // 5. Mouse Wheel: Zoom in / Zoom out karakter halus
-    window.addEventListener('wheel', (e) => {
+    this._onWheel = (e) => {
       const hit = this._hitTestModel(e.clientX, e.clientY)
       if (!hit) return
 
@@ -924,7 +954,8 @@ export class Live2DAvatar {
       const delta = e.deltaY < 0 ? 0.08 : -0.08
       this.scaleMultiplier = Math.max(0.35, Math.min(2.5, this.scaleMultiplier + delta))
       this._applyScale()
-    }, { passive: false })
+    }
+    window.addEventListener('wheel', this._onWheel, { passive: false })
   }
 
   destroy() {
@@ -932,8 +963,61 @@ export class Live2DAvatar {
       clearTimeout(this._motionTimer)
       this._motionTimer = null
     }
+
+    if (this._onResize) {
+      window.removeEventListener('resize', this._onResize)
+      this._onResize = null
+    }
+    if (this._onVisibilityChange) {
+      document.removeEventListener('visibilitychange', this._onVisibilityChange)
+      this._onVisibilityChange = null
+    }
+    if (this._onMouseMove) {
+      window.removeEventListener('mousemove', this._onMouseMove)
+      this._onMouseMove = null
+    }
+    if (this._onMouseDown) {
+      window.removeEventListener('mousedown', this._onMouseDown)
+      this._onMouseDown = null
+    }
+    if (this._onMouseUp) {
+      window.removeEventListener('mouseup', this._onMouseUp)
+      this._onMouseUp = null
+    }
+    if (this._onMouseLeave) {
+      window.removeEventListener('mouseleave', this._onMouseLeave)
+      this._onMouseLeave = null
+    }
+    if (this._onWheel) {
+      window.removeEventListener('wheel', this._onWheel)
+      this._onWheel = null
+    }
+
+    if (this.model) {
+      try {
+        if (this.app?.stage) {
+          this.app.stage.removeChild(this.model)
+        }
+        this.model.destroy()
+      } catch (e) {
+        console.warn('[Live2DAvatar] Gagal destroy model:', e)
+      }
+      this.model = null
+    }
+
+    if (this.view?.parentNode) {
+      this.view.parentNode.removeChild(this.view)
+    }
+
     if (this.app) {
-      this.app.destroy(true, { children: true, texture: true, baseTexture: true })
+      try {
+        if (this._tickerFn && this.app.ticker) {
+          this.app.ticker.remove(this._tickerFn)
+        }
+        this.app.destroy(true, { children: true, texture: true, baseTexture: true })
+      } catch (e) {
+        console.warn('[Live2DAvatar] Gagal destroy app:', e)
+      }
       this.app = null
     }
   }

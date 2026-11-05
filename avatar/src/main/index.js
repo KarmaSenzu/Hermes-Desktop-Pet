@@ -1,7 +1,7 @@
 import { app, BrowserWindow, ipcMain, protocol, dialog, screen, safeStorage, shell, Menu, session } from 'electron'
 import { join, extname, isAbsolute, basename, dirname } from 'path'
 import { readFile, writeFile, mkdir, rm, copyFile, rename, readdir } from 'fs/promises'
-import { existsSync, statSync, readdirSync, cpSync, mkdirSync, createWriteStream, readFileSync } from 'fs'
+import { existsSync, statSync, readdirSync, cpSync, mkdirSync, createWriteStream, readFileSync, openSync, readSync, closeSync } from 'fs'
 import http from 'http'
 import https from 'https'
 import { execFile, spawn } from 'child_process'
@@ -44,6 +44,7 @@ import { createSecureIpc } from './secure-ipc.js'
 import { resolveTerminalAction } from './actions.js'
 import { createAppRegistry } from './app-registry.js'
 import { RPC_ALLOWED_METHODS } from './ipc-policy.js'
+import { readPngSize, estimateTextureMB } from './png-size.js'
 
 const secretStore = createSecretStore(safeStorage)
 
@@ -260,7 +261,8 @@ function createLauncherWindow() {
       preload: join(__dirname, '../preload/settings.mjs'),
       contextIsolation: true,
       sandbox: false,
-      backgroundThrottling: false // Cegah pembekuan rendering oleh Chromium saat window di-hide
+
+
     }
   })
 
@@ -317,7 +319,8 @@ function createAvatarWindow(modelPath) {
     webPreferences: {
       preload: join(__dirname, '../preload/avatar.mjs'),
       contextIsolation: true,
-      sandbox: false
+      sandbox: false,
+      backgroundThrottling: false
     }
   })
 
@@ -415,7 +418,10 @@ function handleIncomingWebPrompt(payload) {
     const defaultPath = join(__dirname, '../../assets/live2d/mother/20250106.model3.json')
     if (existsSync(defaultPath)) {
       createAvatarWindow(defaultPath)
-      if (launcherWindow && !launcherWindow.isDestroyed()) launcherWindow.hide()
+      if (launcherWindow && !launcherWindow.isDestroyed()) {
+        launcherWindow.destroy()
+        launcherWindow = null
+      }
     }
   }
 }
@@ -527,7 +533,10 @@ secureHandle('avatar:start', (_event, modelPath) => {
     return { ok: true, reused: true }
   }
   createAvatarWindow(resolvedPath)
-  if (launcherWindow) launcherWindow.hide()
+  if (launcherWindow && !launcherWindow.isDestroyed()) {
+    launcherWindow.destroy()
+    launcherWindow = null
+  }
   return { ok: true, reused: false }
 })
 
@@ -598,7 +607,12 @@ secureHandle('avatar:open-settings', () => {
 // IPC: kontrol window kustom (ala macOS traffic lights)
 secureHandle('avatar:window-close', (event) => {
   const win = BrowserWindow.fromWebContents(event.sender)
-  if (win) win.close()
+  if (win) {
+    win.destroy()
+    if (win === launcherWindow) {
+      launcherWindow = null
+    }
+  }
   return { ok: true }
 })
 
@@ -698,7 +712,33 @@ secureHandle('avatar:pick-model', async () => {
   if (result.canceled || result.filePaths.length === 0) return null
   const chosenPath = result.filePaths[0]
   approveRoot(dirname(chosenPath))
-  return chosenPath
+  let estimateMB = 0
+  const ext = extname(chosenPath).toLowerCase()
+  if (chosenPath.toLowerCase().endsWith('.model3.json') || ext === '.json') {
+    try {
+      const raw = readFileSync(chosenPath, 'utf8')
+      const data = JSON.parse(raw)
+      const textures = data?.FileReferences?.Textures || []
+      const dir = dirname(chosenPath)
+      const sizes = []
+      for (const texRel of textures) {
+        const texPath = join(dir, texRel)
+        if (existsSync(texPath)) {
+          const fd = openSync(texPath, 'r')
+          const buf = Buffer.alloc(24)
+          readSync(fd, buf, 0, 24, 0)
+          closeSync(fd)
+          const sz = readPngSize(buf)
+          if (sz) sizes.push(sz)
+        }
+      }
+      estimateMB = estimateTextureMB(sizes)
+    } catch (err) {
+      console.warn('[pick-model] Gagal hitung ukuran tekstur:', err?.message || err)
+    }
+  }
+
+  return { path: chosenPath, estimateMB }
 })
 
 // IPC: buka dialog pilih file audio musik lokal (mp3, wav, ogg, flac, m4a, aac).
@@ -2699,6 +2739,21 @@ app.on('web-contents-created', (_e, wc) => {
 app.whenReady().then(() => {
   if (process.env.HERMES_DEBUG) {
     console.log('[env]', process.versions.electron, process.versions.node, process.versions.chrome)
+  }
+  if (process.env.HERMES_PERF === '1') {
+    app.getGPUInfo('basic')
+      .then((gpu) => console.log('[PERF GPU]', JSON.stringify(gpu)))
+      .catch((err) => console.warn('[PERF GPU] Gagal baca GPU info:', err?.message || err))
+
+    setInterval(() => {
+      const summary = app.getAppMetrics().map((m) => ({
+        type: m.type,
+        pid: m.pid,
+        memoryMB: Math.round((m.memory?.workingSetSize || 0) / 1024),
+        cpuPercent: m.cpu?.percentCPUUsage ?? 0
+      }))
+      console.log('[PERF Metrics]', JSON.stringify(summary))
+    }, 30000)
   }
   session.defaultSession.setPermissionRequestHandler((_wc, permission, cb) => cb(permission === 'media'))
   session.defaultSession.setPermissionCheckHandler((_wc, permission) => permission === 'media')

@@ -1278,8 +1278,21 @@ function openFormatDetail(ext) {
   // Bind elemen baru.
   document.getElementById('char-browse-btn').addEventListener('click', async () => {
     try {
-      const filePath = await window.hermesAvatar.pickModelFile()
-      if (filePath) document.getElementById('char-path').value = filePath
+      const res = await window.hermesAvatar.pickModelFile()
+      if (res) {
+        const filePath = typeof res === 'string' ? res : res.path
+        const estimateMB = typeof res === 'object' ? res.estimateMB : 0
+        if (filePath) document.getElementById('char-path').value = filePath
+        if (estimateMB > 512) {
+          showToast(
+            'Model Berat ⚠️',
+            `Model ini diperkirakan memakai ±${estimateMB} MB memori grafis. Pertimbangkan tekstur ≤ 2048 px.`,
+            'warning',
+            '⚠️',
+            6000
+          )
+        }
+      }
     } catch (err) {
       statusEl.textContent = `Gagal buka dialog: ${err.message}`
       showToast('Gagal Memilih File', err.message, 'error', '❌')

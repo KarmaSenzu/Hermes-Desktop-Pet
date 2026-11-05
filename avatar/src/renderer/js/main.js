@@ -11,6 +11,7 @@ import { toSpeechText } from './speech-normalizer.js'
 import { MusicPlayer } from './music-player.js'
 import { tilingManager } from './tiling-manager.js'
 import * as THREE from 'three'
+import { PERF } from './perf-config.js'
 
 /**
  * main.js — entry renderer untuk window avatar (index.html).
@@ -34,6 +35,32 @@ musicPlayer.init()
 
 // TTS on/off (bisa diatur lewat settings nanti).
 let ttsEnabled = true
+
+// --- State tracking performa (FPS dinamis aktif / idle) ---
+let isStreamingResponse = false
+let lastPerfActivityTime = Date.now()
+let currentPerfMode = 'active'
+
+function updatePerfMode(forceActive = false) {
+  if (forceActive) {
+    lastPerfActivityTime = Date.now()
+  }
+  if (!live2dPet?.setPerfMode) return
+  const isChatOpen = chatSheet && !chatSheet.classList.contains('hidden')
+  const hasRecentActivity = (Date.now() - lastPerfActivityTime) < PERF.IDLE_AFTER_MS
+  const isBusy = isSpeaking || isStreamingResponse || hasRecentActivity || isChatOpen
+  const nextMode = isBusy ? 'active' : 'idle'
+  if (nextMode !== currentPerfMode) {
+    currentPerfMode = nextMode
+    live2dPet.setPerfMode(nextMode)
+  }
+}
+
+window.addEventListener('mousemove', () => updatePerfMode(true), { passive: true })
+window.addEventListener('mousedown', () => updatePerfMode(true), { passive: true })
+window.addEventListener('keydown', () => updatePerfMode(true), { passive: true })
+window.hermesAvatar?.onCursorMove?.(() => updatePerfMode(true))
+setInterval(() => updatePerfMode(), 2000)
 
 // Gabungan render-loop: idle (blink/napas/motion) + vrm.update + lip sync + mmd.
 pet.onBeforeRender = (deltaMs) => {
@@ -99,6 +126,7 @@ window.hermesAvatar.onLoadModel(async (modelPath) => {
       }
       await live2dPet.load(modelUrl)
       controller = live2dPet
+      updatePerfMode(true)
 
       // Pasang handler klik pada avatar untuk toggle action menu ala YourMother
       live2dPet.onAvatarClick = () => {
@@ -110,6 +138,7 @@ window.hermesAvatar.onLoadModel(async (modelPath) => {
         timerPanel?.classList.add('no-transition')
         musicPanel?.classList.add('no-transition')
         tilingManager.tile()
+    updatePerfMode(true)
         updateSpeechBubblePosition()
       }
 
@@ -121,6 +150,7 @@ window.hermesAvatar.onLoadModel(async (modelPath) => {
 
       live2dPet.onScaleChange = () => {
         tilingManager.tile()
+    updatePerfMode(true)
         updateSpeechBubblePosition()
       }
 
@@ -262,6 +292,7 @@ function updateSpeechBubblePosition() {
 function showSpeechBubble(text, duration = 6000) {
   if (!speechBubble || !speechBubbleText) return
   if (!text || !text.trim()) {
+    updatePerfMode()
     hideSpeechBubble()
     return
   }
@@ -279,7 +310,8 @@ function showSpeechBubble(text, duration = 6000) {
 
   if (duration > 0) {
     speechBubbleTimer = setTimeout(() => {
-      hideSpeechBubble()
+      updatePerfMode()
+    hideSpeechBubble()
     }, duration)
   }
 }
@@ -466,6 +498,7 @@ function toggleCompanionMenu(forceState) {
     companionHud.classList.add('visible')
     requestAnimationFrame(() => {
       tilingManager.tile()
+    updatePerfMode(true)
     })
   } else {
     companionHud.classList.remove('visible')
@@ -474,6 +507,7 @@ function toggleCompanionMenu(forceState) {
       closeTimerPanel({ stopTimer: false })
     }
     tilingManager.tile()
+    updatePerfMode(true)
   }
 }
 
@@ -769,6 +803,7 @@ function toggleChat() {
 
     // Auto-Adjust: Jendela yang tersisa otomatis bergeser mengisi ruang kosong
     tilingManager.tile()
+    updatePerfMode(true)
   }
 }
 
@@ -2259,6 +2294,8 @@ async function initHermes() {
 
     // Jawaban final.
     hermes.on('message.complete', (evt) => {
+      isStreamingResponse = false
+      updatePerfMode()
       removeToolProgress()
       // Jika ini adalah respon pembuatan notulen eksekutif:
       if (isGeneratingSummary) {
@@ -2338,6 +2375,8 @@ async function initHermes() {
 
     // Streaming delta (teks muncul saat Hermes mengetik / menyusun jawaban).
     hermes.on('message.delta', (evt) => {
+      isStreamingResponse = true
+      updatePerfMode(true)
       removeToolProgress()
       if (controller?.currentEmotion !== 'composing') {
         controller?.setExpression('composing')
@@ -2375,6 +2414,8 @@ async function initHermes() {
 
     // Turn dimulai → thinking (sesuai gaya aktif) + kunci input + bubble + bicara progress.
     hermes.on('message.start', () => {
+      isStreamingResponse = true
+      updatePerfMode(true)
       removeToolProgress()
       accumulatedDeltaText = ''
       streamingLine = null
@@ -2410,6 +2451,8 @@ async function initHermes() {
 
     // Turn error/berhenti → pastikan input tidak terkunci selamanya.
     hermes.on('error', () => {
+      isStreamingResponse = false
+      updatePerfMode()
       removeToolProgress()
       setInputLocked(false)
       controller?.setExpression('neutral')
@@ -2425,6 +2468,8 @@ async function initHermes() {
       }
     })
     hermes.on('turn.complete', () => {
+      isStreamingResponse = false
+      updatePerfMode()
       removeToolProgress()
       setInputLocked(false)
       setStatus('')
@@ -2621,6 +2666,7 @@ function setConversationState(state) {
 function interruptSpeech() {
   audioPlayer.stop()
   speechQueue.length = 0
+  updatePerfMode()
   isSpeaking = false
   controller?.setMouthLevel(0)
   musicPlayer?.duck(false)
@@ -2638,6 +2684,7 @@ function withTimeout(promise, ms) {
 async function processSpeechQueue() {
   if (isSpeaking) return
   isSpeaking = true
+  updatePerfMode(true)
   musicPlayer?.duck(true)
   try {
     while (speechQueue.length > 0) {
@@ -2673,6 +2720,7 @@ async function processSpeechQueue() {
   } finally {
     isSpeaking = false
     musicPlayer?.duck(false)
+    updatePerfMode()
     hideSpeechBubble()
     // Kembalikan bubble ke ringkasan terakhir (jika ada) atau idle.
     setStatus(lastSummary || '')
