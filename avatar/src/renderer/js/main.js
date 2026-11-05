@@ -12,6 +12,21 @@ import { MusicPlayer } from './music-player.js'
 import { tilingManager } from './tiling-manager.js'
 import * as THREE from 'three'
 import { PERF } from './perf-config.js'
+import { formatInline, parseMarkdownTables, renderMarkdown } from './markdown-renderer.js'
+import { toolLabel, parseTags, gestureToEmote, detectEmotion, summaryText } from './emotion-detector.js'
+import {
+  initFastAppLauncher,
+  tryFastLaunchApp as appLauncherTryFastLaunch,
+  getRegisteredApps as getRegisteredAppsFromModule
+} from './app-launcher.js'
+import { formatTimer, initPomodoroTimer } from './pomodoro-timer.js'
+import {
+  isCapabilityRequest,
+  extractAssessmentChoices as extractAssessmentChoicesModule,
+  bindDynamicAssessmentCards as bindDynamicAssessmentCardsModule,
+  executeSelectedCapabilities,
+  createCapabilityAssessmentCard
+} from './capability-assessment.js'
 
 /**
  * main.js — entry renderer untuk window avatar (index.html).
@@ -381,31 +396,14 @@ tilingManager.register('chat', chatSheet, {
   getDimensions: () => getChatDimensions()
 })
 
-let timerTotalSeconds = 25 * 60
-let timerRemainingSeconds = 25 * 60
-let timerInterval = null
-let isTimerRunning = false
-let timerTask = localStorage.getItem('hermes-timer-task') || ''
-if (timerTaskInput && timerTask) {
-  timerTaskInput.value = timerTask
-}
-
-timerTaskInput?.addEventListener('input', (e) => {
-  timerTask = e.target.value.trim()
-  localStorage.setItem('hermes-timer-task', timerTask)
+const pomodoroTimer = initPomodoroTimer({
+  getLive2dPet: () => live2dPet,
+  getController: () => controller,
+  getCompanionHud: () => companionHud,
+  showSpeechBubble,
+  speak,
+  onTile: () => tilingManager.tile()
 })
-
-function formatTimer(seconds) {
-  const m = Math.floor(seconds / 60)
-  const s = seconds % 60
-  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
-}
-
-function updateTimerDisplay() {
-  if (timerTimeDisplay) {
-    timerTimeDisplay.textContent = formatTimer(timerRemainingSeconds)
-  }
-}
 
 function updateTimerPanelPosition() {
   tilingManager.tile()
@@ -460,34 +458,8 @@ function updateChatPosition() {
   tilingManager.tile()
 }
 
-function closeTimerPanel({ stopTimer = false } = {}) {
-  if (!timerPanel) return
-  timerPanel.hidden = true
-  closeCustomTimeBox()
-
-  if (stopTimer || !isTimerRunning) {
-    if (timerInterval) {
-      clearInterval(timerInterval)
-      timerInterval = null
-    }
-    isTimerRunning = false
-    if (timerStartBtn) {
-      timerStartBtn.textContent = '▶ Mulai'
-      timerStartBtn.classList.remove('running')
-    }
-    if (timerStatusText) {
-      timerStatusText.textContent = 'Siap untuk sesi fokus'
-    }
-
-    // Kembalikan ke pakaian casual saat jendela timer ditutup (di-close)
-    const autoOutfit = timerOutfitToggle ? timerOutfitToggle.checked : true
-    if (autoOutfit) {
-      live2dPet?.setTimerFocusMode?.(false)
-    }
-  }
-
-  // Auto-Adjust: Jendela yang tersisa otomatis bergeser mengisi ruang kosong
-  tilingManager.tile()
+function closeTimerPanel(options = {}) {
+  pomodoroTimer.closeTimerPanel(options)
 }
 
 function toggleCompanionMenu(forceState) {
@@ -503,7 +475,7 @@ function toggleCompanionMenu(forceState) {
   } else {
     companionHud.classList.remove('visible')
     // Jika timer TIDAK sedang berjalan, tutup panel timer dan kembalikan baju ke casual.
-    if (timerPanel && !isTimerRunning) {
+    if (timerPanel && !pomodoroTimer.isRunning()) {
       closeTimerPanel({ stopTimer: false })
     }
     tilingManager.tile()
@@ -545,231 +517,6 @@ window.addEventListener('mousedown', (e) => {
   }
 })
 
-// --- Toggle Pomodoro Timer Panel ---
-if (timerToggle && timerPanel) {
-  timerToggle.addEventListener('click', (e) => {
-    e.stopPropagation()
-    const willShow = timerPanel.hidden
-    if (willShow) {
-      timerPanel.hidden = false
-      const hudW = companionHud.offsetWidth || 64
-      const hudH = companionHud.offsetHeight || 320
-      const hudLeft = parseFloat(companionHud.style.left) || (window.innerWidth / 2 - hudW / 2)
-      const hudTop = parseFloat(companionHud.style.top) || (window.innerHeight - 100)
-      updateTimerPanelPosition(hudLeft, hudTop, hudW, hudH)
-
-      // AUTO-GANTI BAJU: Langsung berubah ke jas & kacamata + animasi saat jendela timer diklik / dibuka
-      const autoOutfit = timerOutfitToggle ? timerOutfitToggle.checked : true
-      if (autoOutfit) {
-        live2dPet?.setTimerFocusMode?.(true)
-      }
-    } else {
-      closeTimerPanel({ stopTimer: true })
-    }
-  })
-}
-
-timerCloseBtn?.addEventListener('click', () => {
-  closeTimerPanel({ stopTimer: true })
-})
-
-// Toggle Auto-Ganti Baju langsung bereaksi saat switch dicentang/dilepas
-timerOutfitToggle?.addEventListener('change', () => {
-  if (!timerOutfitToggle.checked) {
-    live2dPet?.setTimerFocusMode?.(false)
-  } else if (!timerPanel?.hidden || isTimerRunning) {
-    live2dPet?.setTimerFocusMode?.(true)
-  }
-})
-
-function openCustomTimeBox() {
-  if (isTimerRunning) return
-  if (!timerCustomBox) return
-  timerCustomBox.hidden = false
-  if (timerCustomMin) timerCustomMin.value = Math.floor(timerTotalSeconds / 60)
-  if (timerCustomSec) timerCustomSec.value = String(timerTotalSeconds % 60).padStart(2, '0')
-  timerCustomMin?.focus()
-  timerCustomMin?.select()
-}
-
-function closeCustomTimeBox() {
-  if (timerCustomBox) timerCustomBox.hidden = true
-}
-
-function applyCustomTime() {
-  const m = parseInt(timerCustomMin?.value, 10) || 0
-  const s = parseInt(timerCustomSec?.value, 10) || 0
-  const total = Math.max(5, m * 60 + s) // minimal 5 detik
-  timerTotalSeconds = total
-  timerRemainingSeconds = total
-  updateTimerDisplay()
-  closeCustomTimeBox()
-
-  timerPresets.forEach((b) => b.classList.remove('active'))
-  if (timerPresetCustomBtn) timerPresetCustomBtn.classList.add('active')
-
-  if (timerStatusText) {
-    timerStatusText.textContent = `Durasi kustom: ${formatTimer(total)}`
-  }
-
-  // Pastikan pakaian fokus tetap aktif selama jendela timer terbuka
-  const autoOutfit = timerOutfitToggle ? timerOutfitToggle.checked : true
-  if (autoOutfit && !live2dPet?.isTimerFocusActive) {
-    live2dPet?.setTimerFocusMode?.(true)
-  }
-}
-
-timerDisplayBox?.addEventListener('click', (e) => {
-  if (e.target.closest('#timer-edit-time-btn') || e.target === timerTimeDisplay || e.target === timerDisplayBox) {
-    if (!isTimerRunning) openCustomTimeBox()
-  }
-})
-
-timerEditTimeBtn?.addEventListener('click', (e) => {
-  e.stopPropagation()
-  if (!isTimerRunning) openCustomTimeBox()
-})
-
-timerPresetCustomBtn?.addEventListener('click', (e) => {
-  e.stopPropagation()
-  if (!isTimerRunning) openCustomTimeBox()
-})
-
-timerCustomApplyBtn?.addEventListener('click', applyCustomTime)
-timerCustomCancelBtn?.addEventListener('click', closeCustomTimeBox)
-
-timerCustomMin?.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') applyCustomTime()
-})
-timerCustomSec?.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') applyCustomTime()
-})
-
-timerPresets.forEach((btn) => {
-  btn.addEventListener('click', () => {
-    if (isTimerRunning) return
-    if (btn === timerPresetCustomBtn) return
-    closeCustomTimeBox()
-    timerPresets.forEach((b) => b.classList.remove('active'))
-    btn.classList.add('active')
-    const mins = parseInt(btn.dataset.minutes, 10) || 25
-    timerTotalSeconds = mins * 60
-    timerRemainingSeconds = timerTotalSeconds
-    updateTimerDisplay()
-    if (timerStatusText) timerStatusText.textContent = `Sesi fokus ${mins} menit`
-
-    // Pastikan pakaian fokus tetap aktif selama jendela timer terbuka
-    const autoOutfit = timerOutfitToggle ? timerOutfitToggle.checked : true
-    if (autoOutfit && !live2dPet?.isTimerFocusActive) {
-      live2dPet?.setTimerFocusMode?.(true)
-    }
-  })
-})
-
-function startTimer() {
-  if (isTimerRunning) {
-    // Jeda (Pause)
-    clearInterval(timerInterval)
-    timerInterval = null
-    isTimerRunning = false
-    if (timerStartBtn) {
-      timerStartBtn.textContent = '▶ Lanjutkan'
-      timerStartBtn.classList.remove('running')
-    }
-    if (timerStatusText) timerStatusText.textContent = 'Sesi fokus dijeda'
-    return
-  }
-
-  // Mulai (Start)
-  isTimerRunning = true
-  closeCustomTimeBox()
-  if (timerStartBtn) {
-    timerStartBtn.textContent = '⏸ Jeda'
-    timerStartBtn.classList.add('running')
-  }
-
-  const taskName = timerTask || 'Fokus'
-  if (timerStatusText) timerStatusText.textContent = `Sesi ${taskName} berlangsung...`
-
-  // 1. Ganti Baju Fokus (Jas & Kacamata) bila diaktifkan ala YourMother
-  const autoOutfit = timerOutfitToggle ? timerOutfitToggle.checked : true
-  if (autoOutfit) {
-    live2dPet?.setTimerFocusMode?.(true)
-  }
-
-  // 2. Efek visual & sapaan AI
-  if (live2dPet?.model) {
-    live2dPet.spawnHeart(live2dPet.model.x, live2dPet.model.y - 120, '⏱️')
-  }
-
-  // Jika baru mulai dari awal, berikan sapaan semangat personal
-  if (timerRemainingSeconds === timerTotalSeconds) {
-    const startMsg = timerTask
-      ? `Sesi ${timerTask} dimulai! Semangat ya, aku temani di sini 🌸`
-      : 'Sesi fokus dimulai! Semangat ya, aku temani di sini 🌸'
-    showSpeechBubble(startMsg, 6000)
-    speak(startMsg, 'focus')
-  }
-
-  timerInterval = setInterval(() => {
-    timerRemainingSeconds--
-    updateTimerDisplay()
-
-    if (timerRemainingSeconds <= 0) {
-      clearInterval(timerInterval)
-      timerInterval = null
-      isTimerRunning = false
-      if (timerStartBtn) {
-        timerStartBtn.textContent = '▶ Mulai Sesi Baru'
-        timerStartBtn.classList.remove('running')
-      }
-      if (timerStatusText) timerStatusText.textContent = '🎉 Selesai! Saatnya istirahat'
-
-      controller?.playEmote('happy')
-      if (live2dPet?.model) {
-        live2dPet.spawnHeart(live2dPet.model.x, live2dPet.model.y - 120, '🎉')
-      }
-
-      // Kembali ke baju santai/casual setelah sesi fokus selesai
-      if (autoOutfit) {
-        live2dPet?.setTimerFocusMode?.(false)
-      }
-
-      const finishMsg = timerTask
-        ? `Waktu fokus untuk ${timerTask} selesai! Kerja bagus sekali. Yuk istirahat dulu sejenak 🌸`
-        : 'Waktu fokus selesai! Kerja bagus sekali. Yuk istirahat dulu sejenak 🌸'
-      showSpeechBubble(finishMsg, 9000)
-      speak(finishMsg, 'happy')
-    }
-  }, 1000)
-}
-
-function resetTimer() {
-  if (timerInterval) {
-    clearInterval(timerInterval)
-    timerInterval = null
-  }
-  isTimerRunning = false
-  timerRemainingSeconds = timerTotalSeconds
-  updateTimerDisplay()
-  closeCustomTimeBox()
-
-  // Hanya kembalikan outfit ke casual bila jendela timer sudah tertutup.
-  // Selama jendela timer masih muncul, avatar tetap mengenakan baju fokus.
-  const autoOutfit = timerOutfitToggle ? timerOutfitToggle.checked : true
-  if (autoOutfit && (!timerPanel || timerPanel.hidden)) {
-    live2dPet?.setTimerFocusMode?.(false)
-  }
-
-  if (timerStartBtn) {
-    timerStartBtn.textContent = '▶ Mulai'
-    timerStartBtn.classList.remove('running')
-  }
-  if (timerStatusText) timerStatusText.textContent = 'Siap untuk sesi fokus'
-}
-
-timerStartBtn?.addEventListener('click', startTimer)
-timerResetBtn?.addEventListener('click', resetTimer)
 // --- Toggle chat: klik ikon → sembunyikan/tampilkan chat ---
 function toggleChat() {
   if (!chatSheet) return
@@ -985,353 +732,6 @@ if (chatResizeHandle && chatSheet) {
     window.addEventListener('mousemove', onMouseMove)
     window.addEventListener('mouseup', onMouseUp)
   })
-}
-
-// --- Renderer Markdown Komprehensif & Terstruktur untuk Chat & Notulen ---
-function formatInline(text) {
-  if (!text) return ''
-  return text
-    // Inline code `code`
-    .replace(/`([^`\n]+)`/g, '<code>$1</code>')
-    // Bold **text** or __text__
-    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    .replace(/__(.+?)__/g, '<strong>$1</strong>')
-    // Italic *text* or _text_
-    .replace(/(^|[^\*])\*([^\*\n]+)\*([^\*]|$)/g, '$1<em>$2</em>$3')
-    .replace(/(^|[^_])_([^_\n]+)_([^_]|$)/g, '$1<em>$2</em>$3')
-    // Strikethrough ~~text~~
-    .replace(/~~(.+?)~~/g, '<del>$1</del>')
-    // Links [text](url)
-    .replace(/\[([^\]]+)\]\((https?:\/\/[^\s\)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>')
-}
-
-function parseMarkdownTables(text) {
-  const tableBlockRegex = /(?:^|\n)((?:[ \t]*\|?[^\n|]+(?:\|[^\n|]+)+\|?[ \t]*\n)(?:[ \t]*\|?[ \t]*(?::?-{2,}:?[ \t]*\|)+(?:[ \t]*:?-{2,}:?[ \t]*)?\n)(?:[ \t]*\|?[^\n|]+(?:\|[^\n|]+)+\|?[ \t]*(?:\n|$))+)/g
-
-  return text.replace(tableBlockRegex, (match, block) => {
-    const lines = block.trim().split('\n').map((l) => l.trim()).filter(Boolean)
-    if (lines.length < 2) return match
-
-    const headerLine = lines[0]
-    const separatorLine = lines[1]
-    const dataLines = lines.slice(2)
-
-    if (!/^\|?(\s*:?-{2,}:?\s*\|)+\s*:?-{2,}:?\s*\|?$/.test(separatorLine)) {
-      return match
-    }
-
-    const parseRow = (line) => {
-      let clean = line.replace(/^\|/, '').replace(/\|$/, '')
-      return clean.split('|').map((cell) => cell.trim())
-    }
-
-    const parseAlignments = (line) => {
-      let clean = line.replace(/^\|/, '').replace(/\|$/, '')
-      return clean.split('|').map((cell) => {
-        const c = cell.trim()
-        if (c.startsWith(':') && c.endsWith(':')) return 'center'
-        if (c.endsWith(':')) return 'right'
-        return 'left'
-      })
-    }
-
-    const alignments = parseAlignments(separatorLine)
-    const headers = parseRow(headerLine)
-
-    let out = '\n<div class="table-container"><table class="markdown-table"><thead><tr>'
-    headers.forEach((h, i) => {
-      const align = alignments[i] ? ` style="text-align:${alignments[i]}"` : ''
-      out += `<th${align}>${formatInline(h)}</th>`
-    })
-    out += '</tr></thead><tbody>'
-
-    dataLines.forEach((rowLine) => {
-      const cells = parseRow(rowLine)
-      out += '<tr>'
-      headers.forEach((_, i) => {
-        const val = cells[i] !== undefined ? cells[i] : ''
-        const align = alignments[i] ? ` style="text-align:${alignments[i]}"` : ''
-        out += `<td${align}>${formatInline(val)}</td>`
-      })
-      out += '</tr>'
-    })
-
-    out += '</tbody></table></div>\n'
-    return out
-  })
-}
-
-function renderMarkdown(md) {
-  if (!md) return ''
-
-  // 1. Standarisasi line break Windows CRLF -> LF
-  let raw = String(md).replace(/\r\n/g, '\n').replace(/\r/g, '\n')
-
-  // 2. Proteksi & Ekstrak Code Blocks (```lang ... ```)
-  const codeBlocks = []
-  raw = raw.replace(/```([a-z0-9_-]+)?\n([\s\S]*?)```/gi, (_, lang, code) => {
-    const idx = codeBlocks.length
-    const cleanCode = escapeHtml(code.trim())
-    codeBlocks.push(`<pre class="code-block"><code class="language-${lang || 'text'}">${cleanCode}</code></pre>`)
-    return `\n%%CODEBLOCK_${idx}%%\n`
-  })
-
-  // 2.1. Proteksi & Ekstrak Dynamic AI Assessment Cards (<assessment ...>...</assessment>)
-  const dynamicAssessmentCards = []
-  raw = raw.replace(/<assessment(?:\s+title="([^"]*)")?(?:\s+prompt="([^"]*)")?[^>]*>([\s\S]*?)<\/assessment>/gi, (_, title, prompt, inner) => {
-    const cardId = 'dyn-card-' + Math.random().toString(36).slice(2, 9)
-    const options = []
-    const optRegex = /<option(?:\s+id="([^"]*)")?(?:\s+title="([^"]*)")?[^>]*>([\s\S]*?)<\/option>/gi
-    let o
-    while ((o = optRegex.exec(inner)) !== null) {
-      options.push({
-        id: o[1] || String(options.length + 1),
-        title: o[2] || `Opsi ${options.length + 1}`,
-        desc: o[3].trim()
-      })
-    }
-
-    if (options.length === 0) return ''
-
-    const cardHtml = `
-<div class="assessment-card dynamic-assessment-card" data-assessment-id="${cardId}">
-  <div class="assessment-card-header">
-    <div class="assessment-badge">🎯 ${escapeHtml((title || 'AI Assessment & Rekomendasi').toUpperCase())}</div>
-    <span class="assessment-type-pill">Multi-Select Aktif</span>
-  </div>
-  <div class="assessment-prompt-text">
-    ${escapeHtml(prompt || 'Silakan pilih satu atau beberapa langkah di bawah ini untuk saya jelaskan atau eksekusi lebih lanjut:')}
-  </div>
-  <div class="assessment-options-list">
-    ${options.map((opt) => `
-      <div class="assessment-option-item" data-id="${escapeHtml(opt.id)}" data-title="${escapeHtml(opt.title)}">
-        <div class="assessment-custom-checkbox"></div>
-        <div class="assessment-option-content">
-          <div class="assessment-option-title">${escapeHtml(opt.title)}</div>
-          <div class="assessment-option-desc">${escapeHtml(opt.desc)}</div>
-        </div>
-      </div>
-    `).join('')}
-  </div>
-  <div class="assessment-quick-presets">
-    <span style="font-size: 10px; color: #94a3b8; align-self: center;">Preset:</span>
-    <button type="button" class="assessment-preset-chip" data-preset="all">🔥 Pilih Semua</button>
-  </div>
-  <div class="assessment-footer">
-    <button type="button" class="assessment-execute-btn" disabled>⚡ Eksekusi Pilihan (0 Dipilih)</button>
-    <span class="assessment-status-text">Centang opsi lalu klik tombol eksekusi</span>
-  </div>
-</div>`
-    const cIdx = dynamicAssessmentCards.length
-    dynamicAssessmentCards.push(cardHtml)
-    return `\n@@@DYNAMICASSESSMENTCARD${cIdx}@@@\n`
-  })
-
-  // Sembunyikan tag assessment yang belum tertutup selama proses streaming agar tidak muncul teks XML mentah
-  raw = raw.replace(/<assessment[\s\S]*$/i, '')
-
-  // 3. Escape HTML pada sisa teks agar aman
-  let text = escapeHtml(raw)
-
-  // 4. Parse Tables
-  text = parseMarkdownTables(text)
-
-  // 5. Horizontal Rules (---, ***, ___)
-  text = text.replace(/^[ \t]*([-*_]){3,}[ \t]*$/gm, '\n<hr class="markdown-hr">\n')
-
-  // 6. Blockquotes (> ...)
-  text = text.replace(/(?:^[ \t]*\&gt;[^\n]*(?:\n|$))+/gm, (match) => {
-    const lines = match.split('\n')
-      .map((l) => l.replace(/^[ \t]*\&gt;\s?/, '').trim())
-      .filter(Boolean)
-    return `\n<blockquote>${lines.map(formatInline).join('<br>')}</blockquote>\n`
-  })
-
-  // 7. Parse line by line dengan state machine terstruktur untuk list & sub-items
-  const rawLines = text.split('\n')
-  const blocks = []
-  let currentList = null // { type: 'ol' | 'ul', items: [] }
-  let currentParagraph = []
-
-  function flushParagraph() {
-    if (currentParagraph.length > 0) {
-      const pText = currentParagraph.join('\n').trim()
-      if (pText) {
-        blocks.push(`<p>${formatInline(pText).replace(/\n/g, '<br>')}</p>`)
-      }
-      currentParagraph = []
-    }
-  }
-
-  function flushList() {
-    if (currentList) {
-      const tag = currentList.type
-      const itemsHtml = currentList.items.map((it) => {
-        let titleHtml = formatInline(it.text)
-        let subHtml = ''
-        if (it.subLines && it.subLines.length > 0) {
-          const formattedSubLines = it.subLines.map((sl) => {
-            const bMatch = sl.match(/^[-*+•]\s+(.*)$/)
-            if (bMatch) {
-              return `<li class="sub-bullet-item">${formatInline(bMatch[1])}</li>`
-            }
-            return `<div class="sub-paragraph">${formatInline(sl)}</div>`
-          })
-
-          if (formattedSubLines.some((l) => l.startsWith('<li'))) {
-            subHtml = `<ul class="sub-list">${formattedSubLines.join('')}</ul>`
-          } else {
-            subHtml = `<div class="sub-content">${formattedSubLines.join('')}</div>`
-          }
-        }
-
-        if (tag === 'ol') {
-          return `<li class="numbered-item" data-num="${it.num}"><div class="item-title">${titleHtml}</div>${subHtml}</li>`
-        }
-
-        if (it.isTask) {
-          const check = it.checked ? '☑' : '☐'
-          const cls = it.checked ? 'task-item completed' : 'task-item'
-          return `<li class="${cls}"><span class="task-checkbox">${check}</span> <div class="item-title">${titleHtml}</div>${subHtml}</li>`
-        }
-
-        return `<li class="bullet-item"><div class="item-title">${titleHtml}</div>${subHtml}</li>`
-      }).join('')
-
-      blocks.push(`<${tag} class="markdown-${tag}">${itemsHtml}</${tag}>`)
-      currentList = null
-    }
-  }
-
-  for (let i = 0; i < rawLines.length; i++) {
-    const line = rawLines[i]
-    const trimmed = line.trim()
-
-    // Baris kosong
-    if (!trimmed) {
-      flushParagraph()
-      let nextNonEmptyIndex = -1
-      for (let j = i + 1; j < rawLines.length; j++) {
-        if (rawLines[j].trim()) {
-          nextNonEmptyIndex = j
-          break
-        }
-      }
-
-      if (nextNonEmptyIndex !== -1 && currentList) {
-        const nextLine = rawLines[nextNonEmptyIndex].trim()
-        const isNextList = /^(\d+\.|[-*+•]|- \[[ xX]\])/.test(nextLine)
-        const isNextMajorBlock = /^(\#{1,6}\s+|<hr|<div|<blockquote|%%CODEBLOCK_|@@@DYNAMICASSESSMENTCARD)/.test(nextLine)
-
-        if (isNextMajorBlock) {
-          flushList()
-        } else if (!isNextList && currentList.type === 'ol') {
-          continue
-        } else if (!isNextList) {
-          flushList()
-        }
-      } else if (!currentList) {
-        continue
-      }
-      continue
-    }
-
-    // A. Blok HTML langsung
-    if (trimmed.startsWith('<div class="table-container">') ||
-        trimmed.startsWith('<hr class="markdown-hr">') ||
-        trimmed.startsWith('<blockquote>') ||
-        trimmed.startsWith('%%CODEBLOCK_') ||
-        trimmed.startsWith('@@@DYNAMICASSESSMENTCARD')) {
-      flushParagraph()
-      flushList()
-      blocks.push(trimmed)
-      continue
-    }
-
-    // B. Header
-    const headerMatch = trimmed.match(/^(#{1,6})\s+(.*)$/)
-    if (headerMatch) {
-      flushParagraph()
-      flushList()
-      const level = headerMatch[1].length
-      const title = formatInline(headerMatch[2])
-      blocks.push(`<h${level}>${title}</h${level}>`)
-      continue
-    }
-
-    // C. Task Item
-    const taskMatch = trimmed.match(/^[-*+]\s+\[([ xX])\]\s+(.*)$/)
-    if (taskMatch) {
-      flushParagraph()
-      if (!currentList || currentList.type !== 'ul') {
-        flushList()
-        currentList = { type: 'ul', items: [] }
-      }
-      const checked = taskMatch[1].toLowerCase() === 'x'
-      currentList.items.push({ isTask: true, checked, text: taskMatch[2], subLines: [] })
-      continue
-    }
-
-    // D. Numbered List Item (1. Title)
-    const numMatch = trimmed.match(/^(\d+)\.\s+(.*)$/)
-    if (numMatch) {
-      flushParagraph()
-      if (!currentList || currentList.type !== 'ol') {
-        flushList()
-        currentList = { type: 'ol', items: [] }
-      }
-      currentList.items.push({ num: numMatch[1], text: numMatch[2], subLines: [] })
-      continue
-    }
-
-    // E. Bullet List Item
-    const bulletMatch = trimmed.match(/^[-*+•]\s+(.*)$/)
-    if (bulletMatch) {
-      flushParagraph()
-      if (currentList && currentList.type === 'ol' && currentList.items.length > 0) {
-        const lastItem = currentList.items[currentList.items.length - 1]
-        lastItem.subLines.push(trimmed)
-        continue
-      }
-      if (!currentList || currentList.type !== 'ul') {
-        flushList()
-        currentList = { type: 'ul', items: [] }
-      }
-      currentList.items.push({ text: bulletMatch[1], subLines: [] })
-      continue
-    }
-
-    // F. Sub-detail dari list item yang sedang aktif
-    if (currentList && currentList.items.length > 0) {
-      const lastItem = currentList.items[currentList.items.length - 1]
-      lastItem.subLines.push(trimmed)
-      continue
-    }
-
-    // G. Paragraf normal
-    flushList()
-    currentParagraph.push(trimmed)
-  }
-
-  flushParagraph()
-  flushList()
-
-  // 8. Restore Codeblocks & Dynamic Assessment Cards
-  let finalHtml = blocks.join('\n')
-  finalHtml = finalHtml.replace(/%%CODEBLOCK_(\d+)%%/g, (_, idx) => {
-    return codeBlocks[Number(idx)] || ''
-  })
-  finalHtml = finalHtml.replace(/<p>\s*@@@DYNAMICASSESSMENTCARD(\d+)@@@\s*<\/p>|@@@DYNAMICASSESSMENTCARD(\d+)@@@/g, (_, id1, id2) => {
-    const idx = Number(id1 !== undefined ? id1 : id2)
-    return dynamicAssessmentCards[idx] || ''
-  })
-  // Fallback pembersih jika ada variasi format token
-  finalHtml = finalHtml.replace(/<p>\s*%%DYNAMIC(?:<em>)?_?ASSESSMENT_?(?:<\/em>)?(\d+)%%\s*<\/p>|%%DYNAMIC(?:<em>)?_?ASSESSMENT_?(?:<\/em>)?(\d+)%%/gi, (_, id1, id2) => {
-    const idx = Number(id1 !== undefined ? id1 : id2)
-    return dynamicAssessmentCards[idx] || ''
-  })
-
-  return finalHtml
 }
 
 // Cek apakah pesan adalah perintah membuat notulen / ringkasan percakapan
@@ -1559,400 +959,41 @@ chatSummaryBtn?.addEventListener('click', (e) => {
 
 let activeAssessmentCard = null
 
-// Cek apakah pesan adalah pertanyaan seputar kemampuan / menu fitur / apa yang bisa dilakukan
-function isCapabilityRequest(text) {
-  if (!text) return false
-  const t = text.toLowerCase().trim()
-  return (
-    /\b(apa\s+(?:saja\s+)?(?:yang\s+)?(?:bisa\s+)?(?:kamu|anda)\s+(?:bisa|lakukan)|kamu\s+bisa\s+apa|bisa\s+(?:bantu|tolong)\s+apa|fitur\s+(?:apa\s+)?saja|kemampuan(?:mu)?|keunggulan(?:mu)?|menu\s+(?:fitur|bantuan|kemampuan)|bisa\s+apa\s+aja|kemampuan\s+kamu|fitur\s+kamu|keunggulan\s+kamu)\b/i.test(t) ||
-    /^(?:menu|bantuan|fitur|capabilities|help|apa saja yang anda bisa)$/i.test(t)
-  )
+function extractAssessmentChoices(t) {
+  return extractAssessmentChoicesModule(t, { chatLog, activeAssessmentCard })
 }
 
-// Cek apakah pesan adalah pilihan/instruksi eksekusi nomor atau opsi (misal: "coba 1 dan 3", "jalankan no 2", dll.)
-function extractAssessmentChoices(text) {
-  if (!text) return null
-  const t = text.toLowerCase().trim()
-
-  // 1. Cek apakah ada dynamic assessment card terbaru di chatLog
-  const dynCards = chatLog.querySelectorAll('.dynamic-assessment-card')
-  const latestDynCard = dynCards.length > 0 ? dynCards[dynCards.length - 1] : null
-
-  if (latestDynCard && !latestDynCard.classList.contains('executed')) {
-    const execBtn = latestDynCard.querySelector('.assessment-execute-btn')
-    if (execBtn && !execBtn.textContent.includes('Sedang Mengeksekusi')) {
-      const isAll = /\b(?:semua|all)\b/i.test(t) && /\b(?:coba|jalankan|pilih|eksekusi|demo|tes)\b/i.test(t)
-      const hasChoiceIntent =
-        /\b(?:coba|jalankan|pilih|eksekusi|nomor|no|opsi|fitur|tolong|tes|demo)\b/i.test(t) ||
-        /^[0-9,\s&dan+serta]+$/i.test(t)
-
-      if (hasChoiceIntent) {
-        const items = latestDynCard.querySelectorAll('.assessment-option-item')
-        let matched = false
-        items.forEach((it, idx) => {
-          const num = idx + 1
-          const numRegex = new RegExp(`\\b${num}\\b`)
-          const optTitle = (it.getAttribute('data-title') || '').toLowerCase()
-          if (isAll || numRegex.test(t) || (optTitle && t.includes(optTitle.slice(0, 15)))) {
-            it.classList.add('selected')
-            matched = true
-          }
-        })
-        if (matched) {
-          execBtn.disabled = false
-          execBtn.click()
-          return ['dynamic-handled']
-        }
-      }
-    }
-  }
-
-  // 2. Fallback: kartu demonstrasi statis (activeAssessmentCard)
-  if (!activeAssessmentCard) return null
-
-  // Pola jika pengguna menyebut "semua" / "all"
-  if (/\b(?:semua|all)\b/i.test(t) && /\b(?:coba|jalankan|pilih|eksekusi|demo|tes)\b/i.test(t)) {
-    return ['weather', 'apps', 'news', 'summary']
-  }
-
-  // Harus ada indikasi memilih opsi / perintah coba / angka langsung
-  const hasChoiceIntent =
-    /\b(?:coba|jalankan|pilih|eksekusi|nomor|no|opsi|fitur|tolong|tes|demo)\b/i.test(t) ||
-    /^[0-9,\s&dan+serta]+$/i.test(t)
-  if (!hasChoiceIntent) return null
-
-  const selected = new Set()
-
-  // 1: Cuaca
-  if (/\b1\b/.test(t) || /\b(?:satu|cuaca|weather)\b/i.test(t)) selected.add('weather')
-  // 2: Aplikasi
-  if (/\b2\b/.test(t) || /\b(?:dua|aplikasi|apps|app|software|program)\b/i.test(t)) selected.add('apps')
-  // 3: Berita
-  if (/\b3\b/.test(t) || /\b(?:tiga|berita|news|kabar)\b/i.test(t)) selected.add('news')
-  // 4: Notulen
-  if (/\b4\b/.test(t) || /\b(?:empat|notulen|ringkasan|summary|minutes)\b/i.test(t)) selected.add('summary')
-
-  return selected.size > 0 ? Array.from(selected) : null
-}
-
-// Bind interaktivitas pada Dynamic Assessment Card yang dihasilkan dari jawaban Hermes
 function bindDynamicAssessmentCards(container) {
-  if (!container) return
-  const cards = container.querySelectorAll('.dynamic-assessment-card:not([data-bound="true"])')
-  cards.forEach((card) => {
-    card.setAttribute('data-bound', 'true')
-    const optionItems = card.querySelectorAll('.assessment-option-item')
-    const executeBtn = card.querySelector('.assessment-execute-btn')
-    const presetChips = card.querySelectorAll('.assessment-preset-chip')
-
-    function updateBtn() {
-      const selected = card.querySelectorAll('.assessment-option-item.selected')
-      const count = selected.length
-      if (count === 0) {
-        executeBtn.disabled = true
-        executeBtn.textContent = '⚡ Eksekusi Pilihan (0 Dipilih)'
-      } else {
-        executeBtn.disabled = false
-        executeBtn.textContent = `⚡ Eksekusi Pilihan (${count} Dipilih)`
-      }
-    }
-
-    optionItems.forEach((item) => {
-      item.addEventListener('click', () => {
-        item.classList.toggle('selected')
-        updateBtn()
-      })
-    })
-
-    presetChips.forEach((chip) => {
-      chip.addEventListener('click', () => {
-        const preset = chip.getAttribute('data-preset')
-        if (preset === 'all') {
-          optionItems.forEach((it) => it.classList.add('selected'))
-        }
-        updateBtn()
-        executeBtn.click()
-      })
-    })
-
-    executeBtn.addEventListener('click', async () => {
-      const selected = Array.from(card.querySelectorAll('.assessment-option-item.selected'))
-      if (selected.length === 0) return
-      const chosenTitles = selected.map((it) => it.getAttribute('data-title') || it.getAttribute('data-id'))
-      executeBtn.disabled = true
-      executeBtn.textContent = '✓ Sedang Mengeksekusi...'
-      card.classList.add('executed')
-
-      controller?.setExpression('composing')
-      showSpeechBubble(`Mengeksekusi ${chosenTitles.length} langkah terpilih... ⚡`, 3500)
-      speak(`Baik, saya akan mulai memproses ${chosenTitles.length} pilihan yang kamu tentukan.`, 'happy')
-
-      const promptToSend = `Saya memilih langkah berikut:\n${chosenTitles.map((t, i) => `${i + 1}. ${t}`).join('\n')}\n\nTolong jelaskan secara detail instruksi langkah-langkahnya dan pandu saya sekarang.`
-      const displayLabel = `Memilih langkah: ${chosenTitles.join(', ')}`
-
-      setTimeout(() => {
-        handleUserChat(promptToSend, displayLabel)
-      }, 350)
-    })
+  return bindDynamicAssessmentCardsModule(container, {
+    getController: () => controller,
+    showSpeechBubble,
+    speak,
+    handleUserChat
   })
 }
 
-// Tampilkan Kartu Pilihan Ganda Interaktif (AI Capability Assessment Card) di Chat
 function showCapabilityAssessmentCard() {
-  if (chatSheet?.classList.contains('hidden')) {
-    toggleChat()
-  }
-
-  controller?.setExpression('happy')
-  showSpeechBubble('Berikut 4 keunggulan utamaku! Pilih yang ingin kamu coba 🎯', 4000)
-  speak('Berikut empat keunggulan utama saya. Silakan pilih nomor atau fitur yang ingin langsung saya demonstrasikan.', 'happy')
-
-  const card = document.createElement('div')
-  card.className = 'avatar assessment-card'
-  card.innerHTML = `
-    <div class="assessment-card-header">
-      <div class="assessment-badge">🎯 AI CAPABILITY ASSESSMENT TOOL</div>
-      <span class="assessment-type-pill">Multi-Select Aktif</span>
-    </div>
-    <div class="assessment-prompt-text">
-      Halo! Saya asisten desktop AI pribadimu. Pilih satu atau beberapa kemampuan di bawah untuk langsung saya demonstrasikan:
-    </div>
-    <div class="assessment-options-list">
-      <div class="assessment-option-item" data-id="weather">
-        <div class="assessment-custom-checkbox"></div>
-        <div class="assessment-option-content">
-          <div class="assessment-option-title">1. 🌦️ Info Cuaca Real-Time</div>
-          <div class="assessment-option-desc">Suhu, kelembapan & kondisi langit Jakarta saat ini (live sensor BMKG / Open-Meteo).</div>
-        </div>
-      </div>
-      <div class="assessment-option-item" data-id="apps">
-        <div class="assessment-custom-checkbox"></div>
-        <div class="assessment-option-content">
-          <div class="assessment-option-title">2. 🚀 Kontrol Sistem (Multi-App Launcher)</div>
-          <div class="assessment-option-desc">Membuka aplikasi (Word, VS Code, Task Manager) serentak dalam hitungan milidetik.</div>
-        </div>
-      </div>
-      <div class="assessment-option-item" data-id="news">
-        <div class="assessment-custom-checkbox"></div>
-        <div class="assessment-option-content">
-          <div class="assessment-option-title">3. 🇮🇩 Berita Terkini Indonesia Hari Ini</div>
-          <div class="assessment-option-desc">Rangkuman 4 tajuk utama terhangat dari Google News RSS terbitan beberapa jam/menit lalu.</div>
-        </div>
-      </div>
-      <div class="assessment-option-item" data-id="summary">
-        <div class="assessment-custom-checkbox"></div>
-        <div class="assessment-option-content">
-          <div class="assessment-option-title">4. 📋 Notulen Eksekutif Otomatis</div>
-          <div class="assessment-option-desc">Merangkum sesi obrolan menjadi kartu notulen rapi yang siap disalin atau disimpan permanen.</div>
-        </div>
-      </div>
-    </div>
-    <div class="assessment-quick-presets">
-      <span style="font-size: 10px; color: #94a3b8; align-self: center;">Preset Cepat:</span>
-      <button type="button" class="assessment-preset-chip" data-preset="weather,news">⚡ Cuaca & Berita (1 & 3)</button>
-      <button type="button" class="assessment-preset-chip" data-preset="weather">🌦️ Cuaca Saja (1)</button>
-      <button type="button" class="assessment-preset-chip" data-preset="apps">🚀 Aplikasi Saja (2)</button>
-      <button type="button" class="assessment-preset-chip" data-preset="all">🔥 Jalankan Semua (1-4)</button>
-    </div>
-    <div class="assessment-footer">
-      <button type="button" class="assessment-execute-btn" disabled>⚡ Eksekusi Pilihan (0 Dipilih)</button>
-      <span class="assessment-status-text">Ketik / sebut angka (misal: "coba 1 dan 3")</span>
-    </div>
-  `
-
-  chatLog.appendChild(card)
-  chatLog.scrollTop = chatLog.scrollHeight
-  activeAssessmentCard = card
-
-  const optionItems = card.querySelectorAll('.assessment-option-item')
-  const executeBtn = card.querySelector('.assessment-execute-btn')
-  const presetChips = card.querySelectorAll('.assessment-preset-chip')
-
-  function updateExecuteButton() {
-    const selected = card.querySelectorAll('.assessment-option-item.selected')
-    const count = selected.length
-    if (count === 0) {
-      executeBtn.disabled = true
-      executeBtn.textContent = '⚡ Eksekusi Pilihan (0 Dipilih)'
-    } else {
-      executeBtn.disabled = false
-      executeBtn.textContent = `⚡ Eksekusi Pilihan (${count} Dipilih)`
-    }
-  }
-
-  optionItems.forEach((item) => {
-    item.addEventListener('click', () => {
-      item.classList.toggle('selected')
-      updateExecuteButton()
-    })
+  activeAssessmentCard = createCapabilityAssessmentCard({
+    chatLog,
+    chatSheet,
+    toggleChat,
+    getController: () => controller,
+    showSpeechBubble,
+    speak,
+    onExecute: (ids, card) =>
+      executeSelectedCapabilities(ids, card, {
+        activeAssessmentCard,
+        getController: () => controller,
+        showSpeechBubble,
+        speak,
+        log,
+        generateExecutiveSummary,
+        getCachedApps: () => cachedInstalledApps,
+        setCachedApps: (apps) => {
+          cachedInstalledApps = apps
+        }
+      })
   })
-
-  presetChips.forEach((chip) => {
-    chip.addEventListener('click', () => {
-      const preset = chip.getAttribute('data-preset')
-      if (preset === 'all') {
-        optionItems.forEach((it) => it.classList.add('selected'))
-      } else {
-        const ids = preset.split(',')
-        optionItems.forEach((it) => {
-          const id = it.getAttribute('data-id')
-          if (ids.includes(id)) it.classList.add('selected')
-          else it.classList.remove('selected')
-        })
-      }
-      updateExecuteButton()
-      executeBtn.click()
-    })
-  })
-
-  executeBtn.addEventListener('click', async () => {
-    const selectedItems = Array.from(card.querySelectorAll('.assessment-option-item.selected'))
-    const ids = selectedItems.map((it) => it.getAttribute('data-id'))
-    if (ids.length === 0) return
-
-    executeBtn.disabled = true
-    executeBtn.textContent = '⏳ Sedang Mengeksekusi...'
-    await executeSelectedCapabilities(ids, card)
-  })
-}
-
-// Eksekusi Pilihan Kemampuan Terpilih
-async function executeSelectedCapabilities(selectedIds, cardRef = null) {
-  if (!selectedIds || selectedIds.length === 0) return
-
-  // Sinkronisasi status visual kartu
-  const card = cardRef || activeAssessmentCard
-  if (card) {
-    const optionItems = card.querySelectorAll('.assessment-option-item')
-    optionItems.forEach((it) => {
-      const id = it.getAttribute('data-id')
-      if (selectedIds.includes(id)) it.classList.add('selected')
-    })
-    const execBtn = card.querySelector('.assessment-execute-btn')
-    if (execBtn) {
-      execBtn.disabled = true
-      execBtn.textContent = '✓ Sedang Dijalankan...'
-    }
-  }
-
-  // Tampilkan ekspresi & bubble proses
-  controller?.setExpression('composing')
-  showSpeechBubble(`Mengeksekusi ${selectedIds.length} fitur terpilih... ⚡`, 3500)
-
-  // 1. Tangani Cuaca (weather)
-  let weatherResult = null
-  if (selectedIds.includes('weather')) {
-    try {
-      const w = await window.hermesAvatar?.getLiveWeather?.('Jakarta')
-      if (w && w.ok) {
-        weatherResult = w
-      }
-    } catch (err) {
-      console.warn('[Assessment] Gagal ambil cuaca:', err)
-    }
-  }
-
-  // 2. Tangani Berita (news)
-  let newsResult = null
-  if (selectedIds.includes('news')) {
-    try {
-      const n = await window.hermesAvatar?.getLiveNews?.()
-      if (n && n.ok && Array.isArray(n.items) && n.items.length > 0) {
-        newsResult = n.items.slice(0, 4)
-      }
-    } catch (err) {
-      console.warn('[Assessment] Gagal ambil berita:', err)
-    }
-  }
-
-  // 3. Tangani Aplikasi (apps)
-  let appsResult = null
-  if (selectedIds.includes('apps')) {
-    try {
-      if (!cachedInstalledApps || cachedInstalledApps.length === 0) {
-        const appsRes = await window.hermesAvatar?.getInstalledApps?.()
-        if (appsRes?.ok && Array.isArray(appsRes.apps)) cachedInstalledApps = appsRes.apps
-      }
-      const taskMgrApp = (cachedInstalledApps || []).find((a) => a.name.toLowerCase().includes('task manager'))
-      if (taskMgrApp) {
-        await window.hermesAvatar?.launchApp?.(taskMgrApp.id)
-      }
-      appsResult = { launched: ['Task Manager'] }
-    } catch (err) {
-      appsResult = { error: err.message }
-    }
-  }
-
-  // Format balasan Markdown rapi
-  const now = new Date()
-  const dateFormatted = now.toLocaleDateString('id-ID', {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric'
-  })
-  const timeFormatted = now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
-
-  const markdownSections = [
-    `## ⚡ Hasil Eksekusi Demonstrasi Kemampuan\n> **Waktu Eksekusi:** ${dateFormatted}, pukul ${timeFormatted} WIB\n`
-  ]
-
-  if (weatherResult) {
-    markdownSections.push(`### 🌦️ 1. Cuaca Jakarta Hari Ini\n` +
-      `- **Kondisi Langit:** ${weatherResult.condition} 🌤️\n` +
-      `- **Suhu Saat Ini:** ${weatherResult.temp}°C\n` +
-      `- **Kelembapan:** ${weatherResult.humidity}% | **Kecepatan Angin:** ${weatherResult.wind} km/jam\n` +
-      `*Prakiraan sensor resmi Open-Meteo & BMKG untuk wilayah Jakarta.*\n`)
-  }
-
-  if (appsResult) {
-    markdownSections.push(`### 🚀 2. Kontrol Sistem Windows (Multi-App)\n` +
-      `- **Status:** Berhasil meluncurkan **Task Manager** ke layar kerja Anda! 💻\n` +
-      `*Catatan: Anda juga bisa meminta saya membuka banyak aplikasi sekaligus, misal: "Buka Word, Task Manager dan VS Code".*\n`)
-  }
-
-  if (newsResult) {
-    const list = newsResult.map((it, idx) => `${idx + 1}. **${it.title}**`).join('\n')
-    markdownSections.push(`### 🇮🇩 3. Berita Terkini Indonesia Hari Ini\n` +
-      `${list}\n` +
-      `*Sumber resmi Google News RSS terbitan beberapa jam/menit lalu.*\n`)
-  }
-
-  if (selectedIds.includes('summary')) {
-    markdownSections.push(`### 📋 4. Notulen Eksekutif Otomatis\n` +
-      `- **Status:** Menyiapkan notulen percakapan interaktif di chat... ⏳\n`)
-  }
-
-  const finalMarkdown = markdownSections.join('\n---\n\n')
-
-  // Render bubble jawaban Hermes
-  log('avatar', finalMarkdown)
-
-  // 4. Tangani Notulen jika dipilih
-  if (selectedIds.includes('summary')) {
-    setTimeout(() => {
-      generateExecutiveSummary()
-    }, 600)
-  }
-
-  // Suara TTS
-  controller?.setExpression('happy')
-  if (weatherResult && newsResult) {
-    speak(`Berikut info cuaca Jakarta suhu ${weatherResult.temp} derajat dan empat berita terkini di Indonesia hari ini.`, 'happy')
-  } else if (weatherResult) {
-    speak(`Cuaca Jakarta saat ini ${weatherResult.condition} dengan suhu ${weatherResult.temp} derajat.`, 'happy')
-  } else if (newsResult) {
-    speak(`Berikut rangkuman berita terkini di Indonesia hari ini.`, 'happy')
-  } else if (appsResult) {
-    speak(`Task manager berhasil saya luncurkan ke sistem Anda.`, 'happy')
-  } else {
-    speak(`Demonstrasi fitur selesai dieksekusi.`, 'happy')
-  }
-
-  if (card) {
-    const execBtn = card.querySelector('.assessment-execute-btn')
-    if (execBtn) execBtn.textContent = '✓ Selesai Dieksekusi'
-  }
 }
 
 window.addEventListener('resize', () => {
@@ -2148,7 +1189,7 @@ function triggerIdleChatter(forcedLine = null) {
   const cfg = getIdleReminderConfig()
   if (!cfg.enabled && !forcedLine) return
   // Hanya berbunyi jika suara aktif, tidak sedang tidur, tidak sedang sesi timer, dan tidak sedang bicara
-  if (live2dPet?.isSleeping || isSpeaking || isTimerRunning) return
+  if (live2dPet?.isSleeping || isSpeaking || pomodoroTimer.isRunning()) return
 
   const line = forcedLine || cfg.lines[Math.floor(Math.random() * cfg.lines.length)]
   showSpeechBubble(line, 8000)
@@ -2555,99 +1596,6 @@ initHermes()
 // Bubble idle tampil sejak awal (sebelum ada event).
 setStatus('')
 
-// --- Emosi heuristik (Fase 3 awal) ---
-// Klasifikasi teks sederhana → ekspresi. Bisa diganti tag [emotion:] nanti.
-
-// Mapping nama tool Hermes → progress deskriptif (untuk bubble status).
-function toolLabel(name) {
-  const t = String(name || '').toLowerCase()
-  const map = [
-    [/browser_navigate|navigate/, 'Membuka halaman…'],
-    [/browser_click|click/, 'Mengklik elemen…'],
-    [/browser_type|type/, 'Mengetik di browser…'],
-    [/browser_snapshot|snapshot/, 'Melihat halaman…'],
-    [/browser_scroll|scroll/, 'Menggulir halaman…'],
-    [/browser_console|browser_vision/, 'Menganalisis browser…'],
-    [/tab/, 'Mengelola tab…'],
-    [/browser/, 'Mengontrol browser…'],
-    [/terminal|process|execute_code|shell/, 'Menjalankan terminal…'],
-    [/ha_|homeassistant/, 'Mengontrol perangkat…'],
-    [/read_file|search_files/, 'Membaca file…'],
-    [/write_file|patch/, 'Menulis file…'],
-    [/file/, 'Mengakses file…'],
-    [/pdf/, 'Membaca dokumen PDF…'],
-    [/weather|wttr|meteo/, 'Memeriksa cuaca…'],
-    [/scrapling|scrape/, 'Mengekstrak web cepat…'],
-    [/duckduckgo|ddgs/, 'Mencari di DuckDuckGo…'],
-    [/memory|mnemosyne/, 'Mengingat…'],
-    [/image_generate/, 'Membuat gambar…'],
-    [/todo/, 'Mengatur tugas…'],
-    [/web|search/, 'Mencari di web…'],
-    [/project/, 'Mengelola proyek…']
-  ]
-  for (const [re, label] of map) {
-    if (re.test(t)) return label
-  }
-  return 'Memproses…'
-}
-
-// Parse tag [affect:...] [gesture:...] [emotion:...] dari awal jawaban.
-function parseTags(rawText) {
-  const tags = { affect: null, gesture: null, emotion: null }
-  const s = String(rawText || '')
-  const mAffect = s.match(/\[affect:([a-zA-Z]+)\]/i)
-  const mGesture = s.match(/\[gesture:([a-zA-Z]+)\]/i)
-  const mEmotion = s.match(/\[emotion:([a-zA-Z]+)\]/i)
-  if (mAffect) tags.affect = mAffect[1].toLowerCase()
-  if (mGesture) tags.gesture = mGesture[1].toLowerCase()
-  if (mEmotion) tags.emotion = mEmotion[1].toLowerCase()
-  return tags
-}
-
-// Map gesture name → emote procedural (bounce/jump/wave/nod).
-function gestureToEmote(gesture) {
-  const map = {
-    bounce: 'bounce',
-    jump: 'jump',
-    wave: 'wave',
-    nod: 'nod',
-    bow: 'nod',
-    shrug: 'jump',
-    dance: 'bounce',
-    clap: 'wave',
-    wink: 'nod'
-  }
-  return map[gesture] || null
-}
-
-function detectEmotion(text) {
-  const t = (text || '').toLowerCase()
-
-  if (/(terima kasih|thanks|mantap|bagus|hebat|oke|siap|berhasil|selamat|🎉|😊|👍|halo|hai|senang|bisa|tentu|sudah|ya|sama-sama|dengan senang hati)/.test(t)) {
-    return 'happy'
-  }
-  if (/(maaf|sedih|gagal|error|tidak bisa|maafkan|😢|😞)/.test(t)) {
-    return 'sad'
-  }
-  if (/(hati-hati|jangan|awas|bahaya|⚠️)/.test(t)) {
-    return 'angry'
-  }
-  if (/[!]{2,}|[?]{2,}/.test(text || '')) {
-    return 'happy'
-  }
-  return 'neutral'
-}
-
-// --- Ringkasan jawaban (untuk bubble di atas avatar) ---
-let lastSummary = ''
-
-function summaryText(text) {
-  const t = (text || '').trim()
-  if (!t) return ''
-  const MAX = 80
-  return t.length > MAX ? t.slice(0, MAX).trimEnd() + '…' : t
-}
-
 // --- TTS + lip sync (dengan antrian audio) ---
 const speechQueue = []
 let isSpeaking = false
@@ -2742,287 +1690,29 @@ function sayProgress(text) {
 
 // Fast-path & Self-learning App Launcher
 let cachedInstalledApps = []
-
-async function initFastAppLauncher() {
-  try {
-    const res = await window.hermesAvatar?.getInstalledApps?.()
-    if (res?.ok && Array.isArray(res.apps)) {
-      cachedInstalledApps = res.apps
-    }
-  } catch (err) {
-    console.warn('[FastApp] Inisialisasi daftar aplikasi gagal:', err)
-  }
-}
 initFastAppLauncher()
+  .then((apps) => {
+    if (apps && Array.isArray(apps)) cachedInstalledApps = apps
+  })
+  .catch(() => {})
 
-// Kamus alias populer untuk aplikasi umum Windows
-const KNOWN_APP_ALIASES = {
-  vscode: ['visual studio code', 'code'],
-  'vs code': ['visual studio code', 'code'],
-  vsc: ['visual studio code'],
-  code: ['visual studio code'],
-  word: ['word', 'microsoft word'],
-  excel: ['excel', 'microsoft excel'],
-  powerpoint: ['powerpoint', 'ppt', 'microsoft powerpoint'],
-  ppt: ['powerpoint', 'microsoft powerpoint'],
-  taskmgr: ['task manager'],
-  'task manager': ['task manager'],
-  taskman: ['task manager'],
-  'pengelola tugas': ['task manager'],
-  chrome: ['google chrome'],
-  edge: ['microsoft edge'],
-  calc: ['kalkulator', 'calculator'],
-  kalkulator: ['kalkulator', 'calculator', 'calc'],
-  calculator: ['kalkulator', 'calculator', 'calc'],
-  explorer: ['file explorer'],
-  cmd: ['command prompt'],
-  terminal: ['windows terminal', 'terminal'],
-  paint: ['paint', 'mspaint']
+async function tryFastLaunchApp(input) {
+  return await appLauncherTryFastLaunch(input, {
+    cachedInstalledApps,
+    setCachedInstalledApps: (apps) => {
+      cachedInstalledApps = apps
+    },
+    musicPlayer,
+    controller,
+    showSpeechBubble,
+    speak,
+    setStatus,
+    log
+  })
 }
 
-function extractAppQueries(text) {
-  if (!text) return []
-  const cleaned = text.trim()
-  // Pattern pencocokan perintah buka aplikasi (mendukung tunggal maupun jamak):
-  // "buka word, task manager dan vscode", "tolong buka notepad dan kalkulator", "jalankan chrome", dsb
-  const match = cleaned.match(
-    /^(?:tolong\s+)?(?:buka|bukakan|jalankan|putar|open|launch|start|run)\s+(?:aplikasi\s+|app\s+)?(.+?)(?:\s+(?:dong|ya|sekarang|cepet|please))?[.!?]*$/i
-  )
-  if (!match || !match[1]) return []
-
-  const raw = match[1].trim()
-  // Pecah berdasarkan koma (,), titik koma (;), ampersand (&), atau kata sambung ("dan", "and", "serta", "lalu", "plus")
-  const parts = raw.split(/[,;&]|\s+(?:dan|and|serta|lalu|kemudian|plus)\s+/i)
-
-  const queries = []
-  for (const part of parts) {
-    // Bersihkan prefix seperti "aplikasi", "app", "buka", "jalankan", "open" yang berulang di setiap bagian
-    const cleanedPart = part
-      .replace(/^(?:aplikasi\s+|app\s+|buka\s+|bukakan\s+|jalankan\s+|open\s+|launch\s+|start\s+|run\s+)/i, '')
-      .trim()
-    if (cleanedPart) {
-      queries.push(cleanedPart)
-    }
-  }
-
-  return queries
-}
-
-function findMatchingApp(query) {
-  if (!query) return null
-  const q = query.toLowerCase().replace(/^(aplikasi|app)\s+/, '').trim()
-  if (!q) return null
-  const qCompact = q.replace(/[\s\-_]+/g, '')
-
-  // 1. Cek aplikasi bawaan umum / developer tools secara langsung (pasti berhasil instan tanpa tergantung cache)
-  const BUILTIN_DIRECT_APPS = [
-    { name: 'Task Manager', command: 'taskmgr.exe', keys: ['task manager', 'taskmgr', 'taskman', 'pengelola tugas'] },
-    { name: 'Visual Studio Code', command: 'code', keys: ['vscode', 'vs code', 'code', 'vsc', 'visual studio code'] },
-    { name: 'Microsoft Word', command: 'winword.exe', keys: ['word', 'ms word', 'microsoft word', 'winword'] },
-    { name: 'Microsoft Excel', command: 'excel.exe', keys: ['excel', 'ms excel', 'microsoft excel'] },
-    { name: 'Microsoft PowerPoint', command: 'powerpnt.exe', keys: ['powerpoint', 'ppt', 'ms powerpoint', 'powerpnt'] },
-    { name: 'Google Chrome', command: 'chrome.exe', keys: ['chrome', 'google chrome'] },
-    { name: 'Microsoft Edge', command: 'msedge.exe', keys: ['edge', 'msedge', 'microsoft edge'] },
-    { name: 'Notepad', command: 'notepad.exe', keys: ['notepad', 'catatan'] },
-    { name: 'Kalkulator', command: 'calc.exe', keys: ['calc', 'kalkulator', 'calculator'] },
-    { name: 'File Explorer', command: 'explorer.exe', keys: ['explorer', 'file explorer'] },
-    { name: 'Command Prompt', command: 'cmd.exe', keys: ['cmd', 'command prompt'] },
-    { name: 'PowerShell', command: 'powershell.exe', keys: ['powershell', 'pwsh'] },
-    { name: 'Terminal', command: 'wt.exe', keys: ['terminal', 'windows terminal', 'wt'] },
-    { name: 'Paint', command: 'mspaint.exe', keys: ['paint', 'mspaint', 'gambar'] }
-  ]
-
-  for (const b of BUILTIN_DIRECT_APPS) {
-    if (b.keys.includes(q) || b.keys.some((k) => k.replace(/[\s\-_]+/g, '') === qCompact)) {
-      return b
-    }
-  }
-
-  // 2. Cek di pengaturan pengguna (settings.actionApps)
-  try {
-    const raw = localStorage.getItem('hermes-avatar-settings')
-    if (raw) {
-      const s = JSON.parse(raw)
-      const actionApps = s.actionApps || []
-      const found = actionApps.find((a) => {
-        if (!a.name) return false
-        const n = a.name.toLowerCase()
-        return n === q || n.includes(q) || q.includes(n)
-      })
-      if (found) return found
-    }
-  } catch {}
-
-  // 3. Cek di daftar aplikasi Windows terpasang (cachedInstalledApps)
-  if (cachedInstalledApps && cachedInstalledApps.length > 0) {
-    // A. Exact match pada nama aplikasi atau alias bawaan
-    const exact = cachedInstalledApps.find((a) => {
-      const n = a.name.toLowerCase()
-      if (n === q) return true
-      if (a.aliases && a.aliases.some((alias) => alias.toLowerCase() === q)) return true
-      return false
-    })
-    if (exact) return exact
-
-    // B. Match lewat KNOWN_APP_ALIASES (misal 'vscode' -> 'Visual Studio Code')
-    const targetNames = KNOWN_APP_ALIASES[q] || []
-    for (const tgt of targetNames) {
-      const foundTarget = cachedInstalledApps.find((a) => {
-        const n = a.name.toLowerCase()
-        return n === tgt || n.includes(tgt)
-      })
-      if (foundTarget) return foundTarget
-    }
-
-    // C. Compact match (tanpa spasi/simbol, misal 'taskmanager' == 'Task Manager')
-    const compactMatch = cachedInstalledApps.find((a) => {
-      const nCompact = a.name.toLowerCase().replace(/[\s\-_]+/g, '')
-      if (nCompact === qCompact) return true
-      if (a.aliases && a.aliases.some((alias) => alias.toLowerCase().replace(/[\s\-_]+/g, '') === qCompact)) {
-        return true
-      }
-      return false
-    })
-    if (compactMatch) return compactMatch
-
-    // D. Substring match (hanya jika panjang query >= 3 agar tidak false positive)
-    if (q.length >= 3) {
-      const partial = cachedInstalledApps.find((a) => {
-        const n = a.name.toLowerCase()
-        if (n.includes(q) || (n.length >= 4 && q.includes(n))) return true
-        if (
-          a.aliases &&
-          a.aliases.some(
-            (alias) => alias.toLowerCase().includes(q) || (alias.length >= 4 && q.includes(alias.toLowerCase()))
-          )
-        ) {
-          return true
-        }
-        return false
-      })
-      if (partial) return partial
-    }
-  }
-
-  return null
-}
-
-async function tryFastLaunchApp(text) {
-  const queries = extractAppQueries(text)
-  if (!queries || queries.length === 0) return false
-
-  // Cek apakah perintah mengarah ke Pemutar Musik bawaan avatar
-  const isMusicQuery = queries.some((q) => /^(?:musik|music|lofi|lagu|player|pemutar musik)$/i.test(q))
-  if (isMusicQuery) {
-    musicPlayer.showWindow()
-    if (!musicPlayer.isPlaying) {
-      musicPlayer.playTrack(musicPlayer.currentTrackIndex)
-    }
-    showSpeechBubble('Memutar musik lofi companion untukmu 🎵', 3500)
-    speak('Memutar musik companion untukmu sekarang!', 'happy')
-    return true
-  }
-
-  // Pastikan cachedInstalledApps terisi jika saat startup belum siap
-  if (!cachedInstalledApps || cachedInstalledApps.length === 0) {
-    try {
-      const res = await window.hermesAvatar?.getInstalledApps?.()
-      if (res?.ok && Array.isArray(res.apps)) {
-        cachedInstalledApps = res.apps
-      }
-    } catch {}
-  }
-
-  const matchedApps = []
-  const missingApps = []
-
-  for (const q of queries) {
-    const matched = findMatchingApp(q)
-    if (matched) {
-      // Hindari duplikasi jika pengguna menyebut aplikasi yang sama
-      const id = (matched.command || matched.path || matched.name).toLowerCase()
-      if (!matchedApps.some((m) => (m.command || m.path || m.name).toLowerCase() === id)) {
-        matchedApps.push(matched)
-      }
-    } else {
-      missingApps.push(q)
-    }
-  }
-
-  // Jika tidak ada satu pun aplikasi yang cocok sama sekali
-  if (matchedApps.length === 0) {
-    if (missingApps.length > 0) {
-      const missingList = missingApps.map((q) => `"${q}"`).join(', ')
-      log('avatar', `Aplikasi ${missingList} belum ditemukan di sistem.`)
-      showSpeechBubble(`Aplikasi ${missingList} belum terdaftar 🤔`, 3500)
-      speak(`Aku belum tahu lokasi aplikasi ${missingList}. Kamu bisa menambahkannya di Pengaturan.`, 'neutral')
-      return true
-    }
-    return false
-  }
-
-  // Set ekspresi gembira saat meluncurkan aplikasi
-  controller?.setExpression('happy')
-
-  if (matchedApps.length === 1) {
-    const app = matchedApps[0]
-    setStatus(`Membuka ${app.name}… 🚀`)
-    showSpeechBubble(`Membuka ${app.name}... 🚀`, 3500)
-    log('avatar', `🚀 Membuka ${app.name}...`)
-    speak(`Membuka ${app.name} sekarang!`, 'happy')
-  } else {
-    const names = matchedApps.map((a) => a.name).join(', ')
-    setStatus(`Membuka ${matchedApps.length} aplikasi… 🚀`)
-    showSpeechBubble(`Membuka ${names}... 🚀`, 4500)
-    log('avatar', `🚀 Membuka ${matchedApps.length} aplikasi sekaligus: ${names}`)
-    speak(`Membuka ${matchedApps.length} aplikasi sekaligus: ${names}!`, 'happy')
-  }
-
-  // Luncurkan seluruh aplikasi yang cocok
-  for (const app of matchedApps) {
-    try {
-      const res = await window.hermesAvatar?.launchApp(app.id || app.command || app.path)
-      if (!res?.ok) {
-        log('avatar', `⚠️ Gagal membuka ${app.name}: ${res?.error || 'Unknown error'}`)
-      }
-    } catch (err) {
-      log('avatar', `⚠️ Error membuka ${app.name}: ${err.message}`)
-    }
-    // Jeda singkat 200ms antar proses agar OS Windows stabil
-    if (matchedApps.length > 1) {
-      await new Promise((r) => setTimeout(r, 200))
-    }
-  }
-
-  // Berikan catatan jika sebagian aplikasi yang diminta tidak ditemukan
-  if (missingApps.length > 0) {
-    const missingList = missingApps.map((q) => `"${q}"`).join(', ')
-    log('avatar', `ℹ️ Catatan: aplikasi ${missingList} tidak ditemukan di sistem.`)
-  }
-
-  return true
-}
-
-// Baca daftar aplikasi terdaftar (dari localStorage settings + scanned apps) → konteks untuk Hermes.
 function getRegisteredApps() {
-  const list = []
-  try {
-    const raw = localStorage.getItem('hermes-avatar-settings')
-    if (raw) {
-      const s = JSON.parse(raw)
-      for (const a of s.actionApps || []) {
-        if (a.name) list.push(a.command ? `${a.name} (path: "${a.command}")` : a.name)
-      }
-    }
-  } catch {}
-  if (cachedInstalledApps && cachedInstalledApps.length > 0) {
-    for (const a of cachedInstalledApps.slice(0, 25)) {
-      if (a.name && !list.some((x) => x.startsWith(a.name))) {
-        list.push(a.name)
-      }
-    }
-  }
-  return list
+  return getRegisteredAppsFromModule(cachedInstalledApps)
 }
 
 // Baca pose default (a-pose / t-pose) dari localStorage settings.
@@ -3114,7 +1804,7 @@ let previewResetTimer = null
 
 // Mengembalikan avatar ke kondisi awal yang bersih setelah pengujian
 function restoreAvatarAfterPreview() {
-  const isFocusSessionActive = isTimerRunning || (!timerPanel?.hidden && (timerOutfitToggle ? timerOutfitToggle.checked : true))
+  const isFocusSessionActive = pomodoroTimer.isRunning() || (!timerPanel?.hidden && (timerOutfitToggle ? timerOutfitToggle.checked : true))
   if (isFocusSessionActive) {
     // Jika timer Pomodoro/fokus benar-benar sedang aktif, pulihkan pakaian kerja/jam
     const watchStyle = getStateAnimationSetting('watch', 'watch_suit')
