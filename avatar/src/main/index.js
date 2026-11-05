@@ -1,11 +1,11 @@
 import { app, BrowserWindow, ipcMain, protocol, dialog, screen, safeStorage, shell, Menu, session } from 'electron'
 import { join, extname, isAbsolute, basename, dirname } from 'path'
-import { readFile, writeFile, mkdir, rm, copyFile, rename, readdir } from 'fs/promises'
-import { existsSync, statSync, readdirSync, cpSync, mkdirSync, createWriteStream, readFileSync, openSync, readSync, closeSync } from 'fs'
-import http from 'http'
-import https from 'https'
+import { readFile, writeFile, mkdir, rm } from 'fs/promises'
+import { existsSync, statSync, readdirSync, cpSync, mkdirSync, readFileSync, openSync, readSync, closeSync } from 'fs'
+
+
 import { execFile, spawn } from 'child_process'
-import { createHash } from 'crypto'
+
 import { approveRoot, isPathAllowed } from './path-guard.js'
 import {
   startAllServices,
@@ -35,16 +35,26 @@ import { connectGateway, disconnectGateway, request as gatewayRequest, isGateway
 import { registerShortcuts, unregisterShortcuts, getShortcutList, updateShortcut } from './shortcuts.js'
 import { startBridgeServer, stopBridgeServer, BRIDGE_PORT } from './bridge-server.js'
 import { parseHttpUrl, isLocalRouterUrl } from './url-guard.js'
-import { applyProviderConfig, setEnvVar } from './hermes-config.js'
+
 import YAML from 'yaml'
 import { loadOrCreateBridgeToken, BRIDGE_TOKEN_FILE } from './bridge-token.js'
-import { isSafeArg } from './cli-args.js'
+
 import { createSecretStore } from './secret-store.js'
 import { createSecureIpc } from './secure-ipc.js'
 import { resolveTerminalAction } from './actions.js'
 import { createAppRegistry } from './app-registry.js'
 import { RPC_ALLOWED_METHODS } from './ipc-policy.js'
 import { readPngSize, estimateTextureMB } from './png-size.js'
+import { checkAppUpdate, downloadAndApplyUpdate, relaunchApp } from './updater-service.js'
+import { getLiveWeather, getLiveNews } from './feed-service.js'
+import { synthesizeTts } from './tts-service.js'
+import {
+  testProviderConnection,
+  fetchEndpointModels,
+  updateHermesProviderConfig,
+  updateModelConfigYaml,
+  runHermes
+} from './provider-service.js'
 
 const secretStore = createSecretStore(safeStorage)
 
@@ -1126,136 +1136,6 @@ secureHandle('avatar:trigger-idle-chatter', (_event, line) => {
   return { ok: false, error: 'Avatar window belum aktif' }
 })
 
-function isNewerVersion(vLatest, vCurrent) {
-  if (!vLatest || !vCurrent) return false
-  const p1 = vLatest.replace(/^v/i, '').split('.').map((x) => parseInt(x, 10) || 0)
-  const p2 = vCurrent.replace(/^v/i, '').split('.').map((x) => parseInt(x, 10) || 0)
-  for (let i = 0; i < Math.max(p1.length, p2.length); i++) {
-    const num1 = p1[i] || 0
-    const num2 = p2[i] || 0
-    if (num1 > num2) return true
-    if (num1 < num2) return false
-  }
-  return false
-}
-
-let lastRelease = null
-const psq = (s) => String(s ?? '').replace(/'/g, "''")
-
-async function checkAppUpdate() {
-  const currentVersion = app.getVersion() || '0.1.4'
-  const repoOwner = 'KarmaSenzu'
-  const repoName = 'Hermes-Desktop-Pet'
-
-  try {
-    const apiUrl = `https://api.github.com/repos/${repoOwner}/${repoName}/releases/latest`
-    const resp = await fetch(apiUrl, {
-      headers: {
-        'User-Agent': 'Hermes-Desktop-Pet-App',
-        'Accept': 'application/vnd.github.v3+json'
-      }
-    })
-
-    if (!resp.ok) {
-      try {
-        const rawPkgResp = await fetch(`https://raw.githubusercontent.com/${repoOwner}/${repoName}/main/avatar/package.json`)
-        if (rawPkgResp.ok) {
-          const rawPkg = await rawPkgResp.json()
-          const remoteVer = rawPkg.version || ''
-          const hasUpdate = isNewerVersion(remoteVer, currentVersion)
-          const fallbackReleaseUrl = `https://github.com/${repoOwner}/${repoName}/releases`
-          lastRelease = {
-            tag: `v${remoteVer}`,
-            releaseUrl: fallbackReleaseUrl,
-            assets: []
-          }
-          return {
-            ok: true,
-            hasUpdate,
-            currentVersion,
-            latestVersion: `v${remoteVer}`,
-            releaseName: `Hermes Desktop Pet v${remoteVer}`,
-            releaseDate: '',
-            changelog: 'Pembaruan terkini tersedia di rilis GitHub.',
-            releaseUrl: fallbackReleaseUrl,
-            downloadUrl: fallbackReleaseUrl,
-            assetName: null
-          }
-        }
-      } catch {}
-
-      lastRelease = null
-      return {
-        ok: true,
-        hasUpdate: false,
-        currentVersion,
-        latestVersion: `v${currentVersion}`,
-        message: 'Versi saat ini adalah yang terbaru.'
-      }
-    }
-
-    const data = await resp.json()
-    const latestTag = data.tag_name || ''
-    const cleanLatest = latestTag.replace(/^v/i, '')
-    const cleanCurrent = currentVersion.replace(/^v/i, '')
-
-    const hasUpdate = isNewerVersion(cleanLatest, cleanCurrent)
-
-    const releaseUrl = data.html_url || `https://github.com/${repoOwner}/${repoName}/releases`
-    lastRelease = {
-      tag: latestTag,
-      releaseUrl,
-      assets: Array.isArray(data.assets)
-        ? data.assets.map((a) => ({
-            name: a.name,
-            url: a.browser_download_url,
-            digest: a.digest ? String(a.digest).trim() : null
-          }))
-        : []
-    }
-
-    let downloadUrl = data.html_url
-    let matchedAsset = null
-    if (data.assets && Array.isArray(data.assets)) {
-      if (process.platform === 'darwin') {
-        matchedAsset = data.assets.find((a) => a.name.endsWith('.dmg')) ||
-                       data.assets.find((a) => a.name.endsWith('.zip') && a.name.includes('mac'))
-      } else if (process.platform === 'win32') {
-        // Prioritaskan paket pembaruan portabel .zip untuk update seamless tanpa menjalankan installer .exe ulang!
-        matchedAsset = data.assets.find((a) => a.name.endsWith('.zip') && (a.name.includes('win') || a.name.toLowerCase().includes('windows'))) ||
-                       data.assets.find((a) => a.name.endsWith('.zip') && !a.name.includes('mac') && !a.name.includes('linux')) ||
-                       data.assets.find((a) => a.name.endsWith('.exe'))
-      } else {
-        matchedAsset = data.assets.find((a) => a.name.endsWith('.AppImage')) ||
-                       data.assets.find((a) => a.name.endsWith('.deb'))
-      }
-      if (matchedAsset?.browser_download_url) {
-        downloadUrl = matchedAsset.browser_download_url
-      }
-    }
-
-    return {
-      ok: true,
-      hasUpdate,
-      currentVersion,
-      latestVersion: latestTag.startsWith('v') ? latestTag : `v${latestTag}`,
-      releaseName: data.name || data.tag_name || `Versi ${latestTag}`,
-      releaseDate: data.published_at ? data.published_at.split('T')[0] : '',
-      changelog: data.body || 'Pembaruan stabilitas, perbaikan bug, dan peningkatan fitur.',
-      releaseUrl,
-      downloadUrl,
-      assetName: matchedAsset ? matchedAsset.name : null
-    }
-  } catch (err) {
-    lastRelease = null
-    return {
-      ok: false,
-      currentVersion,
-      error: err?.message || String(err)
-    }
-  }
-}
-
 // IPC: periksa pembaruan rilis aplikasi
 secureHandle('avatar:check-update', async () => {
   return await checkAppUpdate()
@@ -1281,227 +1161,15 @@ secureHandle('avatar:open-external-url', async (_event, url) => {
 
 // IPC: Unduh dan pasang update secara in-app (OTA Seamless Auto-Update)
 secureHandle('avatar:download-and-apply-update', async (event, _downloadUrl, assetName) => {
-  try {
-    if (!assetName || typeof assetName !== 'string') {
-      return { ok: false, error: 'Nama asset tidak valid' }
-    }
-
-    if (!lastRelease) {
-      await checkAppUpdate()
-    }
-
-    const asset = lastRelease?.assets?.find((a) => a.name === assetName)
-    if (!asset) {
-      return { ok: false, error: 'Asset tidak ditemukan pada rilis terakhir' }
-    }
-
-    // Validasi nama asset: basename, regex pattern, no '..', allowed extensions
-    const filename = asset.name
-    if (
-      basename(filename) !== filename ||
-      !/^[A-Za-z0-9._ -]{1,120}$/.test(filename) ||
-      filename.includes('..') ||
-      !/\.(exe|dmg|zip|AppImage)$/i.test(filename)
-    ) {
-      return { ok: false, error: 'Nama asset tidak valid' }
-    }
-
-    // Validasi URL unduhan: https, github.com, path prefix rilis
-    let assetUrlObj
-    try {
-      assetUrlObj = new URL(asset.url)
-    } catch {
-      return { ok: false, error: 'URL download tidak valid' }
-    }
-
-    if (
-      assetUrlObj.protocol !== 'https:' ||
-      assetUrlObj.hostname !== 'github.com' ||
-      !assetUrlObj.pathname.startsWith('/KarmaSenzu/Hermes-Desktop-Pet/releases/download/')
-    ) {
-      return { ok: false, error: 'URL download tidak diizinkan' }
-    }
-
-    // Streaming unduh via fetch bawaan Node.js
-    const resp = await fetch(asset.url, {
-      headers: {
-        'User-Agent': 'Hermes-Desktop-Pet-App'
-      }
-    })
-
-    if (!resp.ok) {
-      throw new Error(`Gagal mengunduh paket update: HTTP ${resp.status} ${resp.statusText}`)
-    }
-
-    // Validasi redirect hostname
-    let respUrlObj
-    try {
-      respUrlObj = new URL(resp.url)
-    } catch {
-      throw new Error('URL respons unduhan tidak valid')
-    }
-
-    const allowedHosts = [
-      'github.com',
-      'objects.githubusercontent.com',
-      'release-assets.githubusercontent.com'
-    ]
-    if (!allowedHosts.includes(respUrlObj.hostname)) {
-      throw new Error(`Host unduhan tidak diizinkan: ${respUrlObj.hostname}`)
-    }
-
-    const tempDir = join(app.getPath('temp'), `hermes_ota_${Date.now()}`)
-    await mkdir(tempDir, { recursive: true })
-    const targetFilePath = join(tempDir, filename)
-
-    const totalBytes = parseInt(resp.headers.get('content-length') || '0', 10)
-    let transferredBytes = 0
-
-    const fileStream = createWriteStream(targetFilePath)
-    const hash = createHash('sha256')
-    const reader = resp.body.getReader()
-
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
-      fileStream.write(value)
-      hash.update(value)
-      transferredBytes += value.length
-      if (totalBytes > 0) {
-        const percent = Math.min(100, Math.round((transferredBytes / totalBytes) * 100))
-        const transferredMb = (transferredBytes / (1024 * 1024)).toFixed(1)
-        const totalMb = (totalBytes / (1024 * 1024)).toFixed(1)
-        event.sender.send('avatar:update-download-progress', { percent, transferredMb, totalMb })
-      }
-    }
-    await new Promise((resolve) => fileStream.end(resolve))
-
-    // Validasi Checksum (FAIL CLOSED)
-    const computedDigest = `sha256:${hash.digest('hex').toLowerCase()}`
-    const expectedDigest = asset.digest ? String(asset.digest).trim().toLowerCase() : ''
-    const manualUrl = lastRelease?.releaseUrl || `https://github.com/KarmaSenzu/Hermes-Desktop-Pet/releases`
-
-    if (!expectedDigest || !expectedDigest.startsWith('sha256:') || computedDigest !== expectedDigest) {
-      try {
-        await rm(targetFilePath, { force: true })
-        await rm(tempDir, { recursive: true, force: true })
-      } catch (_) {}
-      return {
-        ok: false,
-        error: 'Checksum tidak tersedia/tidak cocok',
-        manualUrl
-      }
-    }
-
-    // Terapkan instalasi berdasarkan platform
-    if (process.platform === 'darwin') {
-      if (filename.endsWith('.dmg')) {
-        const mountDir = join(tempDir, 'mount')
-        await mkdir(mountDir, { recursive: true })
-
-        await new Promise((resolve, reject) => {
-          execFile('hdiutil', ['attach', '-nobrowse', '-readonly', targetFilePath, '-mountpoint', mountDir], (err) => {
-            if (err) return reject(err)
-            resolve()
-          })
-        })
-
-        const appSource = join(mountDir, 'Hermes Desktop Pet.app')
-        if (existsSync(appSource)) {
-          await new Promise((resolve, reject) => {
-            execFile('cp', ['-R', appSource, '/Applications/'], (err) => {
-              if (err) return reject(err)
-              resolve()
-            })
-          })
-          execFile('xattr', ['-cr', '/Applications/Hermes Desktop Pet.app'], () => {})
-        }
-
-        execFile('hdiutil', ['detach', mountDir, '-force'], () => {})
-      } else if (filename.endsWith('.zip')) {
-        await new Promise((resolve, reject) => {
-          execFile('unzip', ['-q', '-o', targetFilePath, '-d', '/Applications/'], (err) => {
-            if (err) return reject(err)
-            resolve()
-          })
-        })
-        execFile('xattr', ['-cr', '/Applications/Hermes Desktop Pet.app'], () => {})
-      }
-      return { ok: true, readyToRestart: true, message: 'Update berhasil dipasang di /Applications!' }
-    } else if (process.platform === 'win32') {
-      if (filename.endsWith('.zip')) {
-        const destDir = app.isPackaged
-          ? dirname(process.execPath)
-          : join(process.env.LOCALAPPDATA || homedir(), 'Programs', 'Hermes Desktop Pet')
-
-        const stagingDir = join(tempDir, 'staging')
-        await mkdir(stagingDir, { recursive: true })
-
-        // Ekstrak ZIP di background ke folder staging sementara
-        await new Promise((resolve, reject) => {
-          execFile('powershell', [
-            '-NoProfile',
-            '-Command',
-            `Expand-Archive -LiteralPath '${psq(targetFilePath)}' -DestinationPath '${psq(stagingDir)}' -Force`
-          ], (err) => {
-            if (err) return reject(err)
-            resolve()
-          })
-        })
-
-        // Buat runner script batch updater mandiri yang menimpa file dan membuka kembali aplikasi setelah Electron exit
-        const updateScriptPath = join(tempDir, 'apply_update.bat')
-        const exePath = app.isPackaged ? process.execPath : join(destDir, 'Hermes Desktop Pet.exe')
-
-        const psCopyCmd = `$staging = '${psq(stagingDir)}'; $appDir = '${psq(destDir)}'; $inner = Get-ChildItem -LiteralPath $staging | Where-Object { $_.PSIsContainer -and (Test-Path -LiteralPath (Join-Path $_.FullName 'Hermes Desktop Pet.exe')) } | Select-Object -First 1; $src = if ($inner) { $inner.FullName } else { $staging }; Get-ChildItem -LiteralPath $src | Copy-Item -Destination $appDir -Recurse -Force`
-
-        const batContent = [
-          '@echo off',
-          'timeout /t 2 /nobreak > nul',
-          `powershell -NoProfile -Command "${psCopyCmd}"`,
-          `start "" "${exePath}"`,
-          'exit'
-        ].join('\r\n')
-
-        await writeFile(updateScriptPath, batContent, 'utf-8')
-        pendingWindowsInstaller = updateScriptPath
-        return { ok: true, readyToRestart: true, message: 'Pembaruan siap diterapkan seketika saat restart!' }
-      } else if (filename.endsWith('.exe')) {
-        pendingWindowsInstaller = targetFilePath
-        return { ok: true, readyToRestart: true, message: 'Installer update siap dipasang saat restart!' }
-      }
-    } else {
-      // Linux AppImage
-      if (filename.endsWith('.AppImage')) {
-        const binDest = join(homedir(), '.local', 'bin', 'hermes-desktop-pet')
-        await mkdir(join(homedir(), '.local', 'bin'), { recursive: true })
-        execFile('chmod', ['+x', targetFilePath], () => {})
-        execFile('cp', [targetFilePath, binDest], () => {})
-        execFile('chmod', ['+x', binDest], () => {})
-        return { ok: true, readyToRestart: true }
-      }
-    }
-
-    return { ok: true, readyToRestart: true }
-  } catch (err) {
-    return { ok: false, error: err?.message || String(err) }
-  }
+  return await downloadAndApplyUpdate(event, _downloadUrl, assetName)
 })
+
 
 // IPC: Relaunch aplikasi untuk menerapkan update
 secureHandle('avatar:relaunch-app', () => {
-  if (process.platform === 'win32' && pendingWindowsInstaller) {
-    if (pendingWindowsInstaller.endsWith('.bat')) {
-      spawn('cmd.exe', ['/c', pendingWindowsInstaller], { detached: true, stdio: 'ignore' }).unref()
-    } else {
-      spawn(pendingWindowsInstaller, ['/S'], { detached: true, stdio: 'ignore' }).unref()
-    }
-    app.exit(0)
-    return
-  }
-  app.relaunch()
-  app.exit(0)
+  relaunchApp()
 })
+
 
 // IPC: RPC config/model ke Hermes (shared gateway) — untuk LLM section.
 secureHandle('avatar:rpc', async (_event, method, params) => {
@@ -1568,250 +1236,9 @@ secureHandle('avatar:delete-skill', async (_event, { name, category }) => {
 // IPC: tes koneksi model (chat completion sungguhan ke provider).
 // Kirim request "ping" ke model → verifikasi model benar-benar berfungsi.
 secureHandle('avatar:test-connection', async (_event, url, model, apiKey) => {
-  try {
-    const target = String(url || '').trim()
-    const modelName = String(model || '').trim()
-    if (!target) return { ok: false, error: 'URL kosong.' }
-    if (!modelName) return { ok: false, error: 'Model kosong.' }
-    if (!parseHttpUrl(target)) {
-      return { ok: false, error: 'URL target tidak valid. Harus menggunakan protokol http atau https.' }
-    }
-
-    const base = target.replace(/\/+$/, '')
-    const endpoint = base.endsWith('/v1') ? `${base}/chat/completions` : `${base}/v1/chat/completions`
-    const u = new URL(endpoint)
-    const mod = u.protocol === 'https:' ? https : http
-
-    const body = JSON.stringify({
-      model: modelName,
-      messages: [{ role: 'user', content: 'ping' }],
-      max_tokens: 5
-    })
-
-    let effectiveKey = ''
-    try {
-      effectiveKey = await resolveApiKeyFor(apiKey, target)
-    } catch (err) {
-      return { ok: false, error: err?.message || 'Format kunci tidak valid' }
-    }
-
-    const headers = {
-      'Content-Type': 'application/json',
-      'Content-Length': Buffer.byteLength(body)
-    }
-    if (effectiveKey) headers['Authorization'] = `Bearer ${effectiveKey}`
-
-    return await new Promise((resolve) => {
-      const req = mod.request(u, { method: 'POST', headers, timeout: 15000 }, (res) => {
-        let data = ''
-        res.on('data', (chunk) => { data += chunk })
-        res.on('end', () => {
-          if (res.statusCode >= 200 && res.statusCode < 300) {
-            resolve({ ok: true, status: res.statusCode, reachable: true })
-          } else {
-            // 401/404/500 dll → model gagal.
-            let msg = `HTTP ${res.statusCode}`
-            try {
-              const j = JSON.parse(data)
-              if (j.error?.message) msg = j.error.message
-            } catch { /* ignore */ }
-            resolve({ ok: false, status: res.statusCode, error: msg })
-          }
-        })
-      })
-      req.on('error', (err) => resolve({ ok: false, error: err?.message || 'Tidak dapat terhubung' }))
-      req.on('timeout', () => {
-        req.destroy()
-        resolve({ ok: false, error: 'Timeout' })
-      })
-      req.write(body)
-      req.end()
-    })
-  } catch (err) {
-    return { ok: false, error: err?.message || String(err) }
-  }
+  return await testProviderConnection({ url, model, apiKey, resolveApiKeyFor })
 })
 
-// Helper: jalankan `hermes` CLI via execFile (dipakai set-model & install-skill).
-function runHermes(args, timeout = 30000, queryIndex = -1) {
-  return new Promise((resolve, reject) => {
-    for (let i = 0; i < args.length; i++) {
-      const a = String(args[i])
-      const isQuery = i === queryIndex
-      if (a.startsWith('-') && a !== '--json') {
-        return reject(new Error('Argumen diawali - tidak diizinkan'))
-      }
-      if (!isSafeArg(a, isQuery)) {
-        return reject(new Error(`Argumen ke-${i} tidak valid untuk hermes CLI`))
-      }
-    }
-    const hermesCmd = resolveHermesCmd()
-    const needShell = process.platform === 'win32' && /\.(cmd|bat)$/i.test(hermesCmd)
-    const cmd = needShell ? `"${hermesCmd}"` : hermesCmd
-    const finalArgs = needShell ? args.map((a, i) => (i === queryIndex ? `"${a}"` : String(a))) : args.map(String)
-    execFile(cmd, finalArgs, { timeout, shell: needShell, env: process.env }, (err, stdout, stderr) => {
-      if (err) reject(new Error(stderr?.trim() || err.message))
-      else resolve(stdout?.trim() || '')
-    })
-  })
-}
-
-// Helper: backup file ke .bak-YYYYMMDD-HHMMSS (simpan maksimal maxBackups terbaru)
-async function backupConfigFile(filePath, maxBackups = 5) {
-  if (!existsSync(filePath)) return
-  const now = new Date()
-  const pad = (n) => String(n).padStart(2, '0')
-  const timestamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`
-  const dir = dirname(filePath)
-  const base = basename(filePath)
-  const backupPath = join(dir, `${base}.bak-${timestamp}`)
-
-  try {
-    await copyFile(filePath, backupPath)
-    const files = await readdir(dir)
-    const prefix = `${base}.bak-`
-    const matching = files.filter((f) => f.startsWith(prefix)).sort()
-    if (matching.length > maxBackups) {
-      const toDelete = matching.slice(0, matching.length - maxBackups)
-      for (const oldFile of toDelete) {
-        try { await rm(join(dir, oldFile)) } catch {}
-      }
-    }
-  } catch (err) {
-    console.warn(`[backupConfigFile] Gagal backup ${base}:`, err?.message || err)
-  }
-}
-
-// Helper: tulis file secara atomik (.tmp lalu rename)
-async function writeAtomicFile(filePath, content) {
-  const dir = dirname(filePath)
-  await mkdir(dir, { recursive: true })
-  const tmpPath = join(dir, `${basename(filePath)}.${Date.now()}.${Math.random().toString(36).slice(2)}.tmp`)
-  await writeFile(tmpPath, content, 'utf8')
-  try {
-    await rename(tmpPath, filePath)
-  } catch {
-    await copyFile(tmpPath, filePath)
-    await rm(tmpPath).catch(() => {})
-  }
-}
-
-// Helper komprehensif: sinkronisasi konfigurasi LLM Provider ke config.yaml dan .env secara non-destruktif
-async function updateHermesProviderConfig({ name, baseUrl, apiKey, model }) {
-  const cfgPath = resolveHermesConfigPath()
-  let cfg = ''
-  if (existsSync(cfgPath)) {
-    cfg = await readFile(cfgPath, 'utf8')
-  } else {
-    await mkdir(dirname(cfgPath), { recursive: true })
-  }
-
-  const doc = YAML.parseDocument(cfg || '')
-
-  // 1. Tentukan model efektif (pakai doc.getIn bila kosong)
-  let effectiveModel = String(model || '').trim()
-  if (!effectiveModel) {
-    const fromDoc = doc.getIn(['model', 'default'])
-    if (fromDoc) effectiveModel = String(fromDoc).trim()
-    else if (process.env.HERMES_INFERENCE_MODEL) effectiveModel = process.env.HERMES_INFERENCE_MODEL.trim()
-  }
-  if (!effectiveModel) effectiveModel = 'default'
-
-  // 2. Tentukan baseUrl efektif (pakai doc.getIn bila kosong)
-  let provUrl = String(baseUrl || '').trim()
-  if (!provUrl) {
-    const fromDoc = doc.getIn(['model', 'base_url'])
-    if (fromDoc) provUrl = String(fromDoc).trim()
-    else provUrl = 'http://localhost:20128/v1'
-  }
-
-  // 3. Tentukan nama provider efektif (pakai doc.getIn bila kosong)
-  let provName = String(name || '').trim()
-  if (!provName) {
-    const fromDoc = doc.getIn(['model', 'provider'])
-    if (fromDoc && String(fromDoc).trim() !== 'custom') {
-      provName = String(fromDoc).trim()
-    } else {
-      const jsProviders = doc.toJS()?.providers || {}
-      const firstSaved = Object.values(jsProviders)[0]?.name
-      provName = firstSaved ? String(firstSaved).trim() : 'custom'
-    }
-  }
-
-  // 4. Resolusi API Key cerdas (mencegah 401 Invalid API Key pada 9Router)
-  let keyVal = String(apiKey || '').trim()
-  const isRouter = isLocalRouterUrl(provUrl)
-
-  if (!keyVal || keyVal === 'no-key-required') {
-    if (isRouter) {
-      try {
-        const rKey = await resolveRouterApiKey()
-        if (rKey?.ok && rKey?.key) {
-          keyVal = rKey.key
-          console.log(`[updateHermesProviderConfig] Otomatis menyematkan API Key 9Router (${rKey.name || 'Key'})`)
-        }
-      } catch (_) {}
-    }
-  }
-
-  // Jika masih belum ada, pertahankan key yang tersimpan sebelumnya di process.env / config.yaml
-  if (!keyVal || keyVal === 'no-key-required') {
-    if (process.env.OPENAI_API_KEY && process.env.OPENAI_API_KEY !== 'no-key-required') {
-      keyVal = process.env.OPENAI_API_KEY
-    } else {
-      const safeName = provName.replace(/[^a-zA-Z0-9_-]/g, '_') || 'custom'
-      const curKey = doc.getIn(['providers', safeName, 'api_key'])
-      if (curKey && String(curKey).trim() !== 'no-key-required') {
-        keyVal = String(curKey).trim()
-      }
-    }
-  }
-
-  if (!keyVal) {
-    keyVal = 'no-key-required'
-  }
-
-  // 5. Update config.yaml secara non-destruktif
-  const updatedCfg = applyProviderConfig(cfg, {
-    name: provName,
-    baseUrl: provUrl,
-    apiKey: keyVal,
-    model: effectiveModel
-  })
-
-  // Backup config.yaml (maksimal 5 backup terbaru) lalu tulis secara atomik
-  await backupConfigFile(cfgPath, 5)
-  await writeAtomicFile(cfgPath, updatedCfg)
-
-  // 6. Update .env secara atomik via setEnvVar
-  const envPath = join(dirname(cfgPath), '.env')
-  let env = ''
-  if (existsSync(envPath)) {
-    env = await readFile(envPath, 'utf8')
-  }
-  env = setEnvVar(env, 'OPENAI_BASE_URL', provUrl)
-  env = setEnvVar(env, 'OPENAI_API_KEY', keyVal)
-  env = setEnvVar(env, 'HERMES_INFERENCE_MODEL', effectiveModel)
-
-  await writeAtomicFile(envPath, env)
-
-  // 7. Update process.env lokal
-  process.env.OPENAI_BASE_URL = provUrl
-  process.env.OPENAI_API_KEY = keyVal
-  process.env.HERMES_INFERENCE_MODEL = effectiveModel
-
-  return true
-}
-
-// Helper: tulis update model langsung ke config.yaml bila CLI / RPC tidak tersedia
-async function updateModelConfigYaml(modelName) {
-  try {
-    return await updateHermesProviderConfig({ model: modelName })
-  } catch (err) {
-    console.warn('[updateModelConfigYaml] failed:', err?.message || err)
-    return false
-  }
-}
 
 // IPC: set full LLM provider ke Hermes (config.yaml + .env + RPC gateway)
 secureHandle('avatar:set-llm-provider', async (_event, payload) => {
@@ -1872,44 +1299,9 @@ secureHandle('avatar:restart-hermes', async () => {
 
 // IPC: ambil model aktual langsung dari endpoint OpenAI-compatible (9Router, Ollama, dll)
 secureHandle('avatar:fetch-endpoint-models', async (_event, baseUrl, apiKey) => {
-  try {
-    const targetUrl = String(baseUrl || '').trim()
-    if (!targetUrl) return { ok: false, error: 'Base URL kosong' }
-    if (!parseHttpUrl(targetUrl)) {
-      return { ok: false, error: 'URL endpoint tidak valid. Harus menggunakan protokol http atau https.' }
-    }
-
-    let effectiveKey = ''
-    try {
-      effectiveKey = await resolveApiKeyFor(apiKey, targetUrl)
-    } catch (err) {
-      return { ok: false, error: err?.message || 'Format kunci tidak valid' }
-    }
-
-    const url = targetUrl.replace(/\/+$/, '') + '/models'
-    const headers = { Accept: 'application/json' }
-    if (effectiveKey && effectiveKey !== 'no-key-required') {
-      headers['Authorization'] = `Bearer ${effectiveKey}`
-    }
-
-    const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), 3200)
-    const resp = await fetch(url, { headers, signal: controller.signal })
-    clearTimeout(timeout)
-
-    if (!resp.ok) {
-      return { ok: false, error: `HTTP ${resp.status} ${resp.statusText}` }
-    }
-    const data = await resp.json()
-    const rawList = Array.isArray(data) ? data : (data?.data || [])
-    const models = rawList
-      .map((m) => (typeof m === 'string' ? m : (m.id || m.name)))
-      .filter(Boolean)
-    return { ok: true, models }
-  } catch (err) {
-    return { ok: false, error: err?.message || String(err) }
-  }
+  return await fetchEndpointModels({ baseUrl, apiKey, resolveApiKeyFor })
 })
+
 
 // IPC: set model aktif via 3-layer (RPC gateway -> hermes CLI -> config.yaml fallback).
 secureHandle('avatar:set-model', async (_event, model) => {
@@ -2303,84 +1695,15 @@ secureHandle('avatar:learn-app', async (_event, appData) => {
 
 // IPC: Cuaca real-time live (Open-Meteo / WMO — gratis, response cepat <300ms)
 secureHandle('avatar:get-live-weather', async (_event, city = 'Jakarta') => {
-  try {
-    const lat = -6.2
-    const lon = 106.8
-    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m&timezone=Asia%2FJakarta`
-    const resp = await fetch(url, { headers: { 'User-Agent': 'HermesAvatar/1.0' }, signal: AbortSignal.timeout(5000) })
-    if (!resp.ok) return { ok: false, error: `HTTP ${resp.status}` }
-    const data = await resp.json()
-    const cur = data.current || {}
-
-    const WMO_MAP = {
-      0: 'Cerah',
-      1: 'Sebagian Besar Cerah',
-      2: 'Sebagian Berawan',
-      3: 'Mendung Berawan',
-      45: 'Berkabut',
-      48: 'Kabut Tebal',
-      51: 'Gerimis Ringan',
-      53: 'Gerimis Sedang',
-      55: 'Gerimis Lebat',
-      61: 'Hujan Ringan',
-      63: 'Hujan Sedang',
-      65: 'Hujan Lebat',
-      80: 'Hujan Lokal Singkat',
-      81: 'Hujan Lebat Berselang',
-      82: 'Hujan Sangat Deras',
-      95: 'Hujan Disertai Petir',
-      96: 'Badai Petir Ringan',
-      99: 'Badai Petir Lebat'
-    }
-    const condition = WMO_MAP[cur.weather_code] || 'Cerah Berawan'
-    return {
-      ok: true,
-      city: 'Jakarta',
-      temp: cur.temperature_2m,
-      humidity: cur.relative_humidity_2m,
-      wind: cur.wind_speed_10m,
-      weatherCode: cur.weather_code,
-      condition,
-      time: cur.time
-    }
-  } catch (err) {
-    return { ok: false, error: err?.message || String(err) }
-  }
+  return await getLiveWeather(city)
 })
+
 
 // IPC: Berita terkini Indonesia live hari ini (Google News RSS Indonesia)
 secureHandle('avatar:get-live-news', async () => {
-  try {
-    const url = 'https://news.google.com/rss?hl=id&gl=ID&ceid=ID:id'
-    const resp = await fetch(url, {
-      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
-      signal: AbortSignal.timeout(6000)
-    })
-    if (!resp.ok) return { ok: false, error: `HTTP ${resp.status}` }
-    const xml = await resp.text()
-
-    const itemRegex = /<item>[\s\S]*?<title>(.*?)<\/title>[\s\S]*?<link>(.*?)<\/link>[\s\S]*?<pubDate>(.*?)<\/pubDate>[\s\S]*?<\/item>/g
-    const items = []
-    let match
-    while ((match = itemRegex.exec(xml)) !== null && items.length < 5) {
-      let rawTitle = match[1] || ''
-      rawTitle = rawTitle
-        .replace(/&quot;/g, '"')
-        .replace(/&apos;/g, "'")
-        .replace(/&amp;/g, '&')
-        .replace(/&lt;/g, '<')
-        .replace(/&gt;/g, '>')
-        .trim()
-      items.push({
-        title: rawTitle,
-        pubDate: match[3] || ''
-      })
-    }
-    return { ok: true, items }
-  } catch (err) {
-    return { ok: false, error: err?.message || String(err) }
-  }
+  return await getLiveNews()
 })
+
 
 // IPC: ambil icon aplikasi berdasarkan appId (NativeImage → data URL PNG)
 secureHandle('avatar:app-icon', async (_event, appId) => {
@@ -2418,180 +1741,19 @@ secureHandle('avatar:preview-animation', async (_event, data) => {
   return { ok: false, error: 'Jendela avatar belum aktif' }
 })
 
-// IPC: TTS — jalur utama memakai endpoint /api/audio/speak milik Hermes
-// (dashboard backend, provider edge-tts Hermes yang terbukti stabil).
-// Endpoint Bing lama yang dipakai msedge-tts sering menolak (HTTP 403),
-// jadi msedge-tts hanya dipakai sebagai fallback bila Hermes tidak hidup.
-function resolveTtsUrl() {
-  const wsUrl = process.env['HERMES_WS_URL'] || 'ws://127.0.0.1:9119/api/ws'
-  try {
-    const u = new URL(wsUrl)
-    u.protocol = u.protocol === 'wss:' ? 'https:' : 'http:'
-    u.pathname = '/api/audio/speak'
-    u.search = ''
-    u.hash = ''
-    return u.toString()
-  } catch {
-    return 'http://127.0.0.1:9119/api/audio/speak'
-  }
-}
-
+// IPC: TTS — menggunakan tts-service terpusat
 secureHandle('avatar:tts', async (_event, text, voice, options = {}) => {
-  const chosenVoice = voice || 'af_heart'
-  const isKokoro = options.provider === 'kokoro' || /^[a-z]{2}_/i.test(chosenVoice)
-
-  // 1) Jalur Kokoro-TTS (Lokal AI Anime — Apache 2.0 Komersial)
-  if (isKokoro) {
-    try {
-      // Auto-start Kokoro server jika port 8880 belum aktif
-      if (!(await isPortOpen(KOKORO_PORT))) {
-        console.log('[avatar:tts] Kokoro server belum aktif di port 8880, mencoba auto-start...')
-        await startKokoro()
-      }
-
-      const endpoint = options.kokoroEndpoint || 'http://127.0.0.1:8880'
-      const kokoroUrl = endpoint.endsWith('/speech')
-        ? endpoint
-        : `${endpoint.replace(/\/+$/, '')}/v1/audio/speech`
-
-      const kokoroVoice = /^[a-z]{2}_/i.test(chosenVoice) ? chosenVoice : 'af_heart'
-      const resp = await fetch(kokoroUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: 'kokoro',
-          input: String(text),
-          voice: kokoroVoice,
-          speed: options.speed || 1.0,
-          intonation: options.intonation || 'anime',
-          lang: options.lang,
-          response_format: 'wav'
-        })
-      })
-
-      if (resp.ok) {
-        const arrayBuf = await resp.arrayBuffer()
-        const buf = Buffer.from(arrayBuf)
-        const base64 = buf.toString('base64')
-        return {
-          ok: true,
-          dataUrl: `data:audio/wav;base64,${base64}`,
-          base64,
-          mimeType: 'audio/wav',
-          isKokoro: true,
-          voice: kokoroVoice
-        }
-      } else {
-        console.warn(`[avatar:tts] Kokoro server HTTP ${resp.status}:`, await resp.text().catch(() => ''))
-      }
-    } catch (err) {
-      console.warn('[avatar:tts] Kokoro server offline / gagal diakses, mencoba jalur cadangan:', err?.message || err)
-    }
-
-    // Jika mode noFallback aktif (misal dari pengujian suara), tolak fallback agar pengguna tidak tertipu suara cewek default
-    if (options.noFallback) {
-      return {
-        ok: false,
-        error: `Server Kokoro-TTS (port 8880) belum aktif atau tidak merespons. Silakan buka tab Package Hub lalu klik 'Jalankan di Background App' atau 'Buka Terminal & Jalankan Server' terlebih dahulu.`
-      }
-    }
-  }
-
-  // 2) Jalur utama cadangan: endpoint TTS Hermes.
-  const token = SESSION_TOKEN
-  const ttsUrl = resolveTtsUrl()
-  const fallbackVoice = /^[a-z]{2}_/i.test(chosenVoice) ? 'id-ID-GadisNeural' : chosenVoice
-  const fallbackWarning = isKokoro
-    ? `Server Kokoro offline di port 8880. Sistem beralih sementara ke suara cadangan (${fallbackVoice}).`
-    : null
-
-  try {
-    const resp = await fetch(ttsUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Hermes-Session-Token': token
-      },
-      body: JSON.stringify({ text: String(text), voice: fallbackVoice })
-    })
-    if (resp.ok) {
-      const data = await resp.json()
-      if (data && data.ok && data.data_url) {
-        return {
-          ok: true,
-          dataUrl: data.data_url,
-          mimeType: data.mime_type || 'audio/mpeg',
-          isFallback: isKokoro,
-          warning: fallbackWarning
-        }
-      }
-    }
-  } catch {
-    // Hermes tidak terjangkau → jatuh ke fallback Windows SAPI di bawah.
-  }
-
-  // 3) Fallback Offline Cepat & Pasti: Windows System.Speech SAPI (Bawaan Windows, tanpa internet, zero lag)
-  if (process.platform === 'win32') {
-    try {
-      const cleanT = String(text).replace(/[\r\n\t]+/g, ' ').replace(/"/g, '""').trim()
-      const b64Input = Buffer.from(cleanT, 'utf8').toString('base64')
-      const psScript = `
-        Add-Type -AssemblyName System.Speech
-        $s = New-Object System.Speech.Synthesis.SpeechSynthesizer
-        $female = $s.GetInstalledVoices() | Where-Object { $_.VoiceInfo.Gender -eq 'Female' } | Select-Object -First 1
-        if ($female) { $s.SelectVoice($female.VoiceInfo.Name) }
-        $ms = New-Object System.IO.MemoryStream
-        $s.SetOutputToWaveStream($ms)
-        $bytes = [System.Convert]::FromBase64String("${b64Input}")
-        $txt = [System.Text.Encoding]::UTF8.GetString($bytes)
-        $s.Speak($txt)
-        [System.Convert]::ToBase64String($ms.ToArray())
-      `
-      const base64Wav = await new Promise((res, rej) => {
-        execFile('powershell', ['-NoProfile', '-Command', psScript], { timeout: 12000 }, (err, stdout) => {
-          if (err) return rej(err)
-          res(stdout.trim())
-        })
-      })
-
-      if (base64Wav) {
-        return {
-          ok: true,
-          dataUrl: `data:audio/wav;base64,${base64Wav}`,
-          base64: base64Wav,
-          mimeType: 'audio/wav',
-          isFallback: isKokoro,
-          warning: fallbackWarning
-        }
-      }
-    } catch (err) {
-      console.warn('[avatar:tts] Windows SAPI fallback gagal:', err?.message || err)
-    }
-  }
-
-  // 4) Fallback darurat: msedge-tts
-  try {
-    const { MsEdgeTTS, OUTPUT_FORMAT } = await import('msedge-tts')
-    const tts = new MsEdgeTTS()
-    await tts.setMetadata(fallbackVoice, OUTPUT_FORMAT.AUDIO_24KHZ_48KBITRATE_MONO_MP3)
-
-    const stream = tts.toStream(String(text))
-    const chunks = []
-    for await (const chunk of stream) {
-      chunks.push(Buffer.from(chunk))
-    }
-    const buffer = Buffer.concat(chunks)
-    return {
-      ok: true,
-      base64: buffer.toString('base64'),
-      mimeType: 'audio/mpeg',
-      isFallback: isKokoro,
-      warning: fallbackWarning
-    }
-  } catch (err) {
-    return { ok: false, error: err?.message || String(err) }
-  }
+  return await synthesizeTts({
+    text,
+    voice,
+    options,
+    sessionToken: SESSION_TOKEN,
+    isPortOpen,
+    startKokoro,
+    kokoroPort: KOKORO_PORT
+  })
 })
+
 
 // IPC: baca file model dari disk → kirim base64 + nama file ke renderer.
 // Renderer tidak bisa akses filesystem langsung, jadi main yang membacakan.
