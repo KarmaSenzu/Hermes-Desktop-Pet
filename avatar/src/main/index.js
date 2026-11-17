@@ -2,7 +2,7 @@ import { app, BrowserWindow, ipcMain, protocol, dialog, screen, safeStorage, she
 import { join, extname, isAbsolute, basename, dirname } from 'path'
 import { homedir } from 'os'
 import { readFile, writeFile, mkdir, rm } from 'fs/promises'
-import { existsSync, statSync, readdirSync, cpSync, mkdirSync, readFileSync, openSync, readSync, closeSync } from 'fs'
+import { existsSync, statSync, readdirSync, cpSync, mkdirSync, readFileSync, writeFileSync, openSync, readSync, closeSync } from 'fs'
 
 
 import { execFile, spawn } from 'child_process'
