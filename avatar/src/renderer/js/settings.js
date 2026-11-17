@@ -2917,9 +2917,6 @@ function init() {
   })
 
   renderShortcuts(document.getElementById('shortcut-list'), statusEl)
-  renderActions()
-  renderAppList()
-  renderShortcuts()
   refreshSkills()
   initAppUpdateChecker()
 }
