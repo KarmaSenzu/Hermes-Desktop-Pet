@@ -1,5 +1,6 @@
 import { app, BrowserWindow, ipcMain, protocol, dialog, screen, safeStorage, shell, Menu, session } from 'electron'
 import { join, extname, isAbsolute, basename, dirname } from 'path'
+import { homedir } from 'os'
 import { readFile, writeFile, mkdir, rm } from 'fs/promises'
 import { existsSync, statSync, readdirSync, cpSync, mkdirSync, readFileSync, openSync, readSync, closeSync } from 'fs'
 
