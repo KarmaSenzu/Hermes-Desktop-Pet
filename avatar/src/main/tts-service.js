@@ -32,18 +32,13 @@ export async function synthesizeTts({
 
   // 1) Jalur Kokoro-TTS (Lokal AI Anime — Apache 2.0 Komersial)
   if (isKokoro) {
-    try {
-      if (typeof isPortOpen === 'function' && !(await isPortOpen(kokoroPort))) {
-        console.log('[tts-service] Kokoro server belum aktif di port 8880, mencoba auto-start...')
-        if (typeof startKokoro === 'function') await startKokoro()
-      }
+    const endpoint = options.kokoroEndpoint || 'http://127.0.0.1:8880'
+    const kokoroUrl = endpoint.endsWith('/speech')
+      ? endpoint
+      : `${endpoint.replace(/\/+$/, '')}/v1/audio/speech`
+    const kokoroVoice = /^[a-z]{2}_/i.test(chosenVoice) ? chosenVoice : 'af_heart'
 
-      const endpoint = options.kokoroEndpoint || 'http://127.0.0.1:8880'
-      const kokoroUrl = endpoint.endsWith('/speech')
-        ? endpoint
-        : `${endpoint.replace(/\/+$/, '')}/v1/audio/speech`
-
-      const kokoroVoice = /^[a-z]{2}_/i.test(chosenVoice) ? chosenVoice : 'af_heart'
+    const attemptKokoroFetch = async () => {
       const resp = await fetch(kokoroUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -70,9 +65,38 @@ export async function synthesizeTts({
           isKokoro: true,
           voice: kokoroVoice
         }
-      } else {
-        console.warn(`[tts-service] Kokoro server HTTP ${resp.status}:`, await resp.text().catch(() => ''))
       }
+      const errBody = await resp.text().catch(() => '')
+      console.warn(`[tts-service] Kokoro server HTTP ${resp.status}:`, errBody)
+      return null
+    }
+
+    try {
+      let autoStarted = false
+      if (typeof isPortOpen === 'function' && !(await isPortOpen(kokoroPort))) {
+        console.log('[tts-service] Kokoro server belum aktif di port 8880, mencoba auto-start...')
+        if (typeof startKokoro === 'function') {
+          await startKokoro()
+          autoStarted = true
+        }
+      }
+
+      let result = null
+      try {
+        result = await attemptKokoroFetch()
+      } catch (fetchErr) {
+        console.warn('[tts-service] Percobaan awal Kokoro gagal, mencoba start ulang server:', fetchErr?.message || fetchErr)
+        result = null
+      }
+
+      if (!result && !autoStarted && typeof startKokoro === 'function') {
+        const startRes = await startKokoro()
+        if (startRes?.ok) {
+          result = await attemptKokoroFetch()
+        }
+      }
+
+      if (result) return result
     } catch (err) {
       console.warn('[tts-service] Kokoro server offline / gagal diakses, mencoba jalur cadangan:', err?.message || err)
     }

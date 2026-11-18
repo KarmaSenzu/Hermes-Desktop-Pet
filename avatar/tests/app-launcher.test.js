@@ -55,6 +55,29 @@ describe('app-launcher', () => {
       expect(findMatchingApp('aplikasitidakdikenalxyz')).toBeNull()
       expect(findMatchingApp('')).toBeNull()
     })
+
+    it('resolves real SHA-256 registry id when localStorage actionApps contains stale random id', () => {
+      const origStorage = globalThis.localStorage
+      try {
+        globalThis.localStorage = {
+          getItem: () => JSON.stringify({
+            actionApps: [
+              { id: 'mwm9ipbom0xe', name: 'Telegram', command: '' }
+            ]
+          })
+        }
+        const cache = [
+          { id: '0123456789abcdef', name: 'Telegram' }
+        ]
+        const found = findMatchingApp('telegram', cache)
+        expect(found).toBeDefined()
+        expect(found?.id).toBe('0123456789abcdef')
+        expect(found?.name).toBe('Telegram')
+      } finally {
+        if (origStorage === undefined) delete globalThis.localStorage
+        else globalThis.localStorage = origStorage
+      }
+    })
   })
 
   describe('getRegisteredApps', () => {

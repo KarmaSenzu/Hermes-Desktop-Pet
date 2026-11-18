@@ -354,6 +354,8 @@ async function startKokoro() {
     const pyCmd = await resolveWindowlessPythonBinary()
     const kokoroDirInfo = resolveKokoroModelDir()
     const scriptDir = dirname(validScript)
+    let spawnError = null
+    let earlyExitCode = null
     const child = spawn(pyCmd, [validScript], {
       cwd: scriptDir,
       detached: true,
@@ -367,14 +369,30 @@ async function startKokoro() {
     })
     child.on('error', (err) => {
       console.warn('[ServiceManager] Kokoro server spawn error:', err.message)
+      spawnError = err
+    })
+    child.on('exit', (code) => {
+      earlyExitCode = code
     })
     child.unref()
     children.push({ name: 'kokoro', child })
 
-    // Tunggu sampai port 8880 benar-benar aktif (maks 8 detik)
-    const ok = await waitForPort(KOKORO_PORT, 8000)
+    // Tunggu sampai port 8880 benar-benar aktif (maks 12 detik), hentikan tunggu lebih awal bila proses crash
+    const startWait = Date.now()
+    let ok = false
+    while (Date.now() - startWait < 12000) {
+      if (await isPortOpen(KOKORO_PORT)) {
+        ok = true
+        break
+      }
+      if (spawnError || (earlyExitCode !== null && earlyExitCode !== 0)) {
+        break
+      }
+      await sleep(350)
+    }
     if (!ok) {
-      return { already: false, ok: false, error: 'Port 8880 tidak merespons setelah 8 detik. Pastikan dependensi kokoro-onnx terpasang.' }
+      const reason = spawnError?.message || (earlyExitCode !== null ? `Python keluar dengan kode ${earlyExitCode}` : 'Port 8880 tidak merespons setelah 12 detik. Pastikan dependensi kokoro-onnx terpasang.')
+      return { already: false, ok: false, error: reason }
     }
     return { already: false, ok: true, child }
   } catch (err) {

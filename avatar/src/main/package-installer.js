@@ -17,6 +17,7 @@ import {
   resolvePythonBinary,
   resolveHermesBinary,
   resolveRouterBinary,
+  resolveKokoroModelDir,
   fastWhere,
   savePersistedPath,
   invalidatePathCache
@@ -283,6 +284,7 @@ function getDefaultDeps(overrides = {}) {
     resolvePythonBinary,
     resolveHermesBinary,
     resolveRouterBinary,
+    resolveKokoroModelDir,
     fastWhere,
     savePersistedPath,
     fixSystemPath,
@@ -832,6 +834,29 @@ export async function installKokoro({ onProgress, deps: depsOverride } = {}) {
     const errMsg = `Gagal memasang kokoro-onnx via pip: ${tailLine(pipRes)}`
     emit(0, errMsg, 'failed', { error: errMsg })
     return { ok: false, error: errMsg }
+  }
+
+  const modelDirInfo = typeof d.resolveKokoroModelDir === 'function' ? d.resolveKokoroModelDir() : { ready: true }
+  if (!modelDirInfo?.ready) {
+    const scriptCandidates = [
+      process.resourcesPath ? join(process.resourcesPath, 'scripts', 'kokoro_server.py') : null,
+      join(d.homedir(), '.hermes-avatar', 'scripts', 'kokoro_server.py'),
+      join(process.cwd(), 'scripts', 'kokoro_server.py'),
+      join(process.cwd(), '..', 'scripts', 'kokoro_server.py')
+    ].filter(Boolean)
+    const kokoroScript = scriptCandidates.find((p) => d.existsSync(p))
+    if (kokoroScript) {
+      emit(78, 'Mengunduh model suara Kokoro ONNX (~310 MB, sekali saja)...')
+      await runWithDynamicProgress(d, {
+        pkgId: 'kokoro',
+        cmd: pyCmd,
+        args: [kokoroScript, '--download-models'],
+        timeoutMs: 360000,
+        startPct: 79,
+        baseMsg: 'Mengunduh model Kokoro ONNX...',
+        emit
+      })
+    }
   }
 
   emit(90, 'Menyalakan server Kokoro-TTS (:8880)...')

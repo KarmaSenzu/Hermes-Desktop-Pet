@@ -7,6 +7,7 @@ import https from 'node:https'
 import { existsSync } from 'node:fs'
 import { readFile, writeFile, mkdir, rename, copyFile, rm, readdir } from 'node:fs/promises'
 import { dirname, basename, join } from 'node:path'
+import { homedir } from 'node:os'
 import { execFile } from 'node:child_process'
 import YAML from 'yaml'
 import { parseHttpUrl, isLocalRouterUrl } from './url-guard.js'
@@ -135,7 +136,7 @@ export async function backupConfigFile(filePath, maxBackups = 5) {
     if (matching.length > maxBackups) {
       const toDelete = matching.slice(0, matching.length - maxBackups)
       for (const oldFile of toDelete) {
-        try { await rm(join(dir, oldFile)) } catch {}
+        try { await rm(join(dir, oldFile)) } catch { }
       }
     }
   } catch (err) {
@@ -152,120 +153,238 @@ export async function writeAtomicFile(filePath, content) {
     await rename(tmpPath, filePath)
   } catch {
     await copyFile(tmpPath, filePath)
-    await rm(tmpPath).catch(() => {})
+    await rm(tmpPath).catch(() => { })
   }
 }
 
-export async function updateHermesProviderConfig({ name, baseUrl, apiKey, model }) {
-  const cfgPath = resolveHermesConfigPath()
-  let cfg = ''
-  if (existsSync(cfgPath)) {
-    cfg = await readFile(cfgPath, 'utf8')
-  } else {
-    await mkdir(dirname(cfgPath), { recursive: true })
+let configWriteChain = Promise.resolve()
+
+/**
+ * Mutex async berurutan agar penulisan ke ~/.hermes/config.yaml tidak saling balapan (race condition).
+ */
+export function withConfigWriteLock(fn) {
+  const run = configWriteChain.then(() => fn(), () => fn())
+  configWriteChain = run.catch(() => {})
+  return run
+}
+
+/**
+ * Memperbaiki config.yaml Hermes yang korup (misalnya kunci duplikat `stt.local` atau baris yatim seperti `jf_alpha`).
+ * Mengembalikan teks aslinya bila sudah valid (sehingga komentar tetap terjaga).
+ */
+export async function repairHermesConfigYaml(cfgText, cfgPath = '') {
+  const raw = String(cfgText ?? '')
+  if (!raw.trim()) return ''
+
+  const strictDoc = YAML.parseDocument(raw)
+  if (!strictDoc.errors || strictDoc.errors.length === 0) {
+    return raw
   }
 
-  const doc = YAML.parseDocument(cfg || '')
-
-  let effectiveModel = String(model || '').trim()
-  if (!effectiveModel) {
-    const fromDoc = doc.getIn(['model', 'default'])
-    if (fromDoc) effectiveModel = String(fromDoc).trim()
-    else if (process.env.HERMES_INFERENCE_MODEL) effectiveModel = process.env.HERMES_INFERENCE_MODEL.trim()
+  // Simpan salinan mentah file yang korup sebagai cadangan sebelum diperbaiki
+  if (cfgPath && existsSync(cfgPath)) {
+    try {
+      const stamp = new Date().toISOString().replace(/[:.]/g, '').slice(0, 15)
+      await copyFile(cfgPath, `${cfgPath}.pre-repair-${stamp}.bak`)
+    } catch { /* ignore */ }
   }
-  if (!effectiveModel) effectiveModel = 'default'
 
-  let provUrl = String(baseUrl || '').trim()
-  if (!provUrl) {
-    const fromDoc = doc.getIn(['model', 'base_url'])
-    if (fromDoc) provUrl = String(fromDoc).trim()
-    else provUrl = 'http://localhost:20128/v1'
-  }
-  effectiveModel = normalizeGeminiModel(provUrl, effectiveModel)
-
-  let provName = String(name || '').trim()
-  const jsProviders = doc.toJS()?.providers || {}
-  if (!provName) {
-    const fromDoc = doc.getIn(['model', 'provider'])
-    if (fromDoc && String(fromDoc).trim() !== 'custom') {
-      provName = String(fromDoc).trim()
+  // Tahap 1: Parse dengan uniqueKeys: false, atau buang baris yang memicu error syntax hingga 25 iterasi
+  const lines = raw.split(/\r?\n/)
+  for (let attempt = 0; attempt < 25; attempt++) {
+    const candidateText = lines.join('\n')
+    const laxDoc = YAML.parseDocument(candidateText, { uniqueKeys: false })
+    if (!laxDoc.errors || laxDoc.errors.length === 0) {
+      const obj = laxDoc.toJS()
+      if (obj && typeof obj === 'object' && !Array.isArray(obj)) {
+        return YAML.stringify(obj)
+      }
+      return ''
+    }
+    const errLine = laxDoc.errors[0]?.linePos?.[0]?.line
+    if (typeof errLine === 'number' && errLine >= 1 && errLine <= lines.length) {
+      lines.splice(errLine - 1, 1)
     } else {
-      const targetNorm = provUrl.replace(/\/+$/, '').toLowerCase()
-      const entries = Object.values(jsProviders).filter((p) => p && typeof p === 'object')
-      const urlMatched = entries.filter(
-        (p) => String(p.base_url || '').trim().replace(/\/+$/, '').toLowerCase() === targetNorm
-      )
-      const preferred =
-        urlMatched.find((p) => p.api_key && p.api_key === process.env.OPENAI_API_KEY) ||
-        urlMatched.find((p) => !isLocalRouterUrl(provUrl) && p.name !== '212') ||
-        urlMatched[0] ||
-        entries[0]
-      provName = preferred?.name ? String(preferred.name).trim() : 'custom'
+      break
     }
   }
 
-  let keyVal = String(apiKey || '').trim()
-  const isRouter = isLocalRouterUrl(provUrl)
+  // Tahap 2: Pulihkan dari cadangan config.yaml.bak* terbaru yang valid
+  if (cfgPath) {
+    try {
+      const dir = dirname(cfgPath)
+      const base = basename(cfgPath)
+      const files = await readdir(dir)
+      const backups = files
+        .filter((f) => f.startsWith(`${base}.bak`) && !f.includes('corrupt'))
+        .sort()
+        .reverse()
+      for (const bk of backups) {
+        try {
+          const bkRaw = await readFile(join(dir, bk), 'utf8')
+          const bkDoc = YAML.parseDocument(bkRaw)
+          if (!bkDoc.errors || bkDoc.errors.length === 0) {
+            return bkRaw
+          }
+        } catch { /* try older backup */ }
+      }
+    } catch { /* ignore */ }
+  }
 
-  if (!keyVal || keyVal === 'no-key-required') {
-    if (isRouter) {
-      try {
-        const rKey = await resolveRouterApiKey()
-        if (rKey?.ok && rKey?.key) {
-          keyVal = rKey.key
-          console.log(`[updateHermesProviderConfig] Otomatis menyematkan API Key 9Router (${rKey.name || 'Key'})`)
-        }
-      } catch (_) {}
+  return ''
+}
+
+export async function updateHermesProviderConfig({ name, baseUrl, apiKey, model }) {
+  return withConfigWriteLock(async () => {
+    const cfgPath = resolveHermesConfigPath()
+    let cfg = ''
+    if (existsSync(cfgPath)) {
+      cfg = await readFile(cfgPath, 'utf8')
+    } else {
+      await mkdir(dirname(cfgPath), { recursive: true })
     }
-  }
 
-  if (!keyVal || keyVal === 'no-key-required') {
-    const safeName = provName.replace(/[^a-zA-Z0-9_-]/g, '_') || 'custom'
-    const curKey = doc.getIn(['providers', safeName, 'api_key'])
-    const existingEnvUrl = String(doc.getIn(['model', 'base_url']) || '').trim().replace(/\/+$/, '').toLowerCase()
-    const targetNormUrl = provUrl.trim().replace(/\/+$/, '').toLowerCase()
+    cfg = await repairHermesConfigYaml(cfg, cfgPath)
+    const doc = YAML.parseDocument(cfg || '')
 
-    if (curKey && String(curKey).trim() !== 'no-key-required') {
-      keyVal = String(curKey).trim()
-    } else if (
-      process.env.OPENAI_API_KEY &&
-      process.env.OPENAI_API_KEY !== 'no-key-required' &&
-      (!existingEnvUrl || existingEnvUrl === targetNormUrl)
-    ) {
-      keyVal = process.env.OPENAI_API_KEY
+    let effectiveModel = String(model || '').trim()
+    if (!effectiveModel) {
+      const fromDoc = doc.getIn(['model', 'default'])
+      if (fromDoc) effectiveModel = String(fromDoc).trim()
+      else if (process.env.HERMES_INFERENCE_MODEL) effectiveModel = process.env.HERMES_INFERENCE_MODEL.trim()
     }
-  }
+    if (!effectiveModel) effectiveModel = 'default'
 
-  if (!keyVal) {
-    keyVal = 'no-key-required'
-  }
+    let provUrl = String(baseUrl || '').trim()
+    if (!provUrl) {
+      const fromDoc = doc.getIn(['model', 'base_url'])
+      if (fromDoc) provUrl = String(fromDoc).trim()
+      else provUrl = 'http://localhost:20128/v1'
+    }
+    effectiveModel = normalizeGeminiModel(provUrl, effectiveModel)
 
-  const updatedCfg = applyProviderConfig(cfg, {
-    name: provName,
-    baseUrl: provUrl,
-    apiKey: keyVal,
-    model: effectiveModel
+    let provName = String(name || '').trim()
+    const jsProviders = doc.toJS()?.providers || {}
+    if (!provName) {
+      const fromDoc = doc.getIn(['model', 'provider'])
+      if (fromDoc && String(fromDoc).trim() !== 'custom') {
+        provName = String(fromDoc).trim()
+      } else {
+        const targetNorm = provUrl.replace(/\/+$/, '').toLowerCase()
+        const entries = Object.values(jsProviders).filter((p) => p && typeof p === 'object')
+        const urlMatched = entries.filter(
+          (p) => String(p.base_url || '').trim().replace(/\/+$/, '').toLowerCase() === targetNorm
+        )
+        const preferred =
+          urlMatched.find((p) => p.api_key && p.api_key === process.env.OPENAI_API_KEY) ||
+          urlMatched.find((p) => !isLocalRouterUrl(provUrl) && p.name !== '212') ||
+          urlMatched[0] ||
+          entries[0]
+        provName = preferred?.name ? String(preferred.name).trim() : 'custom'
+      }
+    }
+
+    let keyVal = String(apiKey || '').trim()
+    const isRouter = isLocalRouterUrl(provUrl)
+
+    if (!keyVal || keyVal === 'no-key-required') {
+      if (isRouter) {
+        try {
+          const rKey = await resolveRouterApiKey()
+          if (rKey?.ok && rKey?.key) {
+            keyVal = rKey.key
+            console.log(`[updateHermesProviderConfig] Otomatis menyematkan API Key 9Router (${rKey.name || 'Key'})`)
+          }
+        } catch (_) {}
+      }
+    }
+
+    if (!keyVal || keyVal === 'no-key-required') {
+      const safeName = provName.replace(/[^a-zA-Z0-9_-]/g, '_') || 'custom'
+      const curKey = doc.getIn(['providers', safeName, 'api_key'])
+      const existingEnvUrl = String(doc.getIn(['model', 'base_url']) || '').trim().replace(/\/+$/, '').toLowerCase()
+      const targetNormUrl = provUrl.trim().replace(/\/+$/, '').toLowerCase()
+
+      if (curKey && String(curKey).trim() !== 'no-key-required') {
+        keyVal = String(curKey).trim()
+      } else if (
+        process.env.OPENAI_API_KEY &&
+        process.env.OPENAI_API_KEY !== 'no-key-required' &&
+        (!existingEnvUrl || existingEnvUrl === targetNormUrl)
+      ) {
+        keyVal = process.env.OPENAI_API_KEY
+      }
+    }
+
+    if (!keyVal) {
+      keyVal = 'no-key-required'
+    }
+
+    const updatedCfg = applyProviderConfig(cfg, {
+      name: provName,
+      baseUrl: provUrl,
+      apiKey: keyVal,
+      model: effectiveModel
+    })
+
+    await backupConfigFile(cfgPath, 5)
+    await writeAtomicFile(cfgPath, updatedCfg)
+
+    const envPath = join(dirname(cfgPath), '.env')
+    let env = ''
+    if (existsSync(envPath)) {
+      env = await readFile(envPath, 'utf8')
+    }
+    env = setEnvVar(env, 'OPENAI_BASE_URL', provUrl)
+    env = setEnvVar(env, 'OPENAI_API_KEY', keyVal)
+    env = setEnvVar(env, 'HERMES_INFERENCE_MODEL', effectiveModel)
+
+    await writeAtomicFile(envPath, env)
+
+    process.env.OPENAI_BASE_URL = provUrl
+    process.env.OPENAI_API_KEY = keyVal
+    process.env.HERMES_INFERENCE_MODEL = effectiveModel
+
+    return true
   })
+}
 
-  await backupConfigFile(cfgPath, 5)
-  await writeAtomicFile(cfgPath, updatedCfg)
+/**
+ * Memperbarui konfigurasi TTS/STT di ~/.hermes/config.yaml secara atomik & bebas duplikasi kunci YAML.
+ */
+export async function updateHermesVoiceConfig({ voice, sttModel, sttLanguage, configPath } = {}) {
+  return withConfigWriteLock(async () => {
+    const cfgPath = configPath || resolveHermesConfigPath()
+    let cfg = ''
+    if (existsSync(cfgPath)) {
+      cfg = await readFile(cfgPath, 'utf8')
+    } else {
+      await mkdir(dirname(cfgPath), { recursive: true })
+    }
 
-  const envPath = join(dirname(cfgPath), '.env')
-  let env = ''
-  if (existsSync(envPath)) {
-    env = await readFile(envPath, 'utf8')
-  }
-  env = setEnvVar(env, 'OPENAI_BASE_URL', provUrl)
-  env = setEnvVar(env, 'OPENAI_API_KEY', keyVal)
-  env = setEnvVar(env, 'HERMES_INFERENCE_MODEL', effectiveModel)
+    cfg = await repairHermesConfigYaml(cfg, cfgPath)
+    const doc = YAML.parseDocument(cfg || '')
 
-  await writeAtomicFile(envPath, env)
+    if (voice) {
+      const ttsNode = doc.get('tts')
+      if (!YAML.isMap(ttsNode)) doc.set('tts', doc.createNode({}))
+      const edgeNode = doc.getIn(['tts', 'edge'])
+      if (!YAML.isMap(edgeNode)) doc.setIn(['tts', 'edge'], doc.createNode({}))
+      doc.setIn(['tts', 'edge', 'voice'], String(voice).trim())
+    }
 
-  process.env.OPENAI_BASE_URL = provUrl
-  process.env.OPENAI_API_KEY = keyVal
-  process.env.HERMES_INFERENCE_MODEL = effectiveModel
+    if (sttModel || sttLanguage) {
+      const sttNode = doc.get('stt')
+      if (!YAML.isMap(sttNode)) doc.set('stt', doc.createNode({}))
+      const localNode = doc.getIn(['stt', 'local'])
+      if (!YAML.isMap(localNode)) doc.setIn(['stt', 'local'], doc.createNode({}))
+      if (sttModel) doc.setIn(['stt', 'local', 'model'], String(sttModel).trim())
+      if (sttLanguage) doc.setIn(['stt', 'local', 'language'], String(sttLanguage).trim())
+    }
 
-  return true
+    await writeAtomicFile(cfgPath, doc.toString())
+    return true
+  })
 }
 
 export async function updateModelConfigYaml(modelName) {
@@ -275,6 +394,210 @@ export async function updateModelConfigYaml(modelName) {
     console.warn('[updateModelConfigYaml] failed:', err?.message || err)
     return false
   }
+}
+
+export function resolveLlmProvidersFilePath(homeOverride) {
+  return join(homeOverride || homedir(), '.hermes-avatar', 'llm_providers.json')
+}
+
+function normBaseUrl(u) {
+  return String(u || '').trim().replace(/\/+$/, '').toLowerCase()
+}
+
+function sanitizeProviderRecord(raw) {
+  if (!raw || typeof raw !== 'object') return null
+  const baseUrl = String(raw.baseUrl || raw.base_url || '').trim()
+  const name = String(raw.name || 'Custom Provider').trim()
+  if (!name && !baseUrl) return null
+  const model = normalizeGeminiModel(baseUrl, String(raw.model || raw.default_model || '').trim())
+  const modelsRaw = Array.isArray(raw.models) ? raw.models : []
+  const models = Array.from(
+    new Set(
+      [model, ...modelsRaw.map((m) => normalizeGeminiModel(baseUrl, String(m || '').trim()))].filter(Boolean)
+    )
+  )
+  return {
+    id: String(raw.id || `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`),
+    name: name || 'Provider AI',
+    baseUrl,
+    apiKey: String(raw.apiKey || ''),
+    model,
+    models,
+    authType: String(raw.authType || '')
+  }
+}
+
+/**
+ * Membaca daftar provider LLM persisten dari ~/.hermes-avatar/llm_providers.json
+ * serta mengimpor provider yang sudah ada di ~/.hermes/config.yaml secara otomatis (dengan API key terenkripsi).
+ */
+export async function loadSavedLlmProviders({ secretStore, providersFile, cfgPath } = {}) {
+  const filePath = providersFile || resolveLlmProvidersFilePath()
+  const hasJsonFile = existsSync(filePath)
+  let activeId = null
+  const providers = []
+
+  if (hasJsonFile) {
+    try {
+      const parsed = JSON.parse(await readFile(filePath, 'utf8'))
+      if (parsed && typeof parsed === 'object') {
+        activeId = parsed.activeId || null
+        const list = Array.isArray(parsed.providers) ? parsed.providers : []
+        for (const item of list) {
+          const clean = sanitizeProviderRecord(item)
+          if (clean) providers.push(clean)
+        }
+      }
+    } catch (err) {
+      console.warn('[llm-providers] Gagal membaca llm_providers.json:', err?.message || err)
+    }
+  }
+
+  let importedFromYaml = false
+  const targetCfgPath = cfgPath !== undefined ? cfgPath : resolveHermesConfigPath()
+  if (!hasJsonFile && targetCfgPath && existsSync(targetCfgPath)) {
+    try {
+      const rawCfg = await repairHermesConfigYaml(await readFile(targetCfgPath, 'utf8'), targetCfgPath)
+      const js = YAML.parseDocument(rawCfg || '').toJS() || {}
+      const yamlEntries = []
+      if (Array.isArray(js.custom_providers)) {
+        for (const cp of js.custom_providers) {
+          if (cp && typeof cp === 'object') yamlEntries.push(cp)
+        }
+      }
+      if (js.providers && typeof js.providers === 'object') {
+        for (const p of Object.values(js.providers)) {
+          if (p && typeof p === 'object') yamlEntries.push(p)
+        }
+      }
+
+      for (const entry of yamlEntries) {
+        const name = String(entry.name || '').trim()
+        const baseUrl = String(entry.base_url || entry.baseUrl || '').trim()
+        if (!baseUrl) continue
+        const model = normalizeGeminiModel(baseUrl, String(entry.model || entry.default_model || '').trim())
+        const existing = providers.find(
+          (x) => normBaseUrl(x.baseUrl) === normBaseUrl(baseUrl) && x.name.toLowerCase() === (name || x.name).toLowerCase()
+        )
+
+        let sealedKey = ''
+        const rawKey = String(entry.api_key || '').trim()
+        if (rawKey && rawKey !== 'no-key-required') {
+          if (rawKey.startsWith('v2:')) {
+            sealedKey = rawKey
+          } else if (secretStore && typeof secretStore.seal === 'function') {
+            try {
+              sealedKey = secretStore.seal(rawKey, baseUrl)
+            } catch {
+              sealedKey = ''
+            }
+          }
+        }
+
+        if (existing) {
+          if (!existing.apiKey && sealedKey) {
+            existing.apiKey = sealedKey
+            importedFromYaml = true
+          }
+          if (model && !existing.models.includes(model)) {
+            existing.models.push(model)
+            importedFromYaml = true
+          }
+        } else {
+          const created = sanitizeProviderRecord({
+            name: name || (isLocalRouterUrl(baseUrl) ? '9Router Lokal' : 'Custom Provider'),
+            baseUrl,
+            apiKey: sealedKey,
+            model: model || 'default',
+            authType: isLocalRouterUrl(baseUrl) ? '9router' : (sealedKey ? 'apikey' : '')
+          })
+          if (created) {
+            providers.push(created)
+            importedFromYaml = true
+          }
+        }
+      }
+
+      const activeYamlUrl = normBaseUrl(js?.model?.base_url)
+      const activeYamlModel = normalizeGeminiModel(js?.model?.base_url || '', String(js?.model?.default || '').trim())
+      if (!activeId && activeYamlUrl) {
+        const matchedActive = providers.find(
+          (x) => normBaseUrl(x.baseUrl) === activeYamlUrl && (!activeYamlModel || x.model === activeYamlModel || x.models.includes(activeYamlModel))
+        ) || providers.find((x) => normBaseUrl(x.baseUrl) === activeYamlUrl)
+        if (matchedActive) {
+          activeId = matchedActive.id
+          importedFromYaml = true
+        }
+      }
+    } catch (err) {
+      console.warn('[llm-providers] Info impor dari config.yaml:', err?.message || err)
+    }
+  }
+
+  if (importedFromYaml && providers.length > 0) {
+    await saveSavedLlmProviders({ activeId, providers, providersFile: filePath }).catch(() => {})
+  }
+
+  return { ok: true, path: filePath, activeId, providers }
+}
+
+/**
+ * Menyimpan daftar provider LLM ke ~/.hermes-avatar/llm_providers.json secara atomik.
+ */
+export async function saveSavedLlmProviders({ activeId = null, providers = [], providersFile } = {}) {
+  const filePath = providersFile || resolveLlmProvidersFilePath()
+  const cleanProviders = (Array.isArray(providers) ? providers : [])
+    .map(sanitizeProviderRecord)
+    .filter(Boolean)
+
+  const payload = {
+    version: 1,
+    updatedAt: new Date().toISOString(),
+    activeId: activeId || (cleanProviders[0]?.id || null),
+    providers: cleanProviders
+  }
+
+  await writeAtomicFile(filePath, JSON.stringify(payload, null, 2))
+  return { ok: true, path: filePath, activeId: payload.activeId, providers: cleanProviders }
+}
+
+/**
+ * Memperbarui atau menambahkan satu provider ke ~/.hermes-avatar/llm_providers.json saat diaktifkan.
+ */
+export async function upsertSavedLlmProviderOnDisk(entry, { secretStore, providersFile, cfgPath, setActive = true } = {}) {
+  const filePath = providersFile || resolveLlmProvidersFilePath()
+  const loaded = await loadSavedLlmProviders({ secretStore, providersFile: filePath, cfgPath })
+  const list = [...loaded.providers]
+  const cleanEntry = sanitizeProviderRecord(entry)
+  if (!cleanEntry) return loaded
+
+  const idx = list.findIndex(
+    (x) => (cleanEntry.id && x.id === cleanEntry.id) ||
+      (normBaseUrl(x.baseUrl) === normBaseUrl(cleanEntry.baseUrl) && x.name.toLowerCase() === cleanEntry.name.toLowerCase())
+  )
+
+  let targetId = cleanEntry.id
+  if (idx >= 0) {
+    const prev = list[idx]
+    targetId = prev.id
+    list[idx] = {
+      ...prev,
+      name: cleanEntry.name || prev.name,
+      baseUrl: cleanEntry.baseUrl || prev.baseUrl,
+      apiKey: cleanEntry.apiKey || prev.apiKey || '',
+      model: cleanEntry.model || prev.model,
+      models: Array.from(new Set([cleanEntry.model, ...(prev.models || []), ...(cleanEntry.models || [])].filter(Boolean))),
+      authType: cleanEntry.authType || prev.authType || ''
+    }
+  } else {
+    list.push(cleanEntry)
+  }
+
+  return await saveSavedLlmProviders({
+    activeId: setActive ? targetId : loaded.activeId,
+    providers: list,
+    providersFile: filePath
+  })
 }
 
 export async function fetchEndpointModels({ baseUrl, apiKey, resolveApiKeyFor }) {

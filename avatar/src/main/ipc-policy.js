@@ -42,7 +42,7 @@ export const IPC_POLICY = {
   // UTANG: avatar:launch-app dipakai di avatar/src/renderer/js/main.js untuk taskmgr & apps
   'avatar:launch-app': ['avatar', 'settings'],
   'avatar:scan-installed-apps': ['settings'],
-  'avatar:get-installed-apps': ['avatar'],
+  'avatar:get-installed-apps': ['avatar', 'settings'],
   'avatar:learn-app': [],
   'avatar:pick-app': ['settings'],
   'avatar:app-icon': ['settings'],
@@ -98,6 +98,8 @@ export const IPC_POLICY = {
   'avatar:browse-skills': [],
 
   // Provider LLM, Kunci Rahasia & Suara
+  'avatar:llm-load-providers': ['settings'],
+  'avatar:llm-save-providers': ['settings'],
   'avatar:test-connection': ['settings'],
   'avatar:set-llm-provider': ['settings'],
   'avatar:fetch-endpoint-models': ['settings'],

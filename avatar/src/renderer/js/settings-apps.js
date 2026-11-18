@@ -69,11 +69,37 @@ export function renderAppList({ appList, settings, saveSettings, statusEl, showC
         </div>
         <p class="format-desc-text" style="font-family:'SF Mono', monospace; font-size:11px;">${escapeHtml(a.id ? 'ID: ' + a.id : (a.command || 'Aplikasi terdaftar'))}</p>
       </div>
-      <div class="format-status-col">
-        <button class="mini-btn del app-del" data-id="${escapeHtml(a.id)}" title="Hapus aplikasi">${renderIcon('trash-2', { size: 13 })} Hapus</button>
+      <div class="format-status-col" style="gap:6px;">
+        <button type="button" class="mini-btn secondary app-launch" data-id="${escapeHtml(a.id)}" data-name="${escapeHtml(a.name)}" title="Uji buka aplikasi">▶ Buka</button>
+        <button type="button" class="mini-btn del app-del" data-id="${escapeHtml(a.id)}" title="Hapus aplikasi">${renderIcon('trash-2', { size: 13 })} Hapus</button>
       </div>
     </div>`
   }).join('')
+
+  appList.querySelectorAll('.app-launch').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const id = btn.dataset.id
+      const name = btn.dataset.name || 'Aplikasi'
+      btn.disabled = true
+      const orig = btn.textContent
+      btn.textContent = '⏳...'
+      try {
+        const res = await window.hermesAvatar?.launchApp?.(id, name)
+        if (res?.ok) {
+          showToast('Aplikasi Dibuka 🚀', `${name} berhasil dijalankan.`, 'success', '🚀', 3000)
+          if (statusEl) statusEl.textContent = `✓ Membuka ${name}...`
+        } else {
+          showToast('Gagal Membuka Aplikasi', res?.error || 'Aplikasi tidak ditemukan', 'error', '❌', 5000)
+          if (statusEl) statusEl.textContent = `⚠️ Gagal membuka ${name}: ${res?.error || 'Error'}`
+        }
+      } catch (err) {
+        showToast('Gagal Membuka Aplikasi', err?.message || String(err), 'error', '❌', 5000)
+      } finally {
+        btn.disabled = false
+        btn.textContent = orig
+      }
+    })
+  })
 
   appList.querySelectorAll('.app-del').forEach((btn) => {
     btn.addEventListener('click', async () => {
@@ -103,19 +129,54 @@ export function initAppsPanel({
   showConfirm
 }) {
   let pendingAppIcon = ''
+  let pendingAppId = ''
 
   renderActions({ actionList, settings, saveSettings, statusEl })
   renderAppList({ appList, settings, saveSettings, statusEl, showConfirm })
 
+  // Perbaiki ID acak lama pada settings.actionApps menggunakan registry resmi SHA-256 dari main process
+  ;(async () => {
+    try {
+      const list = settings.actionApps || []
+      const hasStaleId = list.some((a) => !/^[0-9a-f]{16}$/i.test(String(a?.id || '')))
+      if (!hasStaleId || !window.hermesAvatar?.getInstalledApps) return
+      const res = await window.hermesAvatar.getInstalledApps()
+      if (!res?.ok || !Array.isArray(res.apps)) return
+      const byName = new Map(res.apps.map((r) => [String(r.name || '').toLowerCase(), r.id]))
+      let repaired = false
+      for (const a of list) {
+        if (!/^[0-9a-f]{16}$/i.test(String(a?.id || ''))) {
+          const realId = byName.get(String(a?.name || '').toLowerCase())
+          if (realId) {
+            a.id = realId
+            repaired = true
+          }
+        }
+      }
+      if (repaired) {
+        saveSettings(settings)
+        renderAppList({ appList, settings, saveSettings, statusEl, showConfirm })
+      }
+    } catch { /* ignore */ }
+  })()
+
   appPickBtn?.addEventListener('click', async () => {
     try {
-      const filePath = await window.hermesAvatar.pickApp()
-      if (!filePath) return
-      if (appCommand) appCommand.value = filePath
-      const base = filePath.split(/[/\\]/).pop().replace(/\.(app|exe|desktop|lnk)$/i, '')
-      if (appName && !appName.value) appName.value = base
-      const iconRes = await window.hermesAvatar.getAppIcon(filePath)
-      pendingAppIcon = iconRes.ok ? iconRes.dataUrl : ''
+      const picked = await window.hermesAvatar.pickApp()
+      if (!picked) return
+      if (typeof picked === 'object' && picked.id) {
+        pendingAppId = picked.id
+        if (appName) appName.value = picked.name || appName.value || ''
+        if (appCommand) appCommand.value = picked.id
+        const iconRes = await window.hermesAvatar.getAppIcon(picked.id)
+        pendingAppIcon = iconRes?.ok ? iconRes.dataUrl : ''
+      } else if (typeof picked === 'string') {
+        if (appCommand) appCommand.value = picked
+        const base = picked.split(/[/\\]/).pop().replace(/\.(app|exe|desktop|lnk)$/i, '')
+        if (appName && !appName.value) appName.value = base
+        const iconRes = await window.hermesAvatar.getAppIcon(picked)
+        pendingAppIcon = iconRes?.ok ? iconRes.dataUrl : ''
+      }
     } catch (err) {
       if (statusEl) statusEl.textContent = `Gagal pilih aplikasi: ${err?.message || err}`
     }
@@ -126,28 +187,43 @@ export function initAppsPanel({
       appScanBtn.disabled = true
       appScanBtn.textContent = '⏳ Memindai Windows…'
       if (statusEl) statusEl.textContent = 'Memindai semua shortcut aplikasi Windows...'
-      showToast('Memindai Aplikasi Windows... 🔍', 'Mendeteksi executable di Start Menu & Registry', 'running', '🔍')
+      showToast('Memindai Aplikasi Windows... 🔍', 'Mendeteksi executable di Start Menu & Desktop', 'running', '🔍')
       const res = await window.hermesAvatar.scanInstalledApps()
       if (res?.ok && Array.isArray(res.apps)) {
         settings.actionApps = settings.actionApps || []
-        const existingNames = new Set(settings.actionApps.map((a) => a.name.toLowerCase()))
+        const byName = new Map(settings.actionApps.map((a) => [String(a.name || '').toLowerCase(), a]))
         let added = 0
+        let updated = 0
         for (const item of res.apps) {
-          if (!existingNames.has(item.name.toLowerCase())) {
-            existingNames.add(item.name.toLowerCase())
-            settings.actionApps.push({
-              id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+          const key = String(item.name || '').toLowerCase()
+          if (!key) continue
+          const realId = item.id || ''
+          const existing = byName.get(key)
+          if (existing) {
+            if (realId && existing.id !== realId) {
+              existing.id = realId
+              updated++
+            }
+            if (item.command && !existing.command) existing.command = item.command
+          } else {
+            const entry = {
+              id: realId || (Date.now().toString(36) + Math.random().toString(36).slice(2, 6)),
               name: item.name,
-              command: item.command,
+              command: item.command || '',
               icon: ''
-            })
+            }
+            settings.actionApps.push(entry)
+            byName.set(key, entry)
             added++
           }
         }
         saveSettings(settings)
         renderAppList({ appList, settings, saveSettings, statusEl, showConfirm })
-        if (statusEl) statusEl.textContent = `✅ Berhasil memindai! ${added} aplikasi baru ditambahkan (${res.apps.length} total terdeteksi).`
-        showToast('Pemindaian Selesai! 🎉', `${added} aplikasi baru berhasil didaftarkan`, 'success', '⚡')
+        const detail = updated > 0
+          ? `${added} aplikasi baru ditambahkan, ${updated} ID disinkronkan (${res.apps.length} total terdeteksi).`
+          : `${added} aplikasi baru ditambahkan (${res.apps.length} total terdeteksi).`
+        if (statusEl) statusEl.textContent = `✅ Berhasil memindai! ${detail}`
+        showToast('Pemindaian Selesai! 🎉', detail, 'success', '⚡')
       } else {
         if (statusEl) statusEl.textContent = `⚠️ Gagal memindai: ${res?.error || 'Tidak ada aplikasi ditemukan'}`
         showToast('Pemindaian Gagal', res?.error || 'Aplikasi tidak terdeteksi', 'error', '⚠️')
@@ -170,7 +246,7 @@ export function initAppsPanel({
     }
     settings.actionApps = settings.actionApps || []
     settings.actionApps.push({
-      id: Date.now().toString(36),
+      id: pendingAppId || Date.now().toString(36),
       name,
       command: (appCommand?.value || '').trim(),
       icon: pendingAppIcon || ''
@@ -181,6 +257,7 @@ export function initAppsPanel({
     if (appName) appName.value = ''
     if (appCommand) appCommand.value = ''
     pendingAppIcon = ''
+    pendingAppId = ''
     if (statusEl) statusEl.textContent = 'Aplikasi ditambahkan.'
   })
 }

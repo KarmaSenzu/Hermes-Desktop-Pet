@@ -15,7 +15,17 @@ import sys
 import json
 import io
 import urllib.request
-from http.server import HTTPServer, BaseHTTPRequestHandler
+
+# Pastikan stdout/stderr tidak pernah None saat dijalankan dalam mode windowless/background
+if sys.stdout is None:
+    sys.stdout = open(os.devnull, "w", encoding="utf-8", errors="replace")
+if sys.stderr is None:
+    sys.stderr = open(os.devnull, "w", encoding="utf-8", errors="replace")
+
+try:
+    from http.server import ThreadingHTTPServer as BaseHTTPServer, BaseHTTPRequestHandler
+except ImportError:
+    from http.server import HTTPServer as BaseHTTPServer, BaseHTTPRequestHandler
 
 # Pastikan encoding UTF-8 di Windows agar tidak crash charmap cp1252
 if sys.platform == "win32":
@@ -115,6 +125,12 @@ def get_kokoro():
     return kokoro_instance
 
 class KokoroHandler(BaseHTTPRequestHandler):
+    def log_message(self, format, *args):
+        try:
+            safe_print(f"[Kokoro] {self.address_string()} - {format % args}")
+        except Exception:
+            pass
+
     def do_GET(self):
         if self.path in ("/", "/health"):
             self.send_response(200)
@@ -330,7 +346,7 @@ def run_server_foreground():
     safe_print(" [Kokoro] Endpoint OpenAI-compatible: /v1/audio/speech")
     safe_print("=" * 60)
     
-    server = HTTPServer((HOST, PORT), KokoroHandler)
+    server = BaseHTTPServer((HOST, PORT), KokoroHandler)
 
     import threading
     t = threading.Thread(target=get_kokoro, daemon=True)
@@ -356,6 +372,11 @@ def main():
     elif cmd in ("say", "speak"):
         text = " ".join(args[1:]) if len(args) > 1 else "Halo! Kokoro TTS siap digunakan."
         cli_say(text)
+    elif cmd in ("--download-models", "download-models"):
+        safe_print("[Kokoro] Memeriksa dan mengunduh file model ONNX...")
+        ensure_model_files()
+        safe_print("[Kokoro] File model ONNX siap!")
+        return
     elif cmd in ("start", "run"):
         if "-d" in args or "--daemon" in args:
             import subprocess

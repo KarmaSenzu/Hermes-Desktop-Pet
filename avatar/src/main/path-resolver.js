@@ -358,33 +358,77 @@ export async function resolvePythonBinary() {
 }
 
 /**
- * Mendapatkan binary Python windowless (pythonw.exe / pyw.exe) untuk Windows
- * agar eksekusi server latar belakang (seperti kokoro) 100% senyap tanpa console window.
+ * Memeriksa apakah suatu interpreter Python dapat mengeksekusi script & memiliki modul kokoro_onnx + soundfile.
+ */
+function probePythonModule(cmdPath, importExpr, timeoutMs = 3000) {
+  return new Promise((resolve) => {
+    try {
+      execFile(
+        cmdPath,
+        ['-c', `${importExpr}; print("ok")`],
+        { timeout: timeoutMs, windowsHide: true, env: process.env },
+        (err, stdout) => {
+          resolve(!err && typeof stdout === 'string' && stdout.includes('ok'))
+        }
+      )
+    } catch {
+      resolve(false)
+    }
+  })
+}
+
+/**
+ * Mendapatkan binary Python aktif (berjalan senyap via windowsHide: true saat spawn)
+ * yang terverifikasi bisa mengeksekusi Python dan diprioritaskan yang sudah memiliki kokoro_onnx.
+ * Catatan: Menghindari pyw.exe di Windows Store / App Execution Alias karena kerap langsung exit code 1.
  */
 export async function resolveWindowlessPythonBinary() {
   const isWin = process.platform === 'win32'
   const normalPy = await resolvePythonBinary()
   if (!isWin) {
-    return normalPy.cmd || 'python3'
+    return normalPy?.cmd || 'python3'
   }
 
-  // 1. Cek turunan dari python yang terdeteksi
-  if (normalPy?.ok && normalPy.cmd) {
-    const candidate = normalPy.cmd
-      .replace(/python\.exe$/i, 'pythonw.exe')
-      .replace(/py\.exe$/i, 'pyw.exe')
-    if (candidate !== normalPy.cmd && existsSync(candidate)) {
-      return candidate
+  const persisted = loadPersistedPaths()
+  const home = homedir()
+  const rawCandidates = [
+    normalPy?.ok ? normalPy.cmd : null,
+    persisted.python_bin,
+    process.env.PYTHON_BIN,
+    ...fastWhere('python', ['.exe', '']),
+    ...fastWhere('py', ['.exe', '']),
+    join(home, 'AppData', 'Local', 'hermes', 'hermes-agent', '.venv', 'Scripts', 'python.exe'),
+    join(home, 'AppData', 'Local', 'hermes', 'venv', 'Scripts', 'python.exe')
+  ]
+  for (const ver of ['Python314', 'Python313', 'Python312', 'Python311', 'Python310']) {
+    rawCandidates.push(join(home, 'AppData', 'Local', 'Programs', 'Python', ver, 'python.exe'))
+  }
+
+  const seen = new Set()
+  const candidates = []
+  for (const c of rawCandidates) {
+    if (!c || typeof c !== 'string') continue
+    const clean = c.trim()
+    const key = clean.toLowerCase()
+    if (!clean || seen.has(key)) continue
+    if (/[/\\]/.test(clean) && !existsSync(clean)) continue
+    seen.add(key)
+    candidates.push(clean)
+  }
+
+  // Prioritas 1: Python yang terbukti punya kokoro_onnx & soundfile terpasang
+  for (const c of candidates) {
+    if (await probePythonModule(c, 'import kokoro_onnx, soundfile', 4500)) {
+      return c
     }
   }
 
-  // 2. Cek pyw.exe di Windows PATH
-  const pywHits = fastWhere('pyw', ['.exe', ''])
-  if (pywHits.length > 0) return pywHits[0]
-
-  // 3. Cek pythonw.exe di Windows PATH
-  const pythonwHits = fastWhere('pythonw', ['.exe', ''])
-  if (pythonwHits.length > 0) return pythonwHits[0]
+  // Prioritas 2: Python mana pun yang bisa berjalan normal (bukan pyw/alias rusak)
+  for (const c of candidates) {
+    if (await probePythonModule(c, 'import sys', 2500)) {
+      return c
+    }
+  }
 
   return normalPy?.cmd || 'py'
 }

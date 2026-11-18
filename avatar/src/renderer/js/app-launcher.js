@@ -79,86 +79,99 @@ export function extractAppQueries(text) {
   return queries
 }
 
+const VALID_APP_ID_RE = /^[0-9a-f]{16}$/i
+
+function resolveRegistryIdFromCache(nameOrQuery, cachedInstalledApps = []) {
+  if (!Array.isArray(cachedInstalledApps) || cachedInstalledApps.length === 0) return null
+  const q = String(nameOrQuery || '').toLowerCase().trim()
+  if (!q) return null
+  const qCompact = q.replace(/[\s\-_]+/g, '')
+
+  const exact = cachedInstalledApps.find((a) => {
+    const n = String(a?.name || '').toLowerCase()
+    if (n === q) return true
+    if (Array.isArray(a?.aliases) && a.aliases.some((al) => String(al).toLowerCase() === q)) return true
+    return false
+  })
+  if (exact) return exact
+
+  const targetNames = KNOWN_APP_ALIASES[q] || []
+  for (const tgt of targetNames) {
+    const byAlias = cachedInstalledApps.find((a) => {
+      const n = String(a?.name || '').toLowerCase()
+      return n === tgt || n.includes(tgt)
+    })
+    if (byAlias) return byAlias
+  }
+
+  const compactMatch = cachedInstalledApps.find((a) => {
+    const nComp = String(a?.name || '').toLowerCase().replace(/[\s\-_]+/g, '')
+    return nComp === qCompact
+  })
+  if (compactMatch) return compactMatch
+
+  if (q.length >= 3) {
+    return cachedInstalledApps.find((a) => {
+      const n = String(a?.name || '').toLowerCase()
+      return n.includes(q) || (n.length >= 4 && q.includes(n))
+    }) || null
+  }
+  return null
+}
+
 export function findMatchingApp(query, cachedInstalledApps = []) {
   if (!query) return null
   const q = query.toLowerCase().replace(/^(aplikasi|app)\s+/, '').trim()
   if (!q) return null
   const qCompact = q.replace(/[\s\-_]+/g, '')
 
+  let candidate = null
+
   // 1. Cek aplikasi bawaan langsung
   for (const b of BUILTIN_DIRECT_APPS) {
     if (b.keys.includes(q) || b.keys.some((k) => k.replace(/[\s\-_]+/g, '') === qCompact)) {
-      return b
+      candidate = b
+      break
     }
   }
 
-  // 2. Cek di pengaturan pengguna (localStorage hermes-avatar-settings)
-  try {
-    const raw = typeof localStorage !== 'undefined' ? localStorage.getItem('hermes-avatar-settings') : null
-    if (raw) {
-      const s = JSON.parse(raw)
-      const actionApps = s.actionApps || []
-      const found = actionApps.find((a) => {
-        if (!a.name) return false
-        const n = a.name.toLowerCase()
-        return n === q || n.includes(q) || q.includes(n)
-      })
-      if (found) return found
+  // 2. Cek di pengaturan pengguna (localStorage hermes-avatar-settings) — utamakan exact match
+  if (!candidate) {
+    try {
+      const raw = typeof localStorage !== 'undefined' ? localStorage.getItem('hermes-avatar-settings') : null
+      if (raw) {
+        const s = JSON.parse(raw)
+        const actionApps = s.actionApps || []
+        const exactLocal = actionApps.find((a) => a?.name && a.name.toLowerCase().trim() === q)
+        if (exactLocal) {
+          candidate = exactLocal
+        } else {
+          const partialLocal = actionApps.find((a) => {
+            if (!a?.name) return false
+            const n = a.name.toLowerCase().trim()
+            return n.includes(q) || (n.length >= 3 && q.includes(n))
+          })
+          if (partialLocal) candidate = partialLocal
+        }
+      }
+    } catch {}
+  }
+
+  // Jika candidate ditemukan dari builtin atau localStorage tapi ID-nya kosong / ID acak lama,
+  // padankan dengan ID SHA-256 resmi dari cachedInstalledApps (main process registry).
+  if (candidate) {
+    if (!VALID_APP_ID_RE.test(String(candidate.id || ''))) {
+      const regMatch = resolveRegistryIdFromCache(candidate.name, cachedInstalledApps) ||
+        resolveRegistryIdFromCache(q, cachedInstalledApps)
+      if (regMatch?.id) {
+        return { ...candidate, id: regMatch.id }
+      }
     }
-  } catch {}
+    return candidate
+  }
 
   // 3. Cek di daftar aplikasi Windows terpasang (cachedInstalledApps)
-  if (cachedInstalledApps && cachedInstalledApps.length > 0) {
-    // A. Exact match
-    const exact = cachedInstalledApps.find((a) => {
-      const n = a.name.toLowerCase()
-      if (n === q) return true
-      if (a.aliases && a.aliases.some((alias) => alias.toLowerCase() === q)) return true
-      return false
-    })
-    if (exact) return exact
-
-    // B. Match lewat KNOWN_APP_ALIASES
-    const targetNames = KNOWN_APP_ALIASES[q] || []
-    for (const tgt of targetNames) {
-      const foundTarget = cachedInstalledApps.find((a) => {
-        const n = a.name.toLowerCase()
-        return n === tgt || n.includes(tgt)
-      })
-      if (foundTarget) return foundTarget
-    }
-
-    // C. Compact match
-    const compactMatch = cachedInstalledApps.find((a) => {
-      const nCompact = a.name.toLowerCase().replace(/[\s\-_]+/g, '')
-      if (nCompact === qCompact) return true
-      if (a.aliases && a.aliases.some((alias) => alias.toLowerCase().replace(/[\s\-_]+/g, '') === qCompact)) {
-        return true
-      }
-      return false
-    })
-    if (compactMatch) return compactMatch
-
-    // D. Substring match (q.length >= 3)
-    if (q.length >= 3) {
-      const partial = cachedInstalledApps.find((a) => {
-        const n = a.name.toLowerCase()
-        if (n.includes(q) || (n.length >= 4 && q.includes(n))) return true
-        if (
-          a.aliases &&
-          a.aliases.some(
-            (alias) => alias.toLowerCase().includes(q) || (alias.length >= 4 && q.includes(alias.toLowerCase()))
-          )
-        ) {
-          return true
-        }
-        return false
-      })
-      if (partial) return partial
-    }
-  }
-
-  return null
+  return resolveRegistryIdFromCache(q, cachedInstalledApps)
 }
 
 export function getRegisteredApps(cachedInstalledApps = []) {
@@ -264,7 +277,20 @@ export async function tryFastLaunchApp(text, options = {}) {
 
   for (const app of matchedApps) {
     try {
-      const res = await window.hermesAvatar?.launchApp(app.id || app.command || app.path)
+      let res = await window.hermesAvatar?.launchApp(app.id || app.command || app.path, app.name)
+      if (!res?.ok && /tidak terdaftar/i.test(res?.error || '')) {
+        try {
+          const fresh = await window.hermesAvatar?.getInstalledApps?.()
+          if (fresh?.ok && Array.isArray(fresh.apps)) {
+            apps = fresh.apps
+            if (setCachedInstalledApps) setCachedInstalledApps(apps)
+            const rematched = findMatchingApp(app.name, apps)
+            if (rematched?.id) {
+              res = await window.hermesAvatar?.launchApp(rematched.id, rematched.name || app.name)
+            }
+          }
+        } catch {}
+      }
       if (!res?.ok) {
         log('avatar', `⚠️ Gagal membuka ${app.name}: ${res?.error || 'Unknown error'}`)
       }

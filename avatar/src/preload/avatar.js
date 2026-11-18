@@ -43,7 +43,7 @@ const avatarApi = {
 
   // Peluncur aplikasi & info terinstall
   // UTANG: launchApp dipakai main.js avatar untuk membuka taskmgr/app
-  launchApp: (appId) => ipcRenderer.invoke('avatar:launch-app', appId),
+  launchApp: (appId, appName) => ipcRenderer.invoke('avatar:launch-app', appId, appName),
   getInstalledApps: () => ipcRenderer.invoke('avatar:get-installed-apps'),
 
   // Info cuaca & berita real-time untuk avatar dialog

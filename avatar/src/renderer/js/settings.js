@@ -2342,9 +2342,14 @@ function renderLlmList() {
       const ok = await showConfirm(`Hapus provider "${p?.name || ''}"?`, { title: 'Hapus Provider' })
       if (!ok) return
       settings.llm.providers = settings.llm.providers.filter((x) => x.id !== id)
+      if (settings.llm.activeId === id) {
+        settings.llm.activeId = settings.llm.providers[0]?.id || null
+      }
       if (editingProviderId === id) resetProviderForm()
       saveSettings(settings)
+      syncLlmProvidersToDisk()
       renderLlmList()
+      await refreshModelOptions()
       statusEl.textContent = 'Provider dihapus.'
     })
   })
@@ -2428,8 +2433,12 @@ async function activateLlmProvider(p) {
     throw new Error(res.error)
   }
 
+  if (p.model) {
+    p.models = Array.from(new Set([...(Array.isArray(p.models) ? p.models : []), p.model].filter(Boolean)))
+  }
   settings.llm.activeId = p.id
   saveSettings(settings)
+  syncLlmProvidersToDisk()
 
   if (res.warning) {
     statusEl.textContent = `✓ Provider "${p.name}" disimpan, tetapi: ${res.warning}`
@@ -2929,23 +2938,95 @@ function updateOAuthHubStatusBadges() {
   }
 }
 
+function syncLlmProvidersToDisk() {
+  try {
+    window.hermesAvatar?.saveLlmProviders?.({
+      activeId: settings.llm?.activeId || null,
+      providers: settings.llm?.providers || []
+    }).catch(() => {})
+  } catch { /* ignore */ }
+}
+
+async function initPersistentLlmProviders() {
+  try {
+    const res = await window.hermesAvatar?.loadLlmProviders?.()
+    if (!res?.ok || !Array.isArray(res.providers)) return
+
+    settings.llm = settings.llm || { providers: [] }
+    const localList = Array.isArray(settings.llm.providers) ? settings.llm.providers : []
+    const normUrl = (u) => String(u || '').trim().replace(/\/+$/, '').toLowerCase()
+
+    const merged = []
+    const findMatch = (candidate) => merged.find(
+      (x) => (candidate.id && x.id === candidate.id) ||
+        (normUrl(x.baseUrl) === normUrl(candidate.baseUrl) &&
+          String(x.name || '').trim().toLowerCase() === String(candidate.name || '').trim().toLowerCase())
+    )
+
+    for (const item of [...res.providers, ...localList]) {
+      if (!item || typeof item !== 'object') continue
+      const existing = findMatch(item)
+      const itemModels = [item.model, ...(Array.isArray(item.models) ? item.models : [])].filter(Boolean)
+      if (existing) {
+        existing.apiKey = item.apiKey || existing.apiKey || ''
+        existing.model = existing.model || item.model || ''
+        existing.authType = existing.authType || item.authType || ''
+        existing.models = Array.from(new Set([...(existing.models || []), ...itemModels]))
+      } else {
+        merged.push({
+          id: String(item.id || Date.now().toString(36)),
+          name: item.name || 'Provider AI',
+          baseUrl: item.baseUrl || '',
+          apiKey: item.apiKey || '',
+          model: item.model || itemModels[0] || '',
+          models: Array.from(new Set(itemModels)),
+          authType: item.authType || ''
+        })
+      }
+    }
+
+    settings.llm.providers = merged
+    if (!settings.llm.activeId && res.activeId) {
+      settings.llm.activeId = res.activeId
+    }
+    if (settings.llm.activeId && !merged.some((p) => p.id === settings.llm.activeId)) {
+      settings.llm.activeId = merged[0]?.id || null
+    }
+    saveSettings(settings)
+    syncLlmProvidersToDisk()
+    updateOAuthHubStatusBadges()
+    renderLlmList()
+    refreshLlmActive()
+    refreshModelOptions()
+  } catch (err) {
+    console.warn('[initPersistentLlmProviders] info:', err?.message || err)
+  }
+}
+
 function upsertLlmProvider(entry) {
   settings.llm = settings.llm || { providers: [] }
   settings.llm.providers = settings.llm.providers || []
+  const normUrl = (u) => String(u || '').trim().replace(/\/+$/, '').toLowerCase()
   const existing = settings.llm.providers.find(
-    (x) => x.baseUrl === entry.baseUrl && (!entry.authType || !x.authType || x.authType === entry.authType)
+    (x) => normUrl(x.baseUrl) === normUrl(entry.baseUrl) &&
+      (!entry.name || !x.name || x.name.toLowerCase() === entry.name.toLowerCase()) &&
+      (!entry.authType || !x.authType || x.authType === entry.authType)
   )
   if (existing) {
     existing.name = entry.name
-    existing.apiKey = entry.apiKey
-    existing.model = entry.model
-    existing.authType = entry.authType
+    if (entry.apiKey) existing.apiKey = entry.apiKey
+    existing.model = entry.model || existing.model
+    existing.models = Array.from(new Set([...(existing.models || []), existing.model, entry.model].filter(Boolean)))
+    existing.authType = entry.authType || existing.authType
     saveSettings(settings)
+    syncLlmProvidersToDisk()
     return existing
   }
-  const created = { id: Date.now().toString(36), ...entry }
+  const models = Array.from(new Set([entry.model, ...(Array.isArray(entry.models) ? entry.models : [])].filter(Boolean)))
+  const created = { id: Date.now().toString(36), ...entry, models }
   settings.llm.providers.push(created)
   saveSettings(settings)
+  syncLlmProvidersToDisk()
   return created
 }
 
@@ -3322,6 +3403,7 @@ llmAddBtn.addEventListener('click', async () => {
     p.baseUrl = baseUrl
     p.apiKey = apiKeyEnc
     p.model = model
+    p.models = Array.from(new Set([...(Array.isArray(p.models) ? p.models : []), model].filter(Boolean)))
     savedProvider = p
     if (!statusEl.textContent.includes('URL berubah')) {
       statusEl.textContent = 'Provider diperbarui.'
@@ -3332,13 +3414,15 @@ llmAddBtn.addEventListener('click', async () => {
       name,
       baseUrl,
       apiKey: keyRes.value,
-      model
+      model,
+      models: model ? [model] : []
     }
     settings.llm.providers.push(savedProvider)
     statusEl.textContent = 'Provider ditambahkan.'
   }
 
   saveSettings(settings)
+  syncLlmProvidersToDisk()
   resetProviderForm()
   renderLlmList()
   await refreshModelOptions()
@@ -3412,18 +3496,21 @@ async function refreshModelOptions() {
           for (const m of epRes.models) {
             if (!seenModels.has(m)) {
               seenModels.add(m)
-              custom.push({ value: m, label: `${activeProv.name} — ${m}` })
+              custom.push({ value: m, label: `${activeProv.name} — ${m}`, providerId: activeProv.id || '' })
             }
           }
         }
       } catch (_) {}
     }
 
-    // 2. Tambahkan semua model dari daftar provider tersimpan user
+    // 2. Tambahkan semua model dari daftar provider tersimpan user (termasuk riwayat model per provider)
     for (const p of (settings.llm.providers || [])) {
-      if (p.model && !seenModels.has(p.model)) {
-        seenModels.add(p.model)
-        custom.push({ value: p.model, label: `${p.name} — ${p.model}` })
+      const provModels = Array.from(new Set([p.model, ...(Array.isArray(p.models) ? p.models : [])].filter(Boolean)))
+      for (const m of provModels) {
+        if (!seenModels.has(m)) {
+          seenModels.add(m)
+          custom.push({ value: m, label: `${p.name} — ${m}`, providerId: p.id || '' })
+        }
       }
     }
 
@@ -3440,7 +3527,7 @@ async function refreshModelOptions() {
             for (const m of (p.models || [])) {
               if (!seenModels.has(m)) {
                 seenModels.add(m)
-                custom.push({ value: m, label: `${name} — ${m}` })
+                custom.push({ value: m, label: `${name} — ${m}`, providerId: '' })
               }
             }
           }
@@ -3451,11 +3538,11 @@ async function refreshModelOptions() {
     // Fallback bila sama sekali belum terdeteksi
     let options = custom
     if (options.length === 0) {
-      options.push({ value: '', label: 'Belum ada model terdeteksi di endpoint' })
+      options.push({ value: '', label: 'Belum ada model terdeteksi di endpoint', providerId: '' })
     }
 
     llmSwitchModel.innerHTML = options
-      .map((o) => `<option value="${escapeHtml(o.value)}">${escapeHtml(o.label)}</option>`)
+      .map((o) => `<option value="${escapeHtml(o.value)}" data-provider-id="${escapeHtml(o.providerId || '')}">${escapeHtml(o.label)}</option>`)
       .join('')
 
     // Sinkronkan pilihan dropdown dengan model aktif saat ini
@@ -3708,24 +3795,32 @@ llmSwitchBtn.addEventListener('click', async () => {
     showToast('Pilih Model Dulu', 'Silakan pilih model LLM dari daftar pilihan', 'error', '⚠️')
     return
   }
+  const selectedOpt = llmSwitchModel.options?.[llmSwitchModel.selectedIndex]
+  const optProvId = selectedOpt?.dataset?.providerId || ''
   llmSwitchBtn.disabled = true
   showToast('Menerapkan Model LLM...', `Mengalihkan model aktif ke "${value}"`, 'running', '🧠')
   try {
-    const activeProv = (settings.llm.providers || []).find((p) => p.id === settings.llm.activeId) || (settings.llm.providers || [])[0]
+    const provs = settings.llm.providers || []
+    const activeProv = provs.find((p) => p.id === settings.llm.activeId) || provs[0]
+    const targetProv = (optProvId && provs.find((p) => p.id === optProvId)) ||
+      provs.find((p) => p.model === value || (Array.isArray(p.models) && p.models.includes(value))) ||
+      activeProv
     const res = await window.hermesAvatar.setLlmProvider({
-      name: activeProv?.name || 'custom',
-      baseUrl: activeProv?.baseUrl || 'http://localhost:20128/v1',
-      apiKey: activeProv?.apiKey || '',
+      name: targetProv?.name || 'custom',
+      baseUrl: targetProv?.baseUrl || 'http://127.0.0.1:20128/v1',
+      apiKey: targetProv?.apiKey || '',
       model: value
     })
     if (!res.ok) {
-      showToast('Gagal Menerapkan Model', res.error || 'Gagal menyetel provider LLM', 'error', '❌', 6000)
-      throw new Error(res.error)
+      throw new Error(res.error || 'Gagal menyetel provider LLM')
     }
 
-    if (activeProv) {
-      activeProv.model = value
+    if (targetProv) {
+      targetProv.model = value
+      targetProv.models = Array.from(new Set([value, ...(Array.isArray(targetProv.models) ? targetProv.models : [])].filter(Boolean)))
+      settings.llm.activeId = targetProv.id
       saveSettings(settings)
+      syncLlmProvidersToDisk()
     }
 
     if (res.warning) {
@@ -3741,7 +3836,7 @@ llmSwitchBtn.addEventListener('click', async () => {
     renderLlmList()
   } catch (err) {
     statusEl.textContent = `Gagal switch model: ${err?.message || err}`
-    showToast('Gagal Menerapkan Model', err?.message || err, 'error', '❌')
+    showToast('Gagal Menerapkan Model', err?.message || err, 'error', '❌', 6000)
   } finally {
     llmSwitchBtn.disabled = false
   }
@@ -4090,6 +4185,7 @@ function init() {
   loadDetectedPathsOnce(false)
   bindPackageActions()
   loadVoiceUI()
+  initPersistentLlmProviders()
   renderLlmList()
   renderFormatList()
   renderActiveChar()

@@ -53,6 +53,8 @@ const settingsApi = {
   installSkill: (skillId) => ipcRenderer.invoke('avatar:install-skill', skillId),
 
   // LLM Provider & Model Management
+  loadLlmProviders: () => ipcRenderer.invoke('avatar:llm-load-providers'),
+  saveLlmProviders: (data) => ipcRenderer.invoke('avatar:llm-save-providers', data),
   testConnection: (url, model, apiKey) => ipcRenderer.invoke('avatar:test-connection', url, model, apiKey),
   setLlmProvider: (payload) => ipcRenderer.invoke('avatar:set-llm-provider', payload),
   fetchEndpointModels: (baseUrl, apiKey) => ipcRenderer.invoke('avatar:fetch-endpoint-models', baseUrl, apiKey),
@@ -67,6 +69,8 @@ const settingsApi = {
   pickApp: () => ipcRenderer.invoke('avatar:pick-app'),
   getAppIcon: (appId) => ipcRenderer.invoke('avatar:app-icon', appId),
   scanInstalledApps: () => ipcRenderer.invoke('avatar:scan-installed-apps'),
+  getInstalledApps: () => ipcRenderer.invoke('avatar:get-installed-apps'),
+  launchApp: (appId, appName) => ipcRenderer.invoke('avatar:launch-app', appId, appName),
   getShortcuts: () => ipcRenderer.invoke('avatar:shortcuts'),
   setShortcut: (id, accel) => ipcRenderer.invoke('avatar:set-shortcut', id, accel),
 

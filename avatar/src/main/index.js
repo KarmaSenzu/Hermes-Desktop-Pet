@@ -43,7 +43,7 @@ import { loadOrCreateBridgeToken, BRIDGE_TOKEN_FILE } from './bridge-token.js'
 import { createSecretStore } from './secret-store.js'
 import { createSecureIpc } from './secure-ipc.js'
 import { resolveTerminalAction } from './actions.js'
-import { createAppRegistry } from './app-registry.js'
+import { createAppRegistry, computeAppId } from './app-registry.js'
 import { RPC_ALLOWED_METHODS } from './ipc-policy.js'
 import { readPngSize, estimateTextureMB } from './png-size.js'
 import { checkAppUpdate, downloadAndApplyUpdate, relaunchApp } from './updater-service.js'
@@ -53,6 +53,10 @@ import {
   testProviderConnection,
   fetchEndpointModels,
   updateHermesProviderConfig,
+  updateHermesVoiceConfig,
+  loadSavedLlmProviders,
+  saveSavedLlmProviders,
+  upsertSavedLlmProviderOnDisk,
   updateModelConfigYaml,
   normalizeGeminiModel,
   runHermes
@@ -134,7 +138,7 @@ export function ensureDeployedCompanionAndScripts() {
         const srcFile = join(validScriptSource, f)
         const dstFile = join(userScriptsDir, f)
         if (existsSync(srcFile)) {
-          if (!existsSync(dstFile) || statSync(srcFile).size !== statSync(dstFile).size) {
+          if (!existsSync(dstFile) || !readFileSync(srcFile).equals(readFileSync(dstFile))) {
             cpSync(srcFile, dstFile)
           }
         }
@@ -1295,7 +1299,28 @@ secureHandle('avatar:test-connection', async (_event, url, model, apiKey) => {
 })
 
 
-// IPC: set full LLM provider ke Hermes (config.yaml + .env + RPC gateway)
+// IPC: Muat & simpan daftar provider LLM persisten (~/.hermes-avatar/llm_providers.json)
+secureHandle('avatar:llm-load-providers', async () => {
+  try {
+    return await loadSavedLlmProviders({ secretStore })
+  } catch (err) {
+    return { ok: false, providers: [], error: err?.message || String(err) }
+  }
+})
+
+secureHandle('avatar:llm-save-providers', async (_event, payload) => {
+  try {
+    const data = (payload && typeof payload === 'object') ? payload : {}
+    return await saveSavedLlmProviders({
+      activeId: data.activeId || null,
+      providers: Array.isArray(data.providers) ? data.providers : []
+    })
+  } catch (err) {
+    return { ok: false, error: err?.message || String(err) }
+  }
+})
+
+// IPC: set full LLM provider ke Hermes (config.yaml + .env + llm_providers.json + RPC gateway)
 secureHandle('avatar:set-llm-provider', async (_event, payload) => {
   try {
     const { name, baseUrl, apiKey, model } = payload || {}
@@ -1313,6 +1338,22 @@ secureHandle('avatar:set-llm-provider', async (_event, payload) => {
     }
 
     await updateHermesProviderConfig({ name, baseUrl, apiKey: effectiveKey, model: modelName })
+
+    let sealedForDisk = String(apiKey || '').trim()
+    if (!sealedForDisk.startsWith('v2:') && effectiveKey && effectiveKey !== 'no-key-required') {
+      try {
+        sealedForDisk = secretStore.seal(effectiveKey, baseUrl)
+      } catch {
+        sealedForDisk = ''
+      }
+    }
+    await upsertSavedLlmProviderOnDisk({
+      name: name || 'Custom Provider',
+      baseUrl,
+      apiKey: sealedForDisk,
+      model: modelName,
+      authType: isLocalRouterUrl(baseUrl) ? '9router' : (sealedForDisk ? 'apikey' : '')
+    }, { secretStore, setActive: true }).catch(() => {})
 
     // Set via RPC jika terhubung
     if (isGatewayConnected()) {
@@ -1621,109 +1662,26 @@ secureHandle('avatar:get-current-model', async () => {
   }
 })
 
-// IPC: set TTS config (voice) ke Hermes — tulis config.yaml langsung.
-secureHandle('avatar:set-tts-config', async (_event, { voice }) => {
+// IPC: set TTS config (voice) ke Hermes — gunakan writer YAML atomik & ter-serialize.
+secureHandle('avatar:set-tts-config', async (_event, { voice } = {}) => {
   try {
     if (!voice) return { ok: true }
-
-    const cfgPath = resolveHermesConfigPath()
-    let cfg = ''
-    if (existsSync(cfgPath)) {
-      cfg = await readFile(cfgPath, 'utf8')
-    } else {
-      await mkdir(join(cfgPath, '..'), { recursive: true })
-    }
-
-    // Pastikan blok tts.edge.voice ada (update atau sisipkan).
-    if (/^tts:\s*$/m.test(cfg)) {
-      cfg = updateYamlNested(cfg, 'tts', 'edge', 'voice', voice)
-    } else {
-      cfg += `\ntts:\n  edge:\n    voice: ${voice}\n`
-    }
-
-    await writeFile(cfgPath, cfg, 'utf8')
+    await updateHermesVoiceConfig({ voice })
     return { ok: true, voice }
   } catch (err) {
     return { ok: false, error: err?.message || String(err) }
   }
 })
 
-// IPC: set STT config (model + bahasa) — tulis config.yaml langsung.
-secureHandle('avatar:set-stt-config', async (_event, { model, language }) => {
+// IPC: set STT config (model + bahasa) — gunakan writer YAML atomik & ter-serialize.
+secureHandle('avatar:set-stt-config', async (_event, { model, language } = {}) => {
   try {
-    const cfgPath = resolveHermesConfigPath()
-    let cfg = ''
-    if (existsSync(cfgPath)) {
-      cfg = await readFile(cfgPath, 'utf8')
-    } else {
-      await mkdir(join(cfgPath, '..'), { recursive: true })
-    }
-
-    if (!/^stt:\s*$/m.test(cfg)) {
-      cfg += '\nstt:\n  local:\n    model: base\n    language: ""\n'
-    }
-    if (model) cfg = updateYamlNested(cfg, 'stt', 'local', 'model', model)
-    if (language) cfg = updateYamlNested(cfg, 'stt', 'local', 'language', language)
-
-    await writeFile(cfgPath, cfg, 'utf8')
+    await updateHermesVoiceConfig({ sttModel: model, sttLanguage: language })
     return { ok: true, model, language }
   } catch (err) {
     return { ok: false, error: err?.message || String(err) }
   }
 })
-
-// Helper sederhana: update nested key (section > sub > key) di YAML.
-function updateYamlNested(yaml, section, sub, key, value) {
-  const lines = yaml.split('\n')
-  let inSection = false
-  let inSub = false
-  let updated = false
-  const out = []
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i]
-    const trimmed = line.trim()
-
-    if (trimmed === `${section}:`) {
-      inSection = true
-      inSub = false
-      out.push(line)
-      continue
-    }
-    // Keluar section jika ketemu key top-level baru.
-    if (inSection && /^[a-zA-Z_]/.test(trimmed) && !line.startsWith(' ') && trimmed !== `${section}:`) {
-      inSection = false
-      inSub = false
-    }
-    if (inSection && trimmed === `${sub}:`) {
-      inSub = true
-      out.push(line)
-      continue
-    }
-    // Keluar sub jika ketemu indentasi sama dengan sub (2 spasi) tapi bukan key.
-    if (inSub && line.startsWith('  ') && !line.startsWith('    ') && !line.startsWith(`  ${sub}:`)) {
-      inSub = false
-    }
-    // Update key dalam sub.
-    if (inSub && trimmed.startsWith(`${key}:`)) {
-      out.push(`    ${key}: ${value}`)
-      updated = true
-      continue
-    }
-    out.push(line)
-  }
-
-  // Jika sub/key belum ada, tambahkan ke akhir section.
-  if (!updated) {
-    // Cari posisi section, sisipkan sub+key.
-    const sectionIdx = out.findIndex((l) => l.trim() === `${section}:`)
-    if (sectionIdx >= 0) {
-      out.splice(sectionIdx + 1, 0, `  ${sub}:`, `    ${key}: ${value}`)
-    }
-  }
-
-  return out.join('\n')
-}
 
 // IPC: install skill dari hub → `hermes skills install <skill-id>`.
 secureHandle('avatar:install-skill', async (_event, skillId) => {
@@ -1802,8 +1760,10 @@ function scanWindowsShortcuts() {
 
   const dirs = [
     join(process.env.APPDATA || '', 'Microsoft', 'Windows', 'Start Menu', 'Programs'),
-    join(process.env.ProgramData || '', 'Microsoft', 'Windows', 'Start Menu', 'Programs')
-  ].filter((p) => existsSync(p))
+    join(process.env.ProgramData || '', 'Microsoft', 'Windows', 'Start Menu', 'Programs'),
+    join(homedir(), 'Desktop'),
+    process.env.PUBLIC ? join(process.env.PUBLIC, 'Desktop') : ''
+  ].filter((p) => p && existsSync(p))
 
   const results = []
   const seenNames = new Set()
@@ -1863,16 +1823,18 @@ function scanWindowsShortcuts() {
     walk(d)
   }
 
-  // Aplikasi bawaan umum Windows
+  // Aplikasi bawaan umum Windows (gunakan path absolut agar lolos verifikasi existsSync di appRegistry)
+  const winDir = process.env.WINDIR || process.env.SystemRoot || 'C:\\Windows'
+  const sys32 = join(winDir, 'System32')
+  const psDir = join(sys32, 'WindowsPowerShell', 'v1.0')
   const builtins = [
-    { name: 'Notepad', command: 'notepad.exe', aliases: ['notepad', 'catatan'] },
-    { name: 'Kalkulator', command: 'calc.exe', aliases: ['calc', 'kalkulator', 'calculator'] },
-    { name: 'File Explorer', command: 'explorer.exe', aliases: ['explorer', 'file explorer'] },
-    { name: 'Paint', command: 'mspaint.exe', aliases: ['paint', 'mspaint', 'gambar'] },
-    { name: 'Task Manager', command: 'taskmgr.exe', aliases: ['taskmgr', 'task manager'] },
-    { name: 'Command Prompt', command: 'cmd.exe', aliases: ['cmd', 'command prompt'] },
-    { name: 'PowerShell', command: 'powershell.exe', aliases: ['powershell', 'pwsh'] },
-    { name: 'Pengaturan Windows', command: 'ms-settings:', aliases: ['settings', 'pengaturan'] }
+    { name: 'Notepad', command: join(sys32, 'notepad.exe'), aliases: ['notepad', 'catatan'] },
+    { name: 'Kalkulator', command: join(sys32, 'calc.exe'), aliases: ['calc', 'kalkulator', 'calculator'] },
+    { name: 'File Explorer', command: join(winDir, 'explorer.exe'), aliases: ['explorer', 'file explorer'] },
+    { name: 'Paint', command: join(sys32, 'mspaint.exe'), aliases: ['paint', 'mspaint', 'gambar'] },
+    { name: 'Task Manager', command: join(sys32, 'taskmgr.exe'), aliases: ['taskmgr', 'task manager'] },
+    { name: 'Command Prompt', command: join(sys32, 'cmd.exe'), aliases: ['cmd', 'command prompt'] },
+    { name: 'PowerShell', command: join(psDir, 'powershell.exe'), aliases: ['powershell', 'pwsh'] }
   ]
 
   for (const b of builtins) {
@@ -1890,10 +1852,43 @@ function scanWindowsShortcuts() {
   return results
 }
 
-// IPC: jalankan aplikasi berdasarkan appId aman yang terdaftar di registry
-secureHandle('avatar:launch-app', async (_event, appId) => {
+// IPC: jalankan aplikasi berdasarkan appId aman (atau cocokkan nama/alias terverifikasi di registry)
+secureHandle('avatar:launch-app', async (_event, appId, appName) => {
   try {
-    return await appRegistry.launchById(appId)
+    let res = await appRegistry.launchById(appId)
+    if (!res.ok) {
+      if (appRegistry.getPublicList().length === 0) {
+        appRegistry.setScannedApps(scanWindowsShortcuts())
+      }
+      const reg = appRegistry.getRegistry()
+      const norm = (s) => String(s || '').toLowerCase().trim()
+      const compact = (s) => norm(s).replace(/[\s\-_]+/g, '')
+      const candidates = [appName, appId].map(norm).filter(Boolean)
+
+      let matched = null
+      for (const q of candidates) {
+        const byComputed = reg.find((r) => r.id === computeAppId(q))
+        if (byComputed) { matched = byComputed; break }
+
+        const byExactName = reg.find((r) => norm(r.name) === q)
+        if (byExactName) { matched = byExactName; break }
+
+        const qBase = q.replace(/\.(exe|lnk)$/i, '')
+        const byBase = reg.find((r) => norm(basename(r.path)).replace(/\.(exe|lnk)$/i, '') === qBase)
+        if (byBase) { matched = byBase; break }
+
+        const qComp = compact(q)
+        if (qComp.length >= 3) {
+          const byPartial = reg.find((r) => compact(r.name).includes(qComp) || qComp.includes(compact(r.name)))
+          if (byPartial) { matched = byPartial; break }
+        }
+      }
+
+      if (matched) {
+        res = await appRegistry.launchById(matched.id)
+      }
+    }
+    return res
   } catch (err) {
     return { ok: false, error: err?.message || String(err) }
   }
