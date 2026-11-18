@@ -102,3 +102,6 @@ desktop.ini
 # 9. REFERENSI PIHAK KETIGA / THIRD-PARTY CLONE
 # ------------------------------------------------------------------------------
 references/
+briefing-attachments/
+*.zip
+scratch_*.py
