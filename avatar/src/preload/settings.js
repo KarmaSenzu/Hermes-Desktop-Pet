@@ -27,6 +27,12 @@ const settingsApi = {
   startKokoroServer: () => ipcRenderer.invoke('avatar:start-kokoro-server'),
   installKokoroDeps: () => ipcRenderer.invoke('avatar:install-kokoro-deps'),
   uninstallKokoroDeps: () => ipcRenderer.invoke('avatar:uninstall-kokoro-deps'),
+  installPackage: (pkgId) => ipcRenderer.invoke('avatar:install-package', pkgId),
+  onPackageInstallProgress: (callback) => {
+    const handler = (_event, info) => callback(info)
+    ipcRenderer.on('avatar:package-install-progress', handler)
+    return () => ipcRenderer.removeListener('avatar:package-install-progress', handler)
+  },
   openPackageFolder: (pkgName) => ipcRenderer.invoke('avatar:open-package-folder', pkgName),
   cleanPackage: (pkgName) => ipcRenderer.invoke('avatar:clean-package', pkgName),
 

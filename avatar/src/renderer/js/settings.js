@@ -260,6 +260,7 @@ function initUiModeSwitcher() {
 // --- Status service & Package Hub & Home Prerequisites ---
 const homeSetupAlert = document.getElementById('home-setup-alert')
 const alertOpenPkgBtn = document.getElementById('alert-open-pkg-btn')
+const alertInstallAllBtn = document.getElementById('alert-install-all-btn')
 const homePrereqBadge = document.getElementById('home-prereq-badge')
 const homeStartHermesBtn = document.getElementById('home-start-hermes-btn')
 const homeCharDesc = document.getElementById('home-char-desc')
@@ -274,12 +275,19 @@ const prereqAutoBtn = document.getElementById('prereq-auto-btn')
 const prereqForceBtn = document.getElementById('prereq-force-btn')
 const prereqLlmBtn = document.getElementById('prereq-llm-btn')
 
+const pkgInstallAllBtn = document.getElementById('pkg-install-all-btn')
+const pkgGlobalProgressWrap = document.getElementById('pkg-global-progress-wrap')
+const pkgGlobalProgressText = document.getElementById('pkg-global-progress-text')
+const pkgGlobalProgressPct = document.getElementById('pkg-global-progress-pct')
+const pkgGlobalProgressBar = document.getElementById('pkg-global-progress-bar')
+
 const pkgStatusHermes = document.getElementById('pkg-status-hermes')
 const pkgStatusRouter = document.getElementById('pkg-status-router')
 const pkgStatusKokoro = document.getElementById('pkg-status-kokoro')
 const pkgStatusPython = document.getElementById('pkg-status-python')
 const pkgPythonVersion = document.getElementById('pkg-python-version')
 const packageOverallStatus = document.getElementById('package-overall-status')
+const pkgHermesStartBtn = document.getElementById('pkg-hermes-start-btn')
 const pkgStartKokoroBtn = document.getElementById('pkg-start-kokoro-btn')
 const pkgInstallKokoroBtn = document.getElementById('pkg-install-kokoro-btn')
 const pkgOpenFolderBtn = document.getElementById('pkg-open-folder-btn')
@@ -292,6 +300,7 @@ const pkgKokoroLog = document.getElementById('pkg-kokoro-log')
 
 const pkgStatusCompanion = document.getElementById('pkg-status-companion')
 const pkgBridgeStatusText = document.getElementById('pkg-bridge-status-text')
+const pkgCompanionOneclickBtn = document.getElementById('pkg-companion-oneclick-btn')
 const pkgOpenExtensionFolderBtn = document.getElementById('pkg-open-extension-folder-btn')
 const pkgTestBridgeBtn = document.getElementById('pkg-test-bridge-btn')
 const pkgBridgeLog = document.getElementById('pkg-bridge-log')
@@ -362,17 +371,28 @@ alertOpenPkgBtn?.addEventListener('click', () => {
   navigateToSection('package')
 })
 
+alertInstallAllBtn?.addEventListener('click', async () => {
+  navigateToSection('package')
+  await runOneClickPackageInstall('all', alertInstallAllBtn)
+})
+
 // Handler tombol Nyalakan Hermes di kartu Prasyarat Home
 homeStartHermesBtn?.addEventListener('click', async () => {
   homeStartHermesBtn.disabled = true
   homeStartHermesBtn.textContent = 'Menyalakan…'
   showToast('Menyalakan Hermes AI...', 'Memulai daemon hermes serve di port 9119', 'running', '⚡')
   try {
-    const res = await window.hermesAvatar.startHermesServer()
+    let res = await window.hermesAvatar.startHermesServer()
+    if (!res?.ok && !res?.already && typeof window.hermesAvatar?.installPackage === 'function') {
+      homeStartHermesBtn.textContent = 'Memasang…'
+      showToast('Memasang Hermes Otomatis...', 'Hermes belum terdeteksi — memasang di latar belakang tanpa terminal', 'running', '📦', 9000)
+      res = await window.hermesAvatar.installPackage('hermes')
+      await loadDetectedPathsOnce(true)
+    }
     if (res?.ok || res?.already) {
       showToast('Hermes Aktif! ✅', 'Daemon AI siap di port 9119', 'success', '⚡')
     } else {
-      showToast('Gagal Menyalakan Hermes', res?.error || 'Pastikan Hermes CLI sudah terpasang', 'error', '❌')
+      showToast('Gagal Menyalakan Hermes', res?.error || 'Pastikan koneksi internet stabil atau buka Package Hub', 'error', '❌')
     }
     await refreshServiceStatus()
   } catch (err) {
@@ -432,9 +452,15 @@ prereqAutoBtn?.addEventListener('click', async () => {
   prereqAutoBtn.textContent = '⏳ Menyiapkan…'
   showToast('Menyiapkan Layanan Otomatis...', 'Menjalankan Hermes & Kokoro...', 'running', '⚡')
   try {
-    await window.hermesAvatar.startHermesServer()
+    let hermesRes = await window.hermesAvatar.startHermesServer()
+    if (!hermesRes?.ok && !hermesRes?.already && typeof window.hermesAvatar?.installPackage === 'function') {
+      prereqAutoBtn.textContent = '📦 Memasang Hermes…'
+      showToast('Hermes Belum Terpasang', 'Memasang Hermes Agent otomatis di latar belakang...', 'running', '📦', 10000)
+      await window.hermesAvatar.installPackage('hermes')
+      await loadDetectedPathsOnce(true)
+    }
     await window.hermesAvatar.startKokoroServer()
-    await new Promise(r => setTimeout(r, 1800))
+    await new Promise(r => setTimeout(r, 1200))
     await refreshServiceStatus()
 
     const active = (settings.characters || []).find((c) => c.active)
@@ -543,6 +569,145 @@ function showPrerequisitesModal(s, active = null, llmInfo = null) {
   if (prereqModal) prereqModal.hidden = false
 }
 
+let lastServiceStatus = null
+let lastDetectedPaths = null
+const activeOneClickInstalls = new Set()
+
+function updatePackageQuickButtons(s = lastServiceStatus, dp = lastDetectedPaths) {
+  if (s) lastServiceStatus = s
+  if (dp) lastDetectedPaths = dp
+  const curStatus = lastServiceStatus || {}
+  const curPaths = lastDetectedPaths || {}
+
+  document.querySelectorAll('.pkg-quick-install-btn[data-oneclick-pkg]').forEach((btn) => {
+    if (btn.dataset.installing === '1') return
+    const pkgId = btn.dataset.oneclickPkg
+    let running = false
+    let installed = false
+
+    if (pkgId === 'hermes') {
+      running = !!curStatus.hermes
+      installed = !!curPaths.hermes?.ok
+    } else if (pkgId === '9router') {
+      running = !!curStatus.router
+      installed = !!curPaths.router?.ok
+    } else if (pkgId === 'kokoro') {
+      running = !!curStatus.kokoro
+      installed = !!curPaths.kokoroInstalled
+    } else if (pkgId === 'python') {
+      running = !!curPaths.python?.ok
+      installed = !!curPaths.python?.ok
+    }
+
+    if (running) {
+      btn.classList.add('ready')
+    } else if (installed) {
+      btn.classList.remove('ready')
+      btn.textContent = '⚡ Nyalakan 1-Klik'
+    } else {
+      btn.classList.remove('ready')
+      btn.textContent = '⚡ Install 1-Klik'
+    }
+  })
+}
+
+async function runOneClickPackageInstall(pkgId, triggerBtn = null) {
+  const id = String(pkgId || '').trim().toLowerCase()
+  if (!id || activeOneClickInstalls.has(id)) return
+  if (typeof window.hermesAvatar?.installPackage !== 'function') {
+    showToast('Fitur Belum Tersedia', 'Restart aplikasi agar modul installer aktif.', 'warning', '⚠️')
+    return
+  }
+
+  activeOneClickInstalls.add(id)
+  const relatedBtns = Array.from(document.querySelectorAll(`[data-oneclick-pkg="${id}"]`))
+  if (triggerBtn && !relatedBtns.includes(triggerBtn)) relatedBtns.push(triggerBtn)
+  if (id === 'all' && pkgInstallAllBtn && !relatedBtns.includes(pkgInstallAllBtn)) {
+    relatedBtns.push(pkgInstallAllBtn)
+  }
+
+  const origLabels = new Map()
+  for (const b of relatedBtns) {
+    origLabels.set(b, b.textContent)
+    b.disabled = true
+    b.dataset.installing = '1'
+    b.textContent = '⏳ Memasang…'
+  }
+
+  const labels = {
+    all: 'Semua Paket',
+    hermes: 'Hermes Agent',
+    '9router': '9Router Gateway',
+    kokoro: 'Kokoro-TTS',
+    python: 'Python 3.12'
+  }
+  const pkgTitle = labels[id] || id
+
+  const updateProgressUi = (info) => {
+    const pct = Math.max(0, Math.min(100, Number(info?.percent) || 0))
+    const msg = String(info?.message || 'Memproses instalasi otomatis...')
+    if (pkgGlobalProgressWrap) {
+      pkgGlobalProgressWrap.hidden = false
+    }
+    if (pkgGlobalProgressText) pkgGlobalProgressText.textContent = msg
+    if (pkgGlobalProgressPct) pkgGlobalProgressPct.textContent = `${pct}%`
+    if (pkgGlobalProgressBar) pkgGlobalProgressBar.style.width = `${pct}%`
+
+    const targetLogId = info?.subPkg || (id !== 'all' ? id : null)
+    if (targetLogId) {
+      const inlineLog = document.getElementById(`pkg-inline-log-${targetLogId}`)
+      if (inlineLog) inlineLog.textContent = `⏳ [${pct}%] ${msg}`
+    }
+  }
+
+  updateProgressUi({ pkgId: id, percent: 3, message: `Memulai instalasi otomatis ${pkgTitle} (tanpa terminal)...` })
+  showToast(`Menyiapkan ${pkgTitle}...`, 'Proses berjalan otomatis di latar belakang tanpa membuka terminal.', 'running', '📦', 8000)
+
+  let unsub = null
+  if (typeof window.hermesAvatar?.onPackageInstallProgress === 'function') {
+    unsub = window.hermesAvatar.onPackageInstallProgress((info) => {
+      if (!info) return
+      if (info.pkgId === id || id === 'all') {
+        updateProgressUi(info)
+      }
+    })
+  }
+
+  try {
+    const res = await window.hermesAvatar.installPackage(id)
+    await loadDetectedPathsOnce(true)
+    await refreshServiceStatus()
+
+    const inlineEl = id !== 'all' ? document.getElementById(`pkg-inline-log-${id}`) : null
+    if (res?.ok) {
+      if (pkgGlobalProgressPct) pkgGlobalProgressPct.textContent = '100%'
+      if (pkgGlobalProgressBar) pkgGlobalProgressBar.style.width = '100%'
+      if (pkgGlobalProgressText) pkgGlobalProgressText.textContent = `✅ ${pkgTitle} selesai dipasang dan siap digunakan!`
+      if (inlineEl) inlineEl.textContent = `✅ ${pkgTitle} berhasil disiapkan & siap digunakan.`
+      showToast(`${pkgTitle} Siap! ✅`, 'Instalasi & aktivasi latar belakang berhasil diselesaikan.', 'success', '🎉', 5000)
+    } else {
+      const errText = res?.error || 'Sebagian paket memerlukan pemeriksaan jaringan.'
+      if (pkgGlobalProgressText) pkgGlobalProgressText.textContent = `⚠️ ${errText}`
+      if (inlineEl) inlineEl.textContent = `❌ ${errText}`
+      showToast(`Pemasangan ${pkgTitle} Terkendala ⚠️`, errText, 'error', '❌', 7000)
+    }
+  } catch (err) {
+    const errMsg = err?.message || String(err)
+    const inlineEl = id !== 'all' ? document.getElementById(`pkg-inline-log-${id}`) : null
+    if (inlineEl) inlineEl.textContent = `❌ Error: ${errMsg}`
+    showToast(`Error Pemasangan ${pkgTitle}`, errMsg, 'error', '❌', 7000)
+  } finally {
+    if (typeof unsub === 'function') unsub()
+    activeOneClickInstalls.delete(id)
+    for (const b of relatedBtns) {
+      delete b.dataset.installing
+      b.disabled = false
+      b.textContent = origLabels.get(b) || '⚡ Install 1-Klik'
+    }
+    updatePackageQuickButtons()
+  }
+}
+
 // Status service (9Router, Hermes, Kokoro, Bridge) — murni cek port via TCP non-blocking (<0.1ms, 0% CPU)
 async function refreshServiceStatus() {
   try {
@@ -623,6 +788,8 @@ async function refreshServiceStatus() {
         packageOverallStatus.className = 'overall-badge attention'
       }
     }
+
+    updatePackageQuickButtons(s, null)
   } catch {
     if (hermesStatus) hermesStatus.textContent = '?'
   }
@@ -678,13 +845,16 @@ async function loadDetectedPathsOnce(force = false) {
     if (pkgHermesLocation) {
       pkgHermesLocation.textContent = dp.hermes?.ok
         ? dp.hermes.cmd
-        : 'Belum terpasang di C: atau D:. Silakan pasang Hermes via terminal di bawah.'
+        : 'Belum terpasang. Klik tombol ⚡ Install 1-Klik untuk pemasangan otomatis.'
     }
     if (pkgHermesSourceBadge) {
       pkgHermesSourceBadge.textContent = dp.hermes?.ok
         ? (dp.hermes.source || 'Terdeteksi')
         : 'Belum Terpasang ❌'
       pkgHermesSourceBadge.className = `badge ${dp.hermes?.ok ? (dp.hermes.isCustom ? 'info' : 'ready') : 'warning'}`
+    }
+    if (pkgHermesStartBtn) {
+      pkgHermesStartBtn.style.display = dp.hermes?.ok ? 'inline-block' : 'none'
     }
     if (pkgHermesResetBtn) {
       pkgHermesResetBtn.style.display = dp.hermes?.isCustom ? 'inline-block' : 'none'
@@ -694,7 +864,7 @@ async function loadDetectedPathsOnce(force = false) {
     if (pkgRouterLocation) {
       pkgRouterLocation.textContent = dp.router?.ok
         ? dp.router.cmd
-        : 'Belum terpasang di C: atau D:. Jalankan: npm i -g 9router'
+        : 'Belum terpasang. Klik tombol ⚡ Install 1-Klik untuk pemasangan otomatis.'
     }
     if (pkgRouterSourceBadge) {
       pkgRouterSourceBadge.textContent = dp.router?.ok
@@ -742,12 +912,29 @@ async function loadDetectedPathsOnce(force = false) {
     }
 
     pathDiscoveryLoaded = true
+    updatePackageQuickButtons(null, dp)
   } catch (err) {
     console.warn('[Settings] Gagal memuat status deteksi path:', err)
   }
 }
 
 function bindPackageActions() {
+  // 0. Tombol Instalasi 1-Klik Otomatis (Semua Paket & Per-Paket)
+  pkgInstallAllBtn?.addEventListener('click', (e) => {
+    e.stopPropagation()
+    runOneClickPackageInstall('all', pkgInstallAllBtn)
+  })
+
+  document.querySelectorAll('[data-oneclick-pkg]').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation()
+      const pkgId = btn.dataset.oneclickPkg
+      if (pkgId) {
+        runOneClickPackageInstall(pkgId, btn)
+      }
+    })
+  })
+
   // 1. Accordion Toggle (Buka / Tutup Card)
   document.querySelectorAll('.pkg-header').forEach((header) => {
     header.addEventListener('click', (e) => {
@@ -854,7 +1041,25 @@ function bindPackageActions() {
     showToast('Pemeriksaan Selesai! 🎯', 'Status lokasi binary dan prasyarat berhasil diperbarui', 'success', '✅')
   })
 
-  // 5b. Tombol Kontrol Jalur Kustom (Hermes, 9Router, Kokoro, Python)
+  // 5b. Tombol Kontrol Jalur Kustom & Start Senyap (Hermes, 9Router, Kokoro, Python)
+  pkgHermesStartBtn?.addEventListener('click', async () => {
+    pkgHermesStartBtn.disabled = true
+    showToast('Menyalakan Hermes...', 'Memulai daemon hermes serve di port 9119...', 'running', '⚡', 7000)
+    try {
+      const res = await window.hermesAvatar?.startHermesServer?.()
+      if (res?.ok || res?.already) {
+        showToast('Hermes Aktif! 🟢', 'Port 9119 online dan siap melayani AI', 'success', '⚡', 4500)
+      } else {
+        showToast('Gagal Menyalakan Hermes', res?.error || 'Port 9119 tidak aktif', 'error', '❌', 6000)
+      }
+      await refreshServiceStatus()
+    } catch (err) {
+      showToast('Error Hermes', err.message, 'error', '❌')
+    } finally {
+      pkgHermesStartBtn.disabled = false
+    }
+  })
+
   pkgHermesBrowseBtn?.addEventListener('click', async () => {
     if (typeof window.hermesAvatar?.browseCustomPath !== 'function') return
     const res = await window.hermesAvatar.browseCustomPath('hermes_bin', 'file')
@@ -1079,6 +1284,34 @@ function bindPackageActions() {
   }
 
   // 7. Hermes Web Companion (Ekstensi Chrome/Edge)
+  pkgCompanionOneclickBtn?.addEventListener('click', async () => {
+    pkgCompanionOneclickBtn.disabled = true
+    try {
+      const res = await window.hermesAvatar.openPackageFolder('chrome-extension')
+      if (res?.ok && res?.path) {
+        try {
+          await navigator.clipboard.writeText(res.path)
+        } catch {}
+        showToast(
+          'Folder Siap & Path Tersalin! ⚡',
+          'Di Chrome/Edge, aktifkan Developer mode → Load unpacked → Tempel path folder (Ctrl+V)',
+          'success',
+          '🌐',
+          8000
+        )
+        if (pkgBridgeLog) {
+          pkgBridgeLog.innerHTML = `✅ Folder ekstensi dibuka &amp; path disalin ke clipboard: <code>${escapeHtml(res.path)}</code><br>👉 Buka <code>chrome://extensions</code> → aktifkan <strong>Developer mode</strong> → klik <strong>Load unpacked</strong> → tempel (<kbd>Ctrl+V</kbd>) lalu klik Select.`
+        }
+      } else {
+        showToast('Gagal Menyiapkan Ekstensi', res?.error || 'Folder tidak ditemukan', 'error', '❌')
+      }
+    } catch (err) {
+      showToast('Error Ekstensi', err.message, 'error', '❌')
+    } finally {
+      pkgCompanionOneclickBtn.disabled = false
+    }
+  })
+
   if (pkgOpenExtensionFolderBtn) {
     pkgOpenExtensionFolderBtn.addEventListener('click', async () => {
       try {
@@ -3411,7 +3644,7 @@ async function checkAppUpdates(interactive = false) {
     }
 
     cachedUpdateInfo = res
-    const currentVer = res.currentVersion ? (res.currentVersion.startsWith('v') ? res.currentVersion : `v${res.currentVersion}`) : 'v0.1.4'
+    const currentVer = res.currentVersion ? (res.currentVersion.startsWith('v') ? res.currentVersion : `v${res.currentVersion}`) : 'v0.1.5'
     const latestVer = res.latestVersion ? (res.latestVersion.startsWith('v') ? res.latestVersion : `v${res.latestVersion}`) : currentVer
 
     if (footerVerTag) footerVerTag.textContent = currentVer

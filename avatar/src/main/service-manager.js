@@ -71,6 +71,10 @@ function fixSystemPath() {
 
   const additionalPaths = process.platform === 'win32'
     ? [
+        'C:\\Program Files\\nodejs',
+        join(home, 'AppData', 'Roaming', 'npm'),
+        join(home, 'AppData', 'Local', 'Programs', 'nodejs'),
+        join(home, '.local', 'bin'),
         join(home, 'AppData', 'Local', 'hermes', 'hermes-agent', 'venv', 'Scripts'),
         join(home, 'AppData', 'Local', 'hermes', 'venv', 'Scripts'),
         join(home, '.hermes', 'venv', 'Scripts'),

@@ -9,7 +9,7 @@
 
 **Pendamping AI Visual Interaktif (Live2D & 3D WebGL) yang Hidup di Atas Layar Kerja Anda**
 
-[![Version](https://img.shields.io/badge/Version-v0.1.4-0284c7.svg?style=for-the-badge)](https://github.com/KarmaSenzu/Hermes-Desktop-Pet/releases/latest)
+[![Version](https://img.shields.io/badge/Version-v0.1.5-0284c7.svg?style=for-the-badge)](https://github.com/KarmaSenzu/Hermes-Desktop-Pet/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge)](LICENSE)
 [![CI Pipeline](https://github.com/KarmaSenzu/Hermes-Desktop-Pet/actions/workflows/ci.yml/badge.svg)](https://github.com/KarmaSenzu/Hermes-Desktop-Pet/actions/workflows/ci.yml)
 [![Vitest Suite](https://img.shields.io/badge/Tests-124%20Passed%20(20%20Suites)-10b981.svg?style=for-the-badge)](#7-panduan-instalasi-installation--setup)

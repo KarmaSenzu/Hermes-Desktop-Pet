@@ -4,6 +4,7 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -111,11 +112,6 @@ jobs:
           if compgen -G "/tmp/checksums/SHA256SUMS-*.txt" > /dev/null; then
             EXISTING_BODY=$(gh release view "$TAG_NAME" -R "$REPO" --json body -q .body || echo "")
             CHECKSUMS=$(cat /tmp/checksums/SHA256SUMS-*.txt | sort -u)
-            NEW_BODY="${EXISTING_BODY}
-
-### Checksums (SHA-256)
-\`\`\`
-${CHECKSUMS}
-\`\`\`"
+            NEW_BODY=$(printf '%s\n\n### Checksums (SHA-256)\n```\n%s\n```\n' "$EXISTING_BODY" "$CHECKSUMS")
             gh release edit "$TAG_NAME" -R "$REPO" --notes "$NEW_BODY"
           fi

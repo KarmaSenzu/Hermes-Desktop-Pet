@@ -58,6 +58,7 @@ import {
   runHermes
 } from './provider-service.js'
 import { startOpenRouterOAuthFlow, checkProviderQuota } from './oauth-service.js'
+import { installPackageOneClick } from './package-installer.js'
 
 const secretStore = createSecretStore(safeStorage)
 
@@ -1088,6 +1089,28 @@ secureHandle('avatar:uninstall-kokoro-deps', async () => {
       }
       throw err
     }
+  } catch (err) {
+    return { ok: false, error: err?.message || String(err) }
+  }
+})
+
+// IPC: Instalasi 1-klik otomatis di latar belakang tanpa membuka terminal (Python / Hermes / 9Router / Kokoro / All)
+secureHandle('avatar:install-package', async (event, pkgId) => {
+  try {
+    const id = String(pkgId || '').trim().toLowerCase()
+    const res = await installPackageOneClick(id, {
+      onProgress: (info) => {
+        if (event?.sender && !event.sender.isDestroyed()) {
+          event.sender.send('avatar:package-install-progress', info)
+        } else if (launcherWindow && !launcherWindow.isDestroyed()) {
+          launcherWindow.webContents.send('avatar:package-install-progress', info)
+        }
+      }
+    })
+    if ((id === 'kokoro' || id === 'all') && (res?.ok || res?.results?.kokoro?.ok)) {
+      cachedKokoroPip = { installed: true, lastCheck: Date.now() }
+    }
+    return res
   } catch (err) {
     return { ok: false, error: err?.message || String(err) }
   }

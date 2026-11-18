@@ -47,7 +47,7 @@
         <!-- Menu Navigasi -->
         <nav class="nav" id="nav"></nav>
         <div class="sidebar-footer" id="sidebar-footer" title="Klik untuk memeriksa pembaruan aplikasi" style="cursor:pointer; display:flex; align-items:center; justify-content:space-between;">
-          <span>Hermes 3D <span id="footer-version-tag">v0.1.3</span></span>
+          <span>Hermes 3D <span id="footer-version-tag">v0.1.5</span></span>
           <span id="footer-update-badge" class="badge ready" style="display:none; font-size:9.5px; padding:1px 6px;">Update 🚀</span>
         </div>
       </aside>
@@ -88,7 +88,7 @@
             <div class="alert-content">
               <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
                 <strong id="update-banner-title" style="color:#60a5fa;">🚀 Pembaruan Aplikasi Tersedia!</strong>
-                <span id="update-banner-tag" class="badge ready" style="font-size:10.5px; padding:2px 8px;">v0.1.3</span>
+                <span id="update-banner-tag" class="badge ready" style="font-size:10.5px; padding:2px 8px;">v0.1.5</span>
               </div>
               <p id="update-banner-desc" style="margin-top:2px;">Versi baru telah rilis di GitHub dengan pembaruan stabilitas dan fitur.</p>
               <div id="banner-progress-wrap" class="hidden" style="margin-top:8px; width:100%;">
@@ -117,7 +117,10 @@
               <strong>Persiapan Paket Diperlukan</strong>
               <p>Beberapa paket penting (Hermes, 9Router, atau Kokoro-TTS) belum aktif atau belum terpasang. Buka menu Package Hub untuk melengkapi persiapan.</p>
             </div>
-            <button type="button" id="alert-open-pkg-btn" class="mini-btn primary">Buka Package Hub</button>
+            <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; flex-shrink:0;">
+              <button type="button" id="alert-install-all-btn" class="mini-btn use">⚡ Install Otomatis 1-Klik</button>
+              <button type="button" id="alert-open-pkg-btn" class="mini-btn primary">Buka Package Hub</button>
+            </div>
           </div>
 
           <div class="group-header" style="display:flex; justify-content:space-between; align-items:center;">
@@ -236,7 +239,7 @@
         <!-- PACKAGE -->
         <section id="panel-package" class="panel">
           <h1>Package Hub</h1>
-          <p class="subtitle">Pusat instalasi, dependensi online, & modul pendukung avatar.</p>
+          <p class="subtitle">Pusat instalasi 1-klik otomatis, dependensi online, & modul pendukung avatar.</p>
 
           <!-- Status Ringkasan Sistem -->
           <div class="card padded" style="margin-bottom: 20px;">
@@ -245,15 +248,25 @@
                 <span class="row-title" style="font-size:14px;">Status Kelengkapan Sistem</span>
                 <div id="package-overall-status" class="overall-badge" style="margin-top:5px;">Memeriksa kelengkapan…</div>
               </div>
-              <div style="display:flex; align-items:center; gap:8px;">
+              <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
                 <span id="pkg-drives-info" class="badge" style="font-size:11px;">Drive: …</span>
                 <button type="button" id="pkg-refresh-all-btn" class="mini-btn browse" title="Pindai ulang seluruh logical drive, port, dan dependensi">Pindai Seluruh Drive 🔍</button>
+                <button type="button" id="pkg-install-all-btn" class="mini-btn primary" title="Pasang dan nyalakan semua komponen penting secara otomatis di latar belakang">⚡ Install &amp; Aktifkan Semua Paket (1-Klik)</button>
               </div>
             </div>
-            <p class="hint" style="margin: 8px 0 0;">Klik setiap paket di bawah untuk membuka detail panduan instalasi, mengontrol service, atau mengubah lokasi folder jika dipasang di harddisk lain.</p>
+            <div id="pkg-global-progress-wrap" class="pkg-progress-wrap" hidden>
+              <div class="pkg-progress-meta">
+                <span id="pkg-global-progress-text">Menyiapkan instalasi otomatis…</span>
+                <span id="pkg-global-progress-pct">0%</span>
+              </div>
+              <div class="pkg-progress-track">
+                <div id="pkg-global-progress-bar" class="pkg-progress-fill"></div>
+              </div>
+            </div>
+            <p class="hint" style="margin: 8px 0 0;">Cukup klik tombol <strong>⚡ Install 1-Klik</strong> untuk pemasangan otomatis tanpa membuka terminal, atau klik kartu paket untuk pengaturan lanjutan.</p>
           </div>
 
-          <div class="group-header">Daftar Paket & Service (Buka / Tutup Detail)</div>
+          <div class="group-header">Daftar Paket & Service (1-Klik Otomatis)</div>
 
           <!-- 1. Hermes Agent -->
           <div class="pkg-card" data-pkg="hermes">
@@ -268,29 +281,37 @@
                 </div>
               </div>
               <div class="pkg-header-right">
+                <button type="button" class="mini-btn primary pkg-quick-install-btn" data-oneclick-pkg="hermes" title="Pasang dan nyalakan Hermes Agent otomatis tanpa terminal">⚡ Install 1-Klik</button>
                 <span class="package-badge badge" id="pkg-status-hermes">…</span>
                 <span class="pkg-chevron">▾</span>
               </div>
             </div>
             <div class="pkg-body">
               <div class="pkg-subtabs">
-                <button type="button" class="pkg-tab-btn active" data-tab="install">📥 Panduan Download & Install</button>
+                <button type="button" class="pkg-tab-btn active" data-tab="install">📥 Install Otomatis</button>
                 <button type="button" class="pkg-tab-btn" data-tab="manage">⚙️ Status & Kelola Service</button>
               </div>
 
               <!-- Sub-panel Install -->
               <div class="pkg-tab-panel active" data-panel="install">
-                <p class="row-desc">Jika Hermes CLI belum terpasang di komputer Anda, buka terminal PowerShell dan jalankan penginstalan:</p>
-                <div style="display:flex; gap:8px; margin: 4px 0 8px;">
-                  <button type="button" class="terminal-action-btn" data-terminal-action="install-hermes" data-terminal-cmd="npm install -g @nousresearch/hermes">🚀 Buka di Terminal & Install (NPM)</button>
+                <p class="row-desc">Pasang <strong>Hermes Agent</strong> secara senyap di latar belakang tanpa membuka terminal atau menyalin perintah:</p>
+                <div style="display:flex; gap:8px; margin: 6px 0 8px; flex-wrap:wrap;">
+                  <button type="button" class="mini-btn primary oneclick-install-btn" data-oneclick-pkg="hermes">⚡ Install &amp; Aktifkan Otomatis (1-Klik Tanpa Terminal)</button>
                 </div>
-                <div class="command-box-group">
-                  <span class="command-box-label">Salin Perintah Manual (PowerShell):</span>
-                  <div class="command-box">
-                    <code>npm install -g @nousresearch/hermes</code>
-                    <button type="button" class="copy-cmd-btn mini-btn" data-copy="npm install -g @nousresearch/hermes">Salin 📋</button>
+                <div id="pkg-inline-log-hermes" class="package-log muted" style="margin-bottom: 8px;"></div>
+                <details class="pkg-manual-fallback">
+                  <summary>🛠️ Opsi Lanjutan: Perintah Terminal Manual (Opsional)</summary>
+                  <div style="display:flex; gap:8px; margin: 8px 0;">
+                    <button type="button" class="terminal-action-btn" data-terminal-action="install-hermes" data-terminal-cmd="npm install -g @nousresearch/hermes">🚀 Buka di Terminal & Install (NPM)</button>
                   </div>
-                </div>
+                  <div class="command-box-group">
+                    <span class="command-box-label">Salin Perintah Manual (PowerShell):</span>
+                    <div class="command-box">
+                      <code>npm install -g @nousresearch/hermes</code>
+                      <button type="button" class="copy-cmd-btn mini-btn" data-copy="npm install -g @nousresearch/hermes">Salin 📋</button>
+                    </div>
+                  </div>
+                </details>
               </div>
 
               <!-- Sub-panel Manage -->
@@ -304,20 +325,24 @@
                   <span class="badge" id="pkg-hermes-source-badge" style="font-size:10px;">…</span>
                 </div>
                 <div style="display:flex; gap:8px; margin: 6px 0 8px; flex-wrap: wrap;">
+                  <button type="button" id="pkg-hermes-start-btn" class="mini-btn primary" title="Jalankan daemon Hermes secara senyap di background">⚡ Jalankan di Background (Senyap)</button>
                   <button type="button" id="pkg-hermes-browse-btn" class="mini-btn browse" title="Pilih file hermes.exe / hermes.cmd secara manual">Ubah Jalur 📂</button>
                   <button type="button" id="pkg-hermes-reset-btn" class="mini-btn" title="Kembalikan ke deteksi otomatis sistem" style="display:none;">Reset Otomatis 🔄</button>
                 </div>
-                <p class="row-desc">Hermes otomatis dijalankan oleh aplikasi ini. Jika Anda ingin menjalankannya secara manual di jendela terminal terpisah:</p>
-                <div style="display:flex; gap:8px; margin: 4px 0 8px;">
-                  <button type="button" class="terminal-action-btn secondary-term" data-terminal-action="start-hermes" data-terminal-cmd="hermes serve">⚡ Buka Terminal & Jalankan (hermes serve)</button>
-                </div>
-                <div class="command-box-group">
-                  <span class="command-box-label">Perintah Terminal:</span>
-                  <div class="command-box">
-                    <code>hermes serve</code>
-                    <button type="button" class="copy-cmd-btn mini-btn" data-copy="hermes serve">Salin 📋</button>
+                <details class="pkg-manual-fallback">
+                  <summary>🛠️ Opsi Lanjutan: Jalankan Manual via Terminal (Opsional)</summary>
+                  <p class="row-desc" style="margin-top:6px;">Hermes otomatis dijalankan oleh aplikasi ini. Jika Anda ingin menjalankannya secara manual di jendela terminal terpisah:</p>
+                  <div style="display:flex; gap:8px; margin: 4px 0 8px;">
+                    <button type="button" class="terminal-action-btn secondary-term" data-terminal-action="start-hermes" data-terminal-cmd="hermes serve">⚡ Buka Terminal & Jalankan (hermes serve)</button>
                   </div>
-                </div>
+                  <div class="command-box-group">
+                    <span class="command-box-label">Perintah Terminal:</span>
+                    <div class="command-box">
+                      <code>hermes serve</code>
+                      <button type="button" class="copy-cmd-btn mini-btn" data-copy="hermes serve">Salin 📋</button>
+                    </div>
+                  </div>
+                </details>
               </div>
             </div>
           </div>
@@ -335,29 +360,37 @@
                 </div>
               </div>
               <div class="pkg-header-right">
+                <button type="button" class="mini-btn primary pkg-quick-install-btn" data-oneclick-pkg="9router" title="Pasang dan nyalakan 9Router otomatis tanpa terminal">⚡ Install 1-Klik</button>
                 <span class="package-badge badge" id="pkg-status-router">…</span>
                 <span class="pkg-chevron">▾</span>
               </div>
             </div>
             <div class="pkg-body">
               <div class="pkg-subtabs">
-                <button type="button" class="pkg-tab-btn active" data-tab="install">📥 Panduan Download & Install</button>
+                <button type="button" class="pkg-tab-btn active" data-tab="install">📥 Install Otomatis</button>
                 <button type="button" class="pkg-tab-btn" data-tab="manage">⚙️ Status & Kelola Service</button>
               </div>
 
               <!-- Sub-panel Install -->
               <div class="pkg-tab-panel active" data-panel="install">
-                <p class="row-desc">9Router adalah gateway cerdas yang mengarahkan prompt ke berbagai provider AI pilihan Anda:</p>
-                <div style="display:flex; gap:8px; margin: 4px 0 8px;">
-                  <button type="button" class="terminal-action-btn" data-terminal-action="install-router" data-terminal-cmd="npm install -g 9router">🚀 Buka di Terminal & Install (NPM)</button>
+                <p class="row-desc">9Router adalah gateway cerdas multi-provider AI. Klik tombol di bawah untuk pemasangan otomatis di latar belakang:</p>
+                <div style="display:flex; gap:8px; margin: 6px 0 8px; flex-wrap:wrap;">
+                  <button type="button" class="mini-btn primary oneclick-install-btn" data-oneclick-pkg="9router">⚡ Install &amp; Aktifkan Otomatis (1-Klik Tanpa Terminal)</button>
                 </div>
-                <div class="command-box-group">
-                  <span class="command-box-label">Salin Perintah Manual (PowerShell):</span>
-                  <div class="command-box">
-                    <code>npm install -g 9router</code>
-                    <button type="button" class="copy-cmd-btn mini-btn" data-copy="npm install -g 9router">Salin 📋</button>
+                <div id="pkg-inline-log-9router" class="package-log muted" style="margin-bottom: 8px;"></div>
+                <details class="pkg-manual-fallback">
+                  <summary>🛠️ Opsi Lanjutan: Perintah Terminal Manual (Opsional)</summary>
+                  <div style="display:flex; gap:8px; margin: 8px 0;">
+                    <button type="button" class="terminal-action-btn" data-terminal-action="install-router" data-terminal-cmd="npm install -g 9router">🚀 Buka di Terminal & Install (NPM)</button>
                   </div>
-                </div>
+                  <div class="command-box-group">
+                    <span class="command-box-label">Salin Perintah Manual (PowerShell):</span>
+                    <div class="command-box">
+                      <code>npm install -g 9router</code>
+                      <button type="button" class="copy-cmd-btn mini-btn" data-copy="npm install -g 9router">Salin 📋</button>
+                    </div>
+                  </div>
+                </details>
               </div>
 
               <!-- Sub-panel Manage -->
@@ -375,17 +408,20 @@
                   <button type="button" id="pkg-router-browse-btn" class="mini-btn browse" title="Pilih file 9router.cmd secara manual">Ubah Jalur 📂</button>
                   <button type="button" id="pkg-router-reset-btn" class="mini-btn" title="Kembalikan ke deteksi otomatis sistem" style="display:none;">Reset Otomatis 🔄</button>
                 </div>
-                <p class="row-desc">Jalankan service 9Router sebelum menghubungkan avatar ke model LLM:</p>
-                <div style="display:flex; gap:8px; margin: 4px 0 8px;">
-                  <button type="button" class="terminal-action-btn secondary-term" data-terminal-action="start-router" data-terminal-cmd="9router -n --skip-update">Buka Terminal (Debugging)</button>
-                </div>
-                <div class="command-box-group">
-                  <span class="command-box-label">Perintah Terminal:</span>
-                  <div class="command-box">
-                    <code>9router</code>
-                    <button type="button" class="copy-cmd-btn mini-btn" data-copy="9router">Salin 📋</button>
+                <details class="pkg-manual-fallback">
+                  <summary>🛠️ Opsi Lanjutan: Jalankan Manual via Terminal (Opsional)</summary>
+                  <p class="row-desc" style="margin-top:6px;">Jalankan service 9Router sebelum menghubungkan avatar ke model LLM:</p>
+                  <div style="display:flex; gap:8px; margin: 4px 0 8px;">
+                    <button type="button" class="terminal-action-btn secondary-term" data-terminal-action="start-router" data-terminal-cmd="9router -n --skip-update">Buka Terminal (Debugging)</button>
                   </div>
-                </div>
+                  <div class="command-box-group">
+                    <span class="command-box-label">Perintah Terminal:</span>
+                    <div class="command-box">
+                      <code>9router</code>
+                      <button type="button" class="copy-cmd-btn mini-btn" data-copy="9router">Salin 📋</button>
+                    </div>
+                  </div>
+                </details>
               </div>
             </div>
           </div>
@@ -403,13 +439,14 @@
                 </div>
               </div>
               <div class="pkg-header-right">
+                <button type="button" class="mini-btn primary pkg-quick-install-btn" data-oneclick-pkg="kokoro" title="Pasang Python/Kokoro dan nyalakan server suara otomatis">⚡ Install 1-Klik</button>
                 <span class="package-badge badge" id="pkg-status-kokoro">…</span>
                 <span class="pkg-chevron">▾</span>
               </div>
             </div>
             <div class="pkg-body">
               <div class="pkg-subtabs">
-                <button type="button" class="pkg-tab-btn active" data-tab="install">📥 Panduan Download & Install</button>
+                <button type="button" class="pkg-tab-btn active" data-tab="install">📥 Install Otomatis</button>
                 <button type="button" class="pkg-tab-btn" data-tab="manage">⚙️ Status & Kelola Service</button>
               </div>
 
@@ -419,18 +456,25 @@
                   <span>Status Dependensi Pip: <code id="pkg-kokoro-pip-status">Pengecekan…</code></span> · 
                   <span>File Model Suara: <code id="pkg-kokoro-model-status">Pengecekan…</code></span>
                 </div>
-                <p class="row-desc">Kokoro membutuhkan paket python <code>kokoro-onnx</code> dan <code>soundfile</code>. Anda bisa menginstallnya langsung di terminal:</p>
-                <div style="display:flex; gap:8px; margin: 6px 0 10px; flex-wrap:wrap;">
-                  <button type="button" class="terminal-action-btn" data-terminal-action="install-kokoro" data-terminal-cmd="py -m pip install kokoro-onnx soundfile">🚀 Buka di Terminal & Install Pip</button>
-                  <button type="button" id="pkg-install-kokoro-btn" class="mini-btn use">Otomatis Install di Background App</button>
+                <p class="row-desc">Aplikasi akan otomatis menyiapkan Python (bila belum ada), memasang <code>kokoro-onnx</code> &amp; <code>soundfile</code>, lalu menyalakan server audio lokal:</p>
+                <div style="display:flex; gap:8px; margin: 6px 0 8px; flex-wrap:wrap;">
+                  <button type="button" class="mini-btn primary oneclick-install-btn" data-oneclick-pkg="kokoro">⚡ Install &amp; Aktifkan Otomatis (1-Klik Tanpa Terminal)</button>
+                  <button type="button" id="pkg-install-kokoro-btn" class="mini-btn use" title="Pasang ulang paket pip Kokoro saja">Install Pip Saja</button>
                 </div>
-                <div class="command-box-group">
-                  <span class="command-box-label">Perintah Terminal Manual:</span>
-                  <div class="command-box">
-                    <code>py -m pip install kokoro-onnx soundfile</code>
-                    <button type="button" class="copy-cmd-btn mini-btn" data-copy="py -m pip install kokoro-onnx soundfile">Salin 📋</button>
+                <div id="pkg-inline-log-kokoro" class="package-log muted" style="margin-bottom: 8px;"></div>
+                <details class="pkg-manual-fallback">
+                  <summary>🛠️ Opsi Lanjutan: Perintah Terminal Manual (Opsional)</summary>
+                  <div style="display:flex; gap:8px; margin: 8px 0;">
+                    <button type="button" class="terminal-action-btn" data-terminal-action="install-kokoro" data-terminal-cmd="py -m pip install kokoro-onnx soundfile">🚀 Buka di Terminal & Install Pip</button>
                   </div>
-                </div>
+                  <div class="command-box-group">
+                    <span class="command-box-label">Perintah Terminal Manual:</span>
+                    <div class="command-box">
+                      <code>py -m pip install kokoro-onnx soundfile</code>
+                      <button type="button" class="copy-cmd-btn mini-btn" data-copy="py -m pip install kokoro-onnx soundfile">Salin 📋</button>
+                    </div>
+                  </div>
+                </details>
               </div>
 
               <!-- Sub-panel Manage -->
@@ -447,13 +491,18 @@
                 <p class="row-desc">Jalankan daemon server audio Kokoro agar avatar dapat bersuara anime:</p>
                 <div style="display:flex; gap:8px; margin: 6px 0 10px; flex-wrap:wrap;">
                   <button type="button" id="pkg-start-kokoro-btn" class="mini-btn primary">⚡ Jalankan di Background (Senyap)</button>
-                  <button type="button" class="terminal-action-btn secondary-term" data-terminal-action="start-kokoro" data-terminal-cmd="py scripts/kokoro_server.py">Buka Terminal (Debugging)</button>
                 </div>
                 <div class="package-actions-row" style="margin-top: 8px;">
                   <button type="button" id="pkg-open-folder-btn" class="mini-btn edit">Buka Folder Paket 📁</button>
                   <button type="button" id="pkg-clean-btn" class="mini-btn del">Hapus Model & Cache 🗑️</button>
                   <button type="button" id="pkg-uninstall-pip-btn" class="mini-btn del">Uninstall Pip ⚠️</button>
                 </div>
+                <details class="pkg-manual-fallback" style="margin-top:8px;">
+                  <summary>🛠️ Opsi Lanjutan: Jalankan Manual via Terminal (Opsional)</summary>
+                  <div style="display:flex; gap:8px; margin: 8px 0;">
+                    <button type="button" class="terminal-action-btn secondary-term" data-terminal-action="start-kokoro" data-terminal-cmd="py scripts/kokoro_server.py">Buka Terminal (Debugging)</button>
+                  </div>
+                </details>
                 <div id="pkg-kokoro-log" class="package-log muted" style="margin-top: 8px;"></div>
               </div>
             </div>
@@ -472,29 +521,37 @@
                 </div>
               </div>
               <div class="pkg-header-right">
+                <button type="button" class="mini-btn primary pkg-quick-install-btn" data-oneclick-pkg="python" title="Pasang Python 3.12 secara senyap di latar belakang">⚡ Install 1-Klik</button>
                 <span class="package-badge badge" id="pkg-status-python">…</span>
                 <span class="pkg-chevron">▾</span>
               </div>
             </div>
             <div class="pkg-body">
               <div class="pkg-subtabs">
-                <button type="button" class="pkg-tab-btn active" data-tab="install">📥 Panduan Download & Install</button>
+                <button type="button" class="pkg-tab-btn active" data-tab="install">📥 Install Otomatis</button>
                 <button type="button" class="pkg-tab-btn" data-tab="manage">⚙️ Status & Kelola Service</button>
               </div>
 
               <!-- Sub-panel Install -->
               <div class="pkg-tab-panel active" data-panel="install">
-                <p class="row-desc">Jika Python belum terpasang, unduh dari situs resmi Python. <strong>PENTING:</strong> Centang opsi <em>"Add Python to PATH"</em> saat instalasi.</p>
-                <div style="display:flex; gap:8px; margin: 6px 0 8px;">
-                  <button type="button" class="terminal-action-btn" data-terminal-action="test-python" data-terminal-cmd="python --version; py --version">🚀 Buka Terminal & Tes Python</button>
+                <p class="row-desc">Belum punya Python di Windows? Klik tombol di bawah untuk mengunduh &amp; memasang <strong>Python 3.12</strong> secara senyap sekaligus mengatur PATH otomatis:</p>
+                <div style="display:flex; gap:8px; margin: 6px 0 8px; flex-wrap:wrap;">
+                  <button type="button" class="mini-btn primary oneclick-install-btn" data-oneclick-pkg="python">⚡ Install &amp; Aktifkan Otomatis (1-Klik Tanpa Terminal)</button>
                 </div>
-                <div class="command-box-group">
-                  <span class="command-box-label">Perintah Terminal Cek Versi:</span>
-                  <div class="command-box">
-                    <code>python --version</code>
-                    <button type="button" class="copy-cmd-btn mini-btn" data-copy="python --version">Salin 📋</button>
+                <div id="pkg-inline-log-python" class="package-log muted" style="margin-bottom: 8px;"></div>
+                <details class="pkg-manual-fallback">
+                  <summary>🛠️ Opsi Lanjutan: Perintah Terminal Manual (Opsional)</summary>
+                  <div style="display:flex; gap:8px; margin: 8px 0;">
+                    <button type="button" class="terminal-action-btn" data-terminal-action="test-python" data-terminal-cmd="python --version; py --version">🚀 Buka Terminal & Tes Python</button>
                   </div>
-                </div>
+                  <div class="command-box-group">
+                    <span class="command-box-label">Perintah Terminal Cek Versi:</span>
+                    <div class="command-box">
+                      <code>python --version</code>
+                      <button type="button" class="copy-cmd-btn mini-btn" data-copy="python --version">Salin 📋</button>
+                    </div>
+                  </div>
+                </details>
               </div>
 
               <div class="pkg-tab-panel" data-panel="manage">
@@ -631,6 +688,7 @@
                 </div>
 
                 <div style="display:flex; gap:8px; margin: 10px 0 6px; flex-wrap:wrap;">
+                  <button type="button" id="pkg-companion-oneclick-btn" class="mini-btn primary">⚡ Siapkan &amp; Buka Ekstensi 1-Klik</button>
                   <button type="button" id="pkg-open-extension-folder-btn" class="terminal-action-btn">📂 Buka Folder Ekstensi di Explorer / Finder</button>
                   <button type="button" id="pkg-copy-extension-path-btn" class="mini-btn copy-cmd-btn">📋 Salin Path Folder Ekstensi</button>
                 </div>
@@ -1649,12 +1707,12 @@
         <div class="update-version-comparison" style="display:flex; align-items:center; justify-content:space-between; background:rgba(255,255,255,0.04); border:1px solid var(--border); border-radius:8px; padding:10px 14px; margin-bottom:14px;">
           <div>
             <span style="font-size:11px; color:var(--text-secondary); display:block;">Versi Terpasang:</span>
-            <strong id="modal-current-ver" style="font-size:14px; color:var(--text);">v0.1.3</strong>
+            <strong id="modal-current-ver" style="font-size:14px; color:var(--text);">v0.1.5</strong>
           </div>
           <span style="font-size:16px; color:var(--text-secondary);">➔</span>
           <div>
             <span style="font-size:11px; color:var(--text-secondary); display:block;">Versi Terbaru:</span>
-            <strong id="modal-latest-ver" style="font-size:14px; color:#3b82f6;">v0.1.3</strong>
+            <strong id="modal-latest-ver" style="font-size:14px; color:#3b82f6;">v0.1.5</strong>
           </div>
           <span id="modal-release-date" class="badge" style="font-size:11px;">Rilis Terbaru</span>
         </div>
