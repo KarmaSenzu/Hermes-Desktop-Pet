@@ -27,6 +27,16 @@ import {
   executeSelectedCapabilities,
   createCapabilityAssessmentCard
 } from './capability-assessment.js'
+import {
+  parseWidgetCommand,
+  isQuotaOrRateLimitError,
+  selectFailoverCandidate,
+  renderMusicPlaylistPickerCard,
+  renderFocusSetupCard,
+  renderSmartBriefingCard,
+  renderScreenVisionCard,
+  renderDroppedFileCard
+} from './widget-controller.js'
 
 /**
  * main.js — entry renderer untuk window avatar (index.html).
@@ -184,6 +194,7 @@ window.hermesAvatar.onLoadModel(async (modelPath) => {
 
       const exprNames = controller.availableExpressions()
       log('avatar', `Model Live2D dimuat. Ekspresi: ${exprNames.length}. Halo! 👋`)
+      showInitialBriefingOnce()
       return
     }
 
@@ -234,6 +245,7 @@ window.hermesAvatar.onLoadModel(async (modelPath) => {
     log('avatar', `Ekspresi tersedia: ${exprNames.join(', ') || '(tidak ada)'}`)
 
     log('avatar', 'Model dimuat. Halo! 👋')
+    showInitialBriefingOnce()
   } catch (err) {
     log('avatar', `Gagal memuat model: ${err.message}`)
   }
@@ -500,6 +512,502 @@ window.addEventListener('hermes:request-music-research', (e) => {
   }
   showSpeechBubble('Mencarikan musik relaksasi di internet untukmu 🔍', 4000)
   form?.dispatchEvent(new Event('submit'))
+})
+
+// --- Widget Controller Integration (Vision, Smart Briefing, Timer, Musik, File Drop & Auto-Failover) ---
+let initialBriefingShown = false
+let lastAutoFailoverAt = 0
+let dragDropDepth = 0
+
+function openChatIfHidden() {
+  if (chatSheet?.classList.contains('hidden')) {
+    toggleChat()
+  }
+}
+
+function showInitialBriefingOnce() {
+  if (initialBriefingShown || !chatLog) return
+  initialBriefingShown = true
+  renderSmartBriefingCard({
+    chatLog,
+    pomodoroTimer,
+    musicPlayer,
+    showSpeechBubble,
+    speak,
+    onCaptureScreen: () => triggerScreenVision(),
+  })
+}
+
+// --- Screen Vision & Sniping Tool Mode Selector ---
+const screenModal = document.getElementById('screen-capture-modal')
+const screenModalCloseBtn = document.getElementById('screen-modal-close-btn')
+const snipModeAreaBtn = document.getElementById('snip-mode-area-btn')
+const snipModeFullscreenBtn = document.getElementById('snip-mode-fullscreen-btn')
+const screenRefreshWindowsBtn = document.getElementById('screen-refresh-windows-btn')
+const screenWindowsList = document.getElementById('screen-windows-list')
+
+const snipOverlay = document.getElementById('snip-overlay')
+const snipSelectionBox = document.getElementById('snip-selection-box')
+const snipDimensionBadge = document.getElementById('snip-dimension-badge')
+
+let activeVisionQuestion = ''
+
+function hideScreenCaptureModal() {
+  if (screenModal) {
+    screenModal.setAttribute('hidden', '')
+  }
+}
+
+async function loadOpenWindowsForModal() {
+  if (!screenWindowsList) return
+  screenWindowsList.innerHTML = '<div class="screen-window-loading">Memuat jendela terbuka...</div>'
+  try {
+    const res = await window.hermesAvatar?.captureScreen?.({ listSourcesOnly: true })
+    if (!res?.ok || !Array.isArray(res.windows) || res.windows.length === 0) {
+      screenWindowsList.innerHTML = '<div class="screen-window-empty">Tidak ada jendela aplikasi lain terdeteksi.</div>'
+      return
+    }
+
+    screenWindowsList.innerHTML = ''
+    for (const win of res.windows) {
+      const item = document.createElement('button')
+      item.type = 'button'
+      item.className = 'screen-window-item'
+      item.title = `Tangkap jendela: ${win.name}`
+
+      if (win.dataUrl) {
+        const thumb = document.createElement('img')
+        thumb.src = win.dataUrl
+        thumb.className = 'screen-window-thumb'
+        thumb.alt = win.name
+        item.appendChild(thumb)
+      } else {
+        const iconSpan = document.createElement('span')
+        iconSpan.textContent = '🪟'
+        item.appendChild(iconSpan)
+      }
+
+      const titleSpan = document.createElement('span')
+      titleSpan.className = 'screen-window-title'
+      titleSpan.textContent = win.name
+      item.appendChild(titleSpan)
+
+      item.addEventListener('click', () => {
+        hideScreenCaptureModal()
+        executeCaptureAndDisplay({
+          mode: 'window',
+          sourceId: win.id,
+          initialQuestion: activeVisionQuestion
+        })
+      })
+
+      screenWindowsList.appendChild(item)
+    }
+  } catch (err) {
+    screenWindowsList.innerHTML = `<div class="screen-window-empty">Gagal memuat jendela: ${err?.message || err}</div>`
+  }
+}
+
+function showScreenCaptureModal(initialQuestion = '') {
+  activeVisionQuestion = initialQuestion || ''
+  if (!screenModal) {
+    executeCaptureAndDisplay({ mode: 'fullscreen', initialQuestion })
+    return
+  }
+
+  screenModal.removeAttribute('hidden')
+  window.hermesAvatar?.setIgnoreMouse?.(false)
+  if (live2dPet) live2dPet.ignoringMouse = false
+  loadOpenWindowsForModal()
+}
+
+function startScreenSnip(initialQuestion = '') {
+  if (!snipOverlay || !snipSelectionBox) {
+    executeCaptureAndDisplay({ mode: 'fullscreen', initialQuestion })
+    return
+  }
+
+  hideScreenCaptureModal()
+  snipOverlay.removeAttribute('hidden')
+  snipSelectionBox.setAttribute('hidden', '')
+  window.hermesAvatar?.setIgnoreMouse?.(false)
+  if (live2dPet) live2dPet.ignoringMouse = false
+
+  let isDragging = false
+  let startX = 0
+  let startY = 0
+
+  const cleanup = () => {
+    snipOverlay.setAttribute('hidden', '')
+    snipSelectionBox.setAttribute('hidden', '')
+    snipOverlay.removeEventListener('mousedown', onMouseDown)
+    window.removeEventListener('mousemove', onMouseMove)
+    window.removeEventListener('mouseup', onMouseUp)
+    window.removeEventListener('keydown', onKeyDown)
+    window.hermesAvatar?.setIgnoreMouse?.(true, true)
+    if (live2dPet) live2dPet.ignoringMouse = true
+  }
+
+  const onMouseDown = (e) => {
+    if (e.button !== 0) return
+    isDragging = true
+    startX = e.clientX
+    startY = e.clientY
+    snipSelectionBox.style.left = `${startX}px`
+    snipSelectionBox.style.top = `${startY}px`
+    snipSelectionBox.style.width = '0px'
+    snipSelectionBox.style.height = '0px'
+    if (snipDimensionBadge) snipDimensionBadge.textContent = '0 × 0'
+    snipSelectionBox.removeAttribute('hidden')
+  }
+
+  const onMouseMove = (e) => {
+    if (!isDragging) return
+    const curX = e.clientX
+    const curY = e.clientY
+    const left = Math.min(startX, curX)
+    const top = Math.min(startY, curY)
+    const width = Math.abs(curX - startX)
+    const height = Math.abs(curY - startY)
+
+    snipSelectionBox.style.left = `${left}px`
+    snipSelectionBox.style.top = `${top}px`
+    snipSelectionBox.style.width = `${width}px`
+    snipSelectionBox.style.height = `${height}px`
+    if (snipDimensionBadge) snipDimensionBadge.textContent = `${width} × ${height}`
+  }
+
+  const onMouseUp = async (e) => {
+    if (!isDragging) return
+    isDragging = false
+    const curX = e.clientX
+    const curY = e.clientY
+    const left = Math.min(startX, curX)
+    const top = Math.min(startY, curY)
+    const width = Math.abs(curX - startX)
+    const height = Math.abs(curY - startY)
+
+    cleanup()
+
+    if (width >= 20 && height >= 20) {
+      const dpr = window.devicePixelRatio || 1
+      const cropRect = {
+        x: Math.round(left * dpr),
+        y: Math.round(top * dpr),
+        width: Math.round(width * dpr),
+        height: Math.round(height * dpr)
+      }
+      await executeCaptureAndDisplay({ mode: 'area', cropRect, initialQuestion })
+    } else {
+      showSpeechBubble('Seleksi terlalu kecil, tangkapan dibatalkan ✂️', 2500)
+    }
+  }
+
+  const onKeyDown = (e) => {
+    if (e.key === 'Escape') {
+      cleanup()
+      showSpeechBubble('Mode potong layar dibatalkan ✂️', 2500)
+    }
+  }
+
+  snipOverlay.addEventListener('mousedown', onMouseDown)
+  window.addEventListener('mousemove', onMouseMove)
+  window.addEventListener('mouseup', onMouseUp)
+  window.addEventListener('keydown', onKeyDown)
+}
+
+async function executeCaptureAndDisplay({ mode = 'fullscreen', sourceId, cropRect, initialQuestion = '' }) {
+  try {
+    const res = await window.hermesAvatar?.captureScreen?.({ mode, sourceId, cropRect })
+    if (!res?.ok) {
+      openChatIfHidden()
+      log('avatar', `⚠️ Gagal menangkap layar: ${res?.error || 'Screen capture tidak tersedia.'}`)
+      showSpeechBubble('Gagal menangkap layar ⚠️', 3500)
+      return
+    }
+
+    openChatIfHidden()
+    renderScreenVisionCard({
+      chatLog,
+      dataUrl: res.dataUrl,
+      filePath: res.filePath,
+      openWindows: res.openWindows || [],
+      initialQuestion,
+      label: res.label || (mode === 'area' ? 'Area Kotak' : mode === 'window' ? 'Jendela' : 'Layar Penuh'),
+      onRetake: () => triggerScreenVision(initialQuestion),
+      onCancel: () => showSpeechBubble('Tangkapan layar dibatalkan 🗑️', 2500),
+      onSubmitPrompt: async ({ filePath, openWindows, question }) => {
+        openChatIfHidden()
+        const winCtx = openWindows?.length ? ` Jendela terbuka: ${openWindows.slice(0, 6).join(', ')}.` : ''
+        const pathCtx = filePath ? ` File tangkapan layar tersimpan di: "${filePath}". Jika tool baca file/gambar tersedia, periksa berkas ini.` : ''
+        const finalPrompt = `${question}\n\n[Konteks Screen Vision]${pathCtx}${winCtx}`
+        await handleUserChat(finalPrompt, `📸 ${question}`, { skipFastWidget: true })
+      },
+    })
+    showSpeechBubble('Layar tertangkap! Pilih atau ketik pertanyaanmu 📸', 4000)
+    speak('Layar sudah kutangkap. Apa yang ingin kamu tanyakan tentang tampilan ini?', 'happy')
+  } catch (err) {
+    openChatIfHidden()
+    log('avatar', `⚠️ Gagal menangkap layar: ${err?.message || err}`)
+  }
+}
+
+async function triggerScreenVision(initialQuestion = '') {
+  showScreenCaptureModal(initialQuestion)
+}
+
+screenModalCloseBtn?.addEventListener('click', hideScreenCaptureModal)
+snipModeAreaBtn?.addEventListener('click', () => {
+  startScreenSnip(activeVisionQuestion)
+})
+snipModeFullscreenBtn?.addEventListener('click', () => {
+  hideScreenCaptureModal()
+  executeCaptureAndDisplay({ mode: 'fullscreen', initialQuestion: activeVisionQuestion })
+})
+screenRefreshWindowsBtn?.addEventListener('click', () => {
+  loadOpenWindowsForModal()
+})
+screenModal?.addEventListener('mouseenter', () => {
+  window.hermesAvatar?.setIgnoreMouse?.(false)
+  if (live2dPet) live2dPet.ignoringMouse = false
+})
+
+async function tryFastWidgetCommand(text) {
+  const cmd = parseWidgetCommand(text)
+  if (!cmd) return false
+
+  switch (cmd.action) {
+    case 'screen-vision': {
+      await triggerScreenVision(cmd.question)
+      return true
+    }
+    case 'daily-briefing': {
+      openChatIfHidden()
+      renderSmartBriefingCard({
+        chatLog,
+        pomodoroTimer,
+        musicPlayer,
+        showSpeechBubble,
+        speak,
+        onCaptureScreen: () => triggerScreenVision(),
+      })
+      showSpeechBubble('Ini briefing harian untukmu! ✨', 4000)
+      speak('Ini ringkasan harian untukmu. Mau mulai fokus atau pilih musik?', 'happy')
+      return true
+    }
+    case 'timer-stop': {
+      pomodoroTimer.stopAndResetTimer()
+      log('avatar', '⏹️ Sesi fokus / timer dihentikan dan di-reset.')
+      showSpeechBubble('Timer fokus dihentikan ⏹️', 3500)
+      speak('Baik, timer fokus sudah saya hentikan.', 'neutral')
+      return true
+    }
+    case 'timer-start-direct': {
+      const taskName = cmd.task || 'Fokus Kerja'
+      pomodoroTimer.startFocusWithConfig({ minutes: cmd.minutes, task: taskName })
+      log('avatar', `⏱️ Memulai sesi fokus **${cmd.minutes} menit** untuk: **${taskName}**.`)
+      showSpeechBubble(`Fokus ${cmd.minutes}m: ${taskName} ⏱️`, 4500)
+      speak(`Siap! Aku mulai sesi fokus ${cmd.minutes} menit untuk ${taskName}.`, 'happy')
+      return true
+    }
+    case 'timer-ask-setup': {
+      openChatIfHidden()
+      renderFocusSetupCard({
+        chatLog,
+        pomodoroTimer,
+        musicPlayer,
+        showSpeechBubble,
+        speak,
+        onStartFocus: ({ minutes, task }) => {
+          log('avatar', `⏱️ Sesi fokus **${minutes} menit** dimulai untuk: **${task}**.`)
+          showSpeechBubble(`Fokus ${minutes}m: ${task} ⏱️`, 4000)
+          speak(`Sesi fokus ${minutes} menit untuk ${task} dimulai sekarang.`, 'happy')
+        },
+      })
+      showSpeechBubble('Mau mulai fokus buat apa kali ini? ⏱️', 4000)
+      speak('Mau mulai fokus untuk tugas apa dan berapa menit?', 'happy')
+      return true
+    }
+    case 'music-ask-playlist': {
+      openChatIfHidden()
+      renderMusicPlaylistPickerCard({
+        chatLog,
+        musicPlayer,
+        showSpeechBubble,
+        speak,
+      })
+      showSpeechBubble('Pilih playlist atau lagu yang mau diputar 🎵', 4000)
+      speak('Ingin memutar playlist atau lagu yang mana? Silakan pilih dari daftarmu.', 'happy')
+      return true
+    }
+    case 'music-play-specific': {
+      const track = musicPlayer.findAndPlayTrack(cmd.query)
+      if (track) {
+        log('avatar', `🎵 Memutar **${track.title}** (${track.artist || 'Music'}).`)
+        showSpeechBubble(`Memutar "${track.title}" 🎵`, 4500)
+        speak(`Baik, aku putarkan ${track.title}.`, 'happy')
+        return true
+      }
+      openChatIfHidden()
+      log('avatar', `🎵 Lagu/playlist "${cmd.query}" belum ditemukan persis. Pilih dari koleksimu di bawah ini:`)
+      renderMusicPlaylistPickerCard({
+        chatLog,
+        musicPlayer,
+        showSpeechBubble,
+        speak,
+      })
+      showSpeechBubble('Pilih lagu atau playlist yang tersedia ya 🎵', 4000)
+      speak('Lagu yang kamu sebut belum ketemu persis, yuk pilih dari daftar playlistmu.', 'neutral')
+      return true
+    }
+    case 'music-next': {
+      musicPlayer.next()
+      const label = musicPlayer.getCurrentTrack()?.title || 'berikutnya'
+      log('avatar', `⏭️ Pindah ke lagu **${label}**.`)
+      showSpeechBubble(`⏭️ ${label}`, 3000)
+      return true
+    }
+    case 'music-prev': {
+      musicPlayer.prev()
+      const label = musicPlayer.getCurrentTrack()?.title || 'sebelumnya'
+      log('avatar', `⏮️ Kembali ke lagu **${label}**.`)
+      showSpeechBubble(`⏮️ ${label}`, 3000)
+      return true
+    }
+    case 'music-pause': {
+      if (musicPlayer.isPlaying) {
+        musicPlayer.pause()
+      }
+      log('avatar', '⏸️ Musik dijeda.')
+      showSpeechBubble('Musik dijeda ⏸️', 3000)
+      speak('Musik sudah saya jeda.', 'neutral')
+      return true
+    }
+    case 'music-volume': {
+      musicPlayer.setVolume(cmd.level / 100)
+      log('avatar', `🔊 Volume musik diatur ke **${cmd.level}%**.`)
+      showSpeechBubble(`Volume musik: ${cmd.level}% 🔊`, 3000)
+      return true
+    }
+    default:
+      return false
+  }
+}
+
+async function tryAutoFailoverProvider(errorText) {
+  if (!isQuotaOrRateLimitError(errorText)) return false
+  const now = Date.now()
+  if (now - lastAutoFailoverAt < 30000) return false
+
+  let parsed = {}
+  try {
+    parsed = JSON.parse(localStorage.getItem('hermes-avatar-settings') || '{}')
+  } catch {
+    return false
+  }
+
+  const llm = parsed?.llm || {}
+  const providers = Array.isArray(llm.providers) ? llm.providers : []
+  const currentProvider = providers.find((p) => p.id === llm.activeId) || providers[0] || null
+  const candidate = selectFailoverCandidate(
+    providers,
+    currentProvider?.baseUrl || '',
+    currentProvider?.model || ''
+  )
+
+  if (!candidate) {
+    log('avatar', '⚠️ Kuota/limit provider aktif tercapai, tetapi belum ada provider cadangan lain yang valid di Pengaturan LLM.')
+    return false
+  }
+
+  lastAutoFailoverAt = now
+  try {
+    const res = await window.hermesAvatar?.failoverLlmProvider?.(
+      [candidate, ...providers],
+      {
+        baseUrl: currentProvider?.baseUrl || '',
+        model: currentProvider?.model || '',
+      }
+    )
+    if (res?.ok && res.provider) {
+      if (res.provider.id) {
+        parsed.llm = { ...llm, activeId: res.provider.id }
+        localStorage.setItem('hermes-avatar-settings', JSON.stringify(parsed))
+      }
+      log('avatar', `🔄 **Auto-Failover Provider:** Kuota/limit provider sebelumnya tercapai. Dialihkan otomatis ke **${res.provider.name}** (\`${res.provider.model}\`). Silakan kirim ulang pesanmu.`)
+      showSpeechBubble(`Dialihkan ke cadangan: ${res.provider.name} 🔄`, 5500)
+      speak(`Kuota provider aktif habis. Aku sudah alihkan otomatis ke ${res.provider.name}.`, 'neutral')
+      return true
+    }
+    log('avatar', `⚠️ Auto-failover ke provider cadangan gagal: ${res?.error || 'kesalahan tidak diketahui'}`)
+  } catch (err) {
+    log('avatar', `⚠️ Auto-failover gagal: ${err?.message || err}`)
+  }
+  return false
+}
+
+document.getElementById('vision-toggle')?.addEventListener('click', () => {
+  triggerScreenVision()
+})
+
+document.addEventListener('dragenter', (e) => {
+  if (!e.dataTransfer?.types?.includes('Files')) return
+  dragDropDepth += 1
+  document.body?.classList.add('drag-over-avatar')
+})
+
+document.addEventListener('dragover', (e) => {
+  if (!e.dataTransfer?.types?.includes('Files')) return
+  e.preventDefault()
+  if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy'
+})
+
+document.addEventListener('dragleave', (e) => {
+  if (!e.dataTransfer?.types?.includes('Files')) return
+  dragDropDepth = Math.max(0, dragDropDepth - 1)
+  if (dragDropDepth === 0) {
+    document.body?.classList.remove('drag-over-avatar')
+  }
+})
+
+document.addEventListener('drop', async (e) => {
+  if (!e.dataTransfer?.types?.includes('Files')) return
+  e.preventDefault()
+  dragDropDepth = 0
+  document.body?.classList.remove('drag-over-avatar')
+
+  const rawFiles = Array.from(e.dataTransfer?.files || [])
+  if (rawFiles.length === 0) return
+
+  const preparedFiles = await Promise.all(rawFiles.map(async (f) => {
+    const filePath = window.hermesAvatar?.getPathForFile?.(f) || f.path || ''
+    let textPreview = ''
+    const isTextLike = /\.(txt|md|markdown|csv|tsv|json|yaml|yml|log|js|ts|jsx|tsx|py|html|css|xml|sql|sh|ps1|bat|env|ini|toml)$/i.test(f.name) || (f.type && f.type.startsWith('text/'))
+    if (isTextLike && f.size <= 64 * 1024) {
+      try {
+        textPreview = (await f.text()).slice(0, 6000)
+      } catch {}
+    }
+    return { name: f.name, size: f.size, type: f.type, path: filePath, textPreview }
+  }))
+
+  openChatIfHidden()
+  renderDroppedFileCard({
+    chatLog,
+    files: preparedFiles,
+    onAnalyzeFile: async ({ files: dropped, instruction, label }) => {
+      openChatIfHidden()
+      const fileLines = dropped.map((f) => {
+        const pathNote = f.path ? ` (path: "${f.path}")` : ''
+        const snippet = f.textPreview ? `\n--- Isi singkat ${f.name} ---\n${f.textPreview}\n--- Akhir ---` : ''
+        return `- ${f.name}${pathNote}${snippet}`
+      })
+      const finalPrompt = `${instruction}\n\nBerkas yang dijatuhkan ke avatar:\n${fileLines.join('\n')}`
+      await handleUserChat(finalPrompt, `${label}: ${dropped.map((f) => f.name).join(', ')}`, { skipFastWidget: true })
+    },
+  })
+  showSpeechBubble('File diterima! Mau diapakan file ini? 📂', 4000)
+  speak('File diterima. Silakan pilih aksi yang ingin kulakukan.', 'happy')
 })
 
 // Tutup menu via tombol ✕
@@ -1491,7 +1999,7 @@ async function initHermes() {
     })
 
     // Turn error/berhenti → pastikan input tidak terkunci selamanya.
-    hermes.on('error', () => {
+    hermes.on('error', async (evt) => {
       isStreamingResponse = false
       updatePerfMode()
       removeToolProgress()
@@ -1506,6 +2014,10 @@ async function initHermes() {
         }
         activeNotulenCard = null
         activeNotulenBody = null
+      }
+      const errText = evt?.payload?.error || evt?.payload?.message || evt?.payload?.text || evt?.error || evt?.message || ''
+      if (errText) {
+        await tryAutoFailoverProvider(errText)
       }
     })
     hermes.on('turn.complete', () => {
@@ -1568,7 +2080,12 @@ async function initHermes() {
 
         setInputLocked(true)
 
-        // Cek Fast-Path Aplikasi terlebih dahulu (<50ms!)
+        // Cek Fast-Path Widget (Timer, Musik, Vision, Briefing) & Aplikasi terlebih dahulu (<50ms!)
+        if (await tryFastWidgetCommand(text)) {
+          setInputLocked(false)
+          return
+        }
+
         const fastLaunched = await tryFastLaunchApp(text)
         if (fastLaunched) {
           setInputLocked(false)
@@ -1964,7 +2481,7 @@ ATURAN MUTLAK CHAT RINGAN:
   return `${timeContext}${appCtx}${liveWeatherCtx}${liveNewsCtx}${speedHint}${dynamicAssessmentGuideline}\n${text}`
 }
 
-async function handleUserChat(text, displayText = null) {
+async function handleUserChat(text, displayText = null, options = {}) {
   const promptText = (text || '').trim()
   if (!promptText) return
 
@@ -1997,7 +2514,11 @@ async function handleUserChat(text, displayText = null) {
     return
   }
 
-  // Cek Fast-Path Aplikasi terlebih dahulu (<50ms!)
+  // Cek Fast-Path Widget (Timer, Musik, Vision, Briefing) & Aplikasi terlebih dahulu (<50ms!)
+  if (!options?.skipFastWidget && await tryFastWidgetCommand(promptText)) {
+    return
+  }
+
   const fastLaunched = await tryFastLaunchApp(promptText)
   if (fastLaunched) {
     return
@@ -2017,6 +2538,7 @@ async function handleUserChat(text, displayText = null) {
   } catch (err) {
     log('avatar', `Gagal kirim: ${err.message}`)
     setInputLocked(false)
+    await tryAutoFailoverProvider(err?.message || String(err))
   }
 }
 

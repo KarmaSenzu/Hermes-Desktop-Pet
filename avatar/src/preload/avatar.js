@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron'
+import { contextBridge, ipcRenderer, webUtils } from 'electron'
 
 /**
  * Preload untuk jendela AVATAR (overlay desktop pet).
@@ -49,6 +49,17 @@ const avatarApi = {
   // Info cuaca & berita real-time untuk avatar dialog
   getLiveWeather: (city) => ipcRenderer.invoke('avatar:get-live-weather', city),
   getLiveNews: () => ipcRenderer.invoke('avatar:get-live-news'),
+
+  // Vision layar & failover provider LLM
+  captureScreen: (options) => ipcRenderer.invoke('avatar:capture-screen', options),
+  failoverLlmProvider: (candidates, currentInfo) => ipcRenderer.invoke('avatar:failover-llm-provider', candidates, currentInfo),
+  getPathForFile: (file) => {
+    try {
+      return webUtils?.getPathForFile?.(file) || file?.path || ''
+    } catch {
+      return file?.path || ''
+    }
+  },
 
   // Animasi preview listener
   onPreviewAnimation: (callback) => {

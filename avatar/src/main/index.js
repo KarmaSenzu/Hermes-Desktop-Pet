@@ -1,8 +1,8 @@
-import { app, BrowserWindow, ipcMain, protocol, dialog, screen, safeStorage, shell, Menu, session } from 'electron'
-import { join, extname, isAbsolute, basename, dirname } from 'path'
+import { app, BrowserWindow, ipcMain, protocol, dialog, screen, safeStorage, shell, Menu, session, desktopCapturer } from 'electron'
+import { join, resolve, extname, isAbsolute, basename, dirname } from 'path'
 import { homedir } from 'os'
 import { readFile, writeFile, mkdir, rm } from 'fs/promises'
-import { existsSync, statSync, readdirSync, cpSync, mkdirSync, readFileSync, writeFileSync, openSync, readSync, closeSync } from 'node:fs'
+import { existsSync, statSync, readdirSync, cpSync, mkdirSync, readFileSync, writeFileSync, openSync, readSync, closeSync } from 'fs'
 
 
 import { execFile, spawn } from 'child_process'
@@ -54,8 +54,10 @@ import {
   fetchEndpointModels,
   updateHermesProviderConfig,
   updateModelConfigYaml,
+  normalizeGeminiModel,
   runHermes
 } from './provider-service.js'
+import { startOpenRouterOAuthFlow, checkProviderQuota } from './oauth-service.js'
 
 const secretStore = createSecretStore(safeStorage)
 
@@ -75,6 +77,8 @@ fixSystemPath()
 
 // Izinkan autoplay audio tanpa memblokir pada startup awal (mencegah NotAllowedError Chromium)
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required')
+app.commandLine.appendSwitch('disable-http-cache')
+app.commandLine.appendSwitch('disable-gpu-shader-disk-cache')
 
 // Variabel penyimpan berkas installer sementara jika di Windows
 let pendingWindowsInstaller = null
@@ -357,8 +361,8 @@ function createAvatarWindow(modelPath) {
   // Mode click-through awal agar klik di area kosong tembus ke desktop
   avatarWindow.setIgnoreMouseEvents(true, { forward: true })
 
-  avatarWindow.webContents.on('console-message', (_event, _level, message) => {
-    console.log('[Avatar Window]', message)
+  avatarWindow.webContents.on('console-message', (event) => {
+    console.log('[Avatar Window]', event?.message ?? '')
   })
 
   if (process.env['ELECTRON_RENDERER_URL']) {
@@ -486,7 +490,7 @@ export function resolveModelPath(modelPath) {
 
   // 1. Jika sudah absolute dan ada di filesystem, kembalikan langsung
   if (isAbsolute(modelPath) && existsSync(modelPath)) {
-    return modelPath
+    return resolve(modelPath)
   }
 
   // 2. Daftar kandidat root untuk path relatif
@@ -509,7 +513,7 @@ export function resolveModelPath(modelPath) {
   for (const candidate of candidates) {
     try {
       if (candidate && existsSync(candidate)) {
-        return candidate
+        return resolve(candidate)
       }
     } catch {
       // Abaikan error stat
@@ -517,7 +521,7 @@ export function resolveModelPath(modelPath) {
   }
 
   // Fallback terbaik
-  return isAbsolute(modelPath) ? modelPath : join(app.getAppPath(), cleanRel)
+  return isAbsolute(modelPath) ? resolve(modelPath) : resolve(app.getAppPath(), cleanRel)
 }
 
 export function getFixedRoots() {
@@ -798,7 +802,7 @@ export function approveStartupRoots() {
         try {
           const stats = statSync(val)
           approveRoot(stats.isDirectory() ? val : dirname(val))
-        } catch {}
+        } catch { }
       }
     }
 
@@ -816,7 +820,7 @@ export function approveStartupRoots() {
             approveRoot(dirname(t.path))
           }
         }
-      } catch {}
+      } catch { }
     }
 
     // 3. Model default
@@ -1166,9 +1170,15 @@ secureHandle('avatar:download-and-apply-update', async (event, _downloadUrl, ass
 })
 
 
-// IPC: Relaunch aplikasi untuk menerapkan update
+// IPC: Relaunch aplikasi untuk menerapkan update (hentikan seluruh service & bridge terlebih dahulu)
 secureHandle('avatar:relaunch-app', () => {
-  relaunchApp()
+  relaunchApp(() => {
+    stopMotion()
+    unregisterGlobalShortcuts()
+    disconnectGateway()
+    stopBridgeServer()
+    stopAllServices()
+  })
 })
 
 
@@ -1245,7 +1255,7 @@ secureHandle('avatar:test-connection', async (_event, url, model, apiKey) => {
 secureHandle('avatar:set-llm-provider', async (_event, payload) => {
   try {
     const { name, baseUrl, apiKey, model } = payload || {}
-    const modelName = String(model || '').trim()
+    const modelName = normalizeGeminiModel(baseUrl, String(model || '').trim())
     if (!modelName) return { ok: false, error: 'Model identifier wajib diisi' }
     if (!parseHttpUrl(baseUrl)) {
       return { ok: false, error: 'URL endpoint LLM tidak valid. Harus menggunakan protokol http atau https.' }
@@ -1266,7 +1276,7 @@ secureHandle('avatar:set-llm-provider', async (_event, payload) => {
         await gatewayRequest('config.set', { key: 'model.default', value: modelName })
         await gatewayRequest('config.set', { key: 'model.provider', value: 'custom' })
         await gatewayRequest('config.set', { key: 'model.base_url', value: baseUrl })
-      } catch (_) {}
+      } catch (_) { }
     }
 
     // Restart server Hermes agar process runtime memuat konfigurasi baru
@@ -1301,6 +1311,192 @@ secureHandle('avatar:restart-hermes', async () => {
 // IPC: ambil model aktual langsung dari endpoint OpenAI-compatible (9Router, Ollama, dll)
 secureHandle('avatar:fetch-endpoint-models', async (_event, baseUrl, apiKey) => {
   return await fetchEndpointModels({ baseUrl, apiKey, resolveApiKeyFor })
+})
+
+// IPC: Login OAuth PKCE resmi 1-klik (OpenRouter)
+secureHandle('avatar:start-oauth-login', async (_event, providerId = 'openrouter') => {
+  if (providerId !== 'openrouter') {
+    return { ok: false, error: 'Penyedia OAuth tidak didukung' }
+  }
+  return await startOpenRouterOAuthFlow({ shell, secretStore })
+})
+
+// IPC: Periksa sisa kuota, limit, dan status paket provider aktif
+secureHandle('avatar:check-provider-quota', async (_event, baseUrl, apiKey) => {
+  return await checkProviderQuota({ baseUrl, apiKey, resolveApiKeyFor })
+})
+
+// IPC: Tangkap layar aktif + daftar jendela terbuka untuk Screen Vision interaktif (Snipping tool / Fullscreen / Window)
+secureHandle('avatar:capture-screen', async (_event, options = {}) => {
+  try {
+    const opts = (options && typeof options === 'object') ? options : {}
+    const { mode = 'fullscreen', sourceId, cropRect, listSourcesOnly } = opts
+
+    // Jika dipanggil hanya untuk mengambil daftar jendela aktif
+    if (listSourcesOnly) {
+      const sources = await desktopCapturer.getSources({
+        types: ['window'],
+        thumbnailSize: { width: 320, height: 180 },
+        fetchWindowIcons: true
+      })
+      const windows = sources
+        .filter((s) => s.name && !/hermes avatar/i.test(s.name))
+        .map((s) => ({
+          id: s.id,
+          name: s.name.trim(),
+          dataUrl: s.thumbnail && !s.thumbnail.isEmpty() ? `data:image/jpeg;base64,${s.thumbnail.toJPEG(75).toString('base64')}` : null
+        }))
+        .filter((w) => Boolean(w.name))
+      return { ok: true, windows }
+    }
+
+    const primaryDisplay = screen.getPrimaryDisplay()
+    const scaleFactor = primaryDisplay?.scaleFactor || 1
+    const screenWidth = Math.round((primaryDisplay?.bounds?.width || 1920) * scaleFactor)
+    const screenHeight = Math.round((primaryDisplay?.bounds?.height || 1080) * scaleFactor)
+
+    let selectedImg = null
+    let captureLabel = 'Layar Penuh'
+    let openWindows = []
+
+    if (mode === 'window' && sourceId) {
+      const sources = await desktopCapturer.getSources({
+        types: ['window'],
+        thumbnailSize: { width: 1920, height: 1080 }
+      })
+      const winSource = sources.find((s) => s.id === sourceId) || sources.find((s) => s.name === sourceId)
+      if (!winSource || winSource.thumbnail.isEmpty()) {
+        return { ok: false, error: 'Jendela yang dipilih tidak ditemukan atau sudah ditutup.' }
+      }
+      selectedImg = winSource.thumbnail
+      captureLabel = `Jendela: ${winSource.name}`
+      openWindows = sources
+        .filter((s) => s.name && !/hermes avatar/i.test(s.name) && s.id !== winSource.id)
+        .map((s) => s.name.trim())
+        .slice(0, 8)
+    } else if (mode === 'area' && cropRect && typeof cropRect === 'object') {
+      const sources = await desktopCapturer.getSources({
+        types: ['screen', 'window'],
+        thumbnailSize: { width: screenWidth, height: screenHeight }
+      })
+      const screenSource = sources.find((s) => String(s.id || '').startsWith('screen:')) || sources[0]
+      if (!screenSource || screenSource.thumbnail.isEmpty()) {
+        return { ok: false, error: 'Gagal menangkap layar untuk pemotongan area.' }
+      }
+      const fullImg = screenSource.thumbnail
+      const fullSize = fullImg.getSize()
+
+      // Validasi batas koordinat crop
+      let rx = Math.max(0, Math.min(Math.round(cropRect.x || 0), fullSize.width - 20))
+      let ry = Math.max(0, Math.min(Math.round(cropRect.y || 0), fullSize.height - 20))
+      let rw = Math.max(20, Math.min(Math.round(cropRect.width || fullSize.width), fullSize.width - rx))
+      let rh = Math.max(20, Math.min(Math.round(cropRect.height || fullSize.height), fullSize.height - ry))
+
+      selectedImg = fullImg.crop({ x: rx, y: ry, width: rw, height: rh })
+      captureLabel = `Area Kotak (${rw}×${rh} px)`
+
+      openWindows = sources
+        .filter((s) => String(s.id || '').startsWith('window:') && s.name && !/hermes avatar/i.test(s.name))
+        .map((s) => String(s.name).trim())
+        .filter(Boolean)
+        .slice(0, 8)
+    } else {
+      // Default: Layar Penuh
+      const sources = await desktopCapturer.getSources({
+        types: ['screen', 'window'],
+        thumbnailSize: { width: screenWidth, height: screenHeight }
+      })
+      const screenSource = sources.find((s) => String(s.id || '').startsWith('screen:')) || sources[0]
+      if (!screenSource || screenSource.thumbnail.isEmpty()) {
+        return { ok: false, error: 'Gagal menangkap thumbnail layar penuh.' }
+      }
+      selectedImg = screenSource.thumbnail
+      captureLabel = 'Layar Penuh'
+
+      openWindows = sources
+        .filter((s) => String(s.id || '').startsWith('window:') && s.name && !/hermes avatar/i.test(s.name))
+        .map((s) => String(s.name).trim())
+        .filter(Boolean)
+        .slice(0, 8)
+    }
+
+    if (!selectedImg || selectedImg.isEmpty()) {
+      return { ok: false, error: 'Hasil tangkapan gambar kosong.' }
+    }
+
+    const jpgBuf = selectedImg.toJPEG(85)
+    const dataUrl = `data:image/jpeg;base64,${jpgBuf.toString('base64')}`
+
+    const outDir = join(homedir(), '.hermes-avatar')
+    await mkdir(outDir, { recursive: true })
+    const filePath = join(outDir, 'latest-screen-capture.jpg')
+    await writeFile(filePath, jpgBuf)
+
+    return {
+      ok: true,
+      dataUrl,
+      filePath,
+      openWindows,
+      mode,
+      label: captureLabel
+    }
+  } catch (err) {
+    return { ok: false, error: err?.message || String(err) }
+  }
+})
+
+// IPC: Auto-failover ke provider cadangan saat provider aktif kena limit/kuota
+secureHandle('avatar:failover-llm-provider', async (_event, candidates, currentInfo) => {
+  try {
+    if (!Array.isArray(candidates) || candidates.length === 0) {
+      return { ok: false, error: 'Tidak ada kandidat provider cadangan.' }
+    }
+
+    const curBase = String(currentInfo?.baseUrl || '').trim().replace(/\/+$/, '').toLowerCase()
+    const curModel = String(currentInfo?.model || '').trim().toLowerCase()
+
+    const backup = candidates.find((c) => {
+      if (!c || typeof c !== 'object') return false
+      const base = String(c.baseUrl || '').trim()
+      const modelName = String(c.model || '').trim()
+      if (!parseHttpUrl(base) || !modelName) return false
+      const normBase = base.replace(/\/+$/, '').toLowerCase()
+      return !(normBase === curBase && modelName.toLowerCase() === curModel)
+    })
+
+    if (!backup) {
+      return { ok: false, error: 'Tidak ada provider cadangan valid yang berbeda dari provider aktif.' }
+    }
+
+    const baseUrl = String(backup.baseUrl).trim()
+    const modelName = normalizeGeminiModel(baseUrl, String(backup.model).trim())
+    const name = String(backup.name || 'Backup Provider').trim()
+    const effectiveKey = await resolveApiKeyFor(String(backup.apiKey || ''), baseUrl)
+
+    await updateHermesProviderConfig({ name, baseUrl, apiKey: effectiveKey, model: modelName })
+
+    if (isGatewayConnected()) {
+      try {
+        await gatewayRequest('config.set', { key: 'model.default', value: modelName })
+        await gatewayRequest('config.set', { key: 'model.provider', value: 'custom' })
+        await gatewayRequest('config.set', { key: 'model.base_url', value: baseUrl })
+      } catch { /* fallback ke restart */ }
+    }
+
+    const restartRes = await restartHermes()
+    return {
+      ok: true,
+      restarted: !!restartRes?.ok,
+      provider: {
+        id: String(backup.id || ''),
+        name,
+        baseUrl,
+        model: modelName,
+      },
+    }
+  } catch (err) {
+    return { ok: false, error: err?.message || String(err) }
+  }
 })
 
 
@@ -1356,7 +1552,7 @@ secureHandle('avatar:get-current-model', async () => {
         if (res && res.model && res.model !== '—' && res.model !== 'none') {
           return { ok: true, model: res.model, provider: res.provider || 'default' }
         }
-      } catch (_) {}
+      } catch (_) { }
     }
     // Fallback: baca config.yaml langsung
     const cfgPath = resolveHermesConfigPath()
@@ -1433,7 +1629,8 @@ secureHandle('avatar:set-stt-config', async (_event, { model, language }) => {
 })
 
 // Helper sederhana: update nested key (section > sub > key) di YAML.
-function updateYamlNested(yaml, section, sub, key, value) {  const lines = yaml.split('\n')
+function updateYamlNested(yaml, section, sub, key, value) {
+  const lines = yaml.split('\n')
   let inSection = false
   let inSub = false
   let updated = false
@@ -1829,15 +2026,37 @@ const MIME_MAP = {
 // Register custom protocol `model://` untuk serve file model + texture dari disk.
 // Diperlukan karena MMDLoader dan Live2D me-resolve texture relatif ke URL model.
 protocol.registerSchemesAsPrivileged([
-  { scheme: 'model', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } }
+  {
+    scheme: 'model',
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+      corsEnabled: true,
+      stream: true
+    }
+  }
 ])
 
 function registerModelProtocol() {
+  const corsHeaders = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
+    'Access-Control-Allow-Headers': '*'
+  }
+
   protocol.handle('model', async (request) => {
+    if (request.method === 'OPTIONS') {
+      return new Response(null, { status: 204, headers: corsHeaders })
+    }
+
     try {
       const url = new URL(request.url)
-      // Format: model://local/<segmen-encoded path> (tiap segmen di-encode, `/` tetap).
-      const encoded = url.pathname.replace(/^\//, '')
+      // Format: model://local/<segmen-encoded path> atau model://<drive>/<path>
+      const hostPrefix = url.hostname && url.hostname !== 'local'
+        ? (url.hostname.length === 1 ? `${url.hostname}:/` : `${url.hostname}/`)
+        : ''
+      const encoded = `${hostPrefix}${url.pathname.replace(/^\//, '')}`
       let filePath = decodeURIComponent(encoded)
 
       // Normalize drive letters on Windows if needed (e.g. /C:/ -> C:/)
@@ -1858,16 +2077,16 @@ function registerModelProtocol() {
       }
 
       if (!existsSync(filePath)) {
-        return new Response('Not found', { status: 404 })
+        return new Response('Not found', { status: 404, headers: corsHeaders })
       }
 
       if (!isPathAllowed(filePath, getFixedRoots())) {
-        return new Response('Path tidak diizinkan', { status: 403 })
+        return new Response('Path tidak diizinkan', { status: 403, headers: corsHeaders })
       }
 
       const ext = extname(filePath).toLowerCase()
       if (!MIME_MAP[ext]) {
-        return new Response('Ekstensi tidak diizinkan', { status: 403 })
+        return new Response('Ekstensi tidak diizinkan', { status: 403, headers: corsHeaders })
       }
 
       const mime = MIME_MAP[ext] || 'application/octet-stream'
@@ -1877,12 +2096,12 @@ function registerModelProtocol() {
         status: 200,
         headers: {
           'Content-Type': mime,
-          'Access-Control-Allow-Origin': '*'
+          ...corsHeaders
         }
       })
     } catch (err) {
       console.warn('[model-protocol] Not found:', request.url)
-      return new Response('Not found', { status: 404 })
+      return new Response('Not found', { status: 404, headers: corsHeaders })
     }
   })
 }

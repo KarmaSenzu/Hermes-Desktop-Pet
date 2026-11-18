@@ -41,6 +41,12 @@
           <span class="hud-label">Musik</span>
         </button>
 
+        <!-- 1-Click Screen Vision: Lihat & Analisis Layar -->
+        <button id="vision-toggle" class="hud-item hud-anim-vision" title="Lihat & Analisis Layar Aktif 📸">
+          <span class="hud-emoji">📸</span>
+          <span class="hud-label">Layar</span>
+        </button>
+
         <!-- Mute / Unmute Suara ala YourMother (MotherMute) -->
         <button id="mute-btn" class="hud-item hud-anim-mute" title="Bungkam / Nyalakan Suara TTS">
           <span id="mute-icon" class="hud-emoji">🔊</span>
@@ -267,6 +273,59 @@
             <button id="music-online-research-btn" class="drawer-action-btn ai-agent" title="Minta Hermes AI meriset link musik lofi gratis di internet">🤖 Minta Hermes Carikan</button>
           </div>
         </div>
+      </div>
+    </div>
+
+    <!-- Modal Pemilihan Tangkapan Layar (Screen Vision / Snipping Tool) -->
+    <div id="screen-capture-modal" class="interactive-ui screen-capture-modal" hidden>
+      <div class="panel-header">
+        <div class="panel-header-title">
+          <span>📸 Tangkap Layar (Screen Vision)</span>
+        </div>
+        <button id="screen-modal-close-btn" class="panel-close-mini" title="Tutup">✕</button>
+      </div>
+
+      <div class="screen-modal-body">
+        <p class="screen-modal-subtitle">Pilih mode tangkapan yang ingin kamu periksa:</p>
+
+        <!-- Mode Utama -->
+        <div class="screen-mode-grid">
+          <button type="button" id="snip-mode-area-btn" class="screen-mode-card highlight">
+            <span class="mode-icon">✂️</span>
+            <div class="mode-info">
+              <strong>Pilih Kotak Area (Snip)</strong>
+              <small>Tarik kursor & potong kotak di layar ala Snipping Tool</small>
+            </div>
+          </button>
+          <button type="button" id="snip-mode-fullscreen-btn" class="screen-mode-card">
+            <span class="mode-icon">🖥️</span>
+            <div class="mode-info">
+              <strong>Seluruh Layar</strong>
+              <small>Tangkap tampilan penuh seluruh monitor aktif</small>
+            </div>
+          </button>
+        </div>
+
+        <!-- Daftar Jendela Aplikasi yang Terbuka -->
+        <div class="screen-windows-section">
+          <div class="windows-section-header">
+            <span>🪟 Atau Pilih Jendela Aplikasi Tertentu:</span>
+            <button type="button" id="screen-refresh-windows-btn" class="screen-refresh-btn" title="Segarkan daftar jendela">🔄 Refresh</button>
+          </div>
+          <div id="screen-windows-list" class="screen-windows-list">
+            <div class="screen-window-loading">Memuat daftar jendela terbuka...</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Fullscreen Snip Crop Overlay (ala Snipping Tool) -->
+    <div id="snip-overlay" class="snip-overlay" hidden>
+      <div id="snip-hint-box" class="snip-hint-box">
+        <span>✂️ Klik dan tarik untuk memilih kotak area · Tekan <kbd>ESC</kbd> untuk batal</span>
+      </div>
+      <div id="snip-selection-box" class="snip-selection-box" hidden>
+        <span id="snip-dimension-badge" class="snip-dimension-badge">0 × 0</span>
       </div>
     </div>
 
