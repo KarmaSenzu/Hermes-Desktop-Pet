@@ -157,9 +157,11 @@ export class Live2DAvatar {
       if (savedPos) {
         try {
           const parsed = JSON.parse(savedPos)
-          this.model.x = Math.max(100, Math.min(w - 100, parsed.x))
-          this.model.y = Math.max(100, Math.min(h - 100, parsed.y))
-          return
+          if (parsed && Number.isFinite(parsed.x) && Number.isFinite(parsed.y)) {
+            this.model.x = Math.max(100, Math.min(w - 100, parsed.x))
+            this.model.y = Math.max(100, Math.min(h - 100, parsed.y))
+            return
+          }
         } catch {
           // fallback
         }
@@ -186,19 +188,25 @@ export class Live2DAvatar {
   zoomIn(step = 0.15) {
     this.scaleMultiplier = Math.min(2.5, this.scaleMultiplier + step)
     this._applyScale()
-    this.spawnHeart(this.model.x, this.model.y - 120, '🔍+')
+    if (this.model) {
+      this.spawnHeart(this.model.x, this.model.y - 120, '🔍+')
+    }
   }
 
   zoomOut(step = 0.15) {
     this.scaleMultiplier = Math.max(0.35, this.scaleMultiplier - step)
     this._applyScale()
-    this.spawnHeart(this.model.x, this.model.y - 120, '🔍-')
+    if (this.model) {
+      this.spawnHeart(this.model.x, this.model.y - 120, '🔍-')
+    }
   }
 
   resetZoom() {
     this.scaleMultiplier = 1.0
     this._applyScale()
-    this.spawnHeart(this.model.x, this.model.y - 120, '100%')
+    if (this.model) {
+      this.spawnHeart(this.model.x, this.model.y - 120, '100%')
+    }
   }
 
   resetPosition() {
@@ -897,7 +905,7 @@ export class Live2DAvatar {
       if (e.target.closest('.interactive-ui')) return
 
       const hit = this._hitTestModel(e.clientX, e.clientY)
-      if (!hit) return
+      if (!hit || !this.model) return
 
       if (this.ignoringMouse) {
         window.hermesAvatar?.setIgnoreMouse(false)
@@ -920,7 +928,7 @@ export class Live2DAvatar {
       const hitChar = this._hitTestModel(e.clientX, e.clientY)
       document.body.style.cursor = hitChar ? 'grab' : 'default'
 
-      if (movedDistance > 6) {
+      if (movedDistance > 6 && this.model) {
         // Drag selesai: simpan posisi baru
         localStorage.setItem(STORAGE_KEYS.pos, JSON.stringify({ x: this.model.x, y: this.model.y }))
         if (this.onDragEnd) this.onDragEnd(this.model.x, this.model.y)
@@ -948,7 +956,7 @@ export class Live2DAvatar {
     // 5. Mouse Wheel: Zoom in / Zoom out karakter halus
     this._onWheel = (e) => {
       const hit = this._hitTestModel(e.clientX, e.clientY)
-      if (!hit) return
+      if (!hit || !this.model) return
 
       e.preventDefault()
       const delta = e.deltaY < 0 ? 0.08 : -0.08

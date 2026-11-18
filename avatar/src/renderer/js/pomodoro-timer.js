@@ -313,9 +313,55 @@ export function initPomodoroTimer(options = {}) {
   timerStartBtn?.addEventListener('click', startTimer)
   timerResetBtn?.addEventListener('click', resetTimer)
 
+  function startFocusWithConfig({ minutes = 25, task = '' } = {}) {
+    if (timerInterval) {
+      clearInterval(timerInterval)
+      timerInterval = null
+    }
+    isTimerRunning = false
+    closeCustomTimeBox()
+
+    const safeMins = Math.max(1, Math.min(240, Math.round(Number(minutes) || 25)))
+    const cleanTask = String(task || '').trim().slice(0, 60)
+
+    if (cleanTask) {
+      timerTask = cleanTask
+      if (timerTaskInput) timerTaskInput.value = cleanTask
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem('hermes-timer-task', cleanTask)
+      }
+    }
+
+    timerTotalSeconds = safeMins * 60
+    timerRemainingSeconds = timerTotalSeconds
+    updateTimerDisplay()
+
+    timerPresets.forEach((b) => {
+      const btnMin = parseInt(b.dataset?.minutes, 10)
+      b.classList.toggle('active', b !== timerPresetCustomBtn && btnMin === safeMins)
+    })
+
+    if (timerPanel) {
+      timerPanel.hidden = false
+      onTile()
+    }
+
+    startTimer()
+    return {
+      minutes: safeMins,
+      task: timerTask
+    }
+  }
+
+  function stopAndResetTimer() {
+    resetTimer()
+    return { ok: true }
+  }
+
   return {
     getPanel: () => timerPanel,
     isRunning: () => isTimerRunning,
+    getTask: () => timerTask,
     getOutfitToggle: () => timerOutfitToggle,
     formatTimer,
     updateTimerDisplay,
@@ -324,6 +370,8 @@ export function initPomodoroTimer(options = {}) {
     closeCustomTimeBox,
     applyCustomTime,
     startTimer,
-    resetTimer
+    resetTimer,
+    startFocusWithConfig,
+    stopAndResetTimer
   }
 }

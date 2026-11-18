@@ -60,6 +60,24 @@ jobs:
         working-directory: avatar
         run: npx --yes electron-builder --linux --publish never
 
+      - name: Generate SHA-256 Checksums
+        if: startsWith(github.ref, 'refs/tags/')
+        working-directory: avatar/dist
+        shell: bash
+        run: |
+          node -e "
+            const fs = require('node:fs');
+            const crypto = require('node:crypto');
+            const exts = ['.exe', '.dmg', '.AppImage', '.deb', '.tar.gz', '.zip'];
+            const files = fs.readdirSync('.').filter((f) => exts.some((e) => f.endsWith(e))).sort();
+            const lines = files.map((f) => {
+              const hash = crypto.createHash('sha256').update(fs.readFileSync(f)).digest('hex');
+              return hash + '  ' + f;
+            });
+            fs.writeFileSync('SHA256SUMS-${{ runner.os }}.txt', lines.join('\n') + '\n');
+            console.log(lines.join('\n'));
+          "
+
       - name: Upload Release Artifacts
         uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/')
@@ -74,5 +92,30 @@ jobs:
             avatar/dist/*.deb
             avatar/dist/*.tar.gz
             avatar/dist/*.zip
+            avatar/dist/SHA256SUMS-*.txt
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  finalize-checksums:
+    needs: build-release
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Append Combined SHA-256 Checksums to Release Notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          gh release download "$TAG_NAME" -R "$REPO" -p "SHA256SUMS-*.txt" -D /tmp/checksums || true
+          if compgen -G "/tmp/checksums/SHA256SUMS-*.txt" > /dev/null; then
+            EXISTING_BODY=$(gh release view "$TAG_NAME" -R "$REPO" --json body -q .body || echo "")
+            CHECKSUMS=$(cat /tmp/checksums/SHA256SUMS-*.txt | sort -u)
+            NEW_BODY="${EXISTING_BODY}
+
+### Checksums (SHA-256)
+\`\`\`
+${CHECKSUMS}
+\`\`\`"
+            gh release edit "$TAG_NAME" -R "$REPO" --notes "$NEW_BODY"
+          fi

@@ -1405,6 +1405,64 @@ export class MusicPlayer {
     }
   }
 
+  getLibrarySnapshot() {
+    const countCat = (cat) => this.tracks.filter((t) => t.category === cat).length
+    return {
+      categories: [
+        { id: 'favorite', label: '❤️ Favorit Saya', count: this.favorites.size },
+        { id: 'online', label: '🌐 Stream & YouTube Saya', count: countCat('online') },
+        { id: 'local', label: '📁 Musik Lokal Saya', count: countCat('local') },
+        { id: 'focus', label: '☕ Fokus Lofi', count: countCat('focus') },
+        { id: 'chill', label: '🌸 Santai Chill', count: countCat('chill') },
+        { id: 'all', label: '🎵 Semua Koleksi', count: this.tracks.length }
+      ],
+      tracks: [...this.tracks],
+      favorites: [...this.favorites],
+      onlineCustomCount: this.onlineTracks.length,
+      localCustomCount: this.localTracks.length,
+      currentTrack: this.getCurrentTrack(),
+      isPlaying: this.isPlaying
+    }
+  }
+
+  playTrackById(trackId) {
+    const idx = this.tracks.findIndex((t) => t.id === trackId)
+    if (idx === -1) return null
+    this.playTrack(idx)
+    return this.getCurrentTrack()
+  }
+
+  playCategory(category) {
+    const targetCat = category || 'all'
+    this.setCategory(targetCat)
+    const filtered = this.getFilteredTracks()
+    if (!filtered.length) return null
+    return this.playTrackById(filtered[0].id)
+  }
+
+  findAndPlayTrack(query) {
+    const q = String(query || '').trim().toLowerCase()
+    if (!q) return null
+
+    const exact = this.tracks.find((t) =>
+      t.title.toLowerCase() === q || (t.artist && t.artist.toLowerCase() === q)
+    )
+    if (exact) return this.playTrackById(exact.id)
+
+    const partial = this.tracks.find((t) =>
+      t.title.toLowerCase().includes(q) || (t.artist && t.artist.toLowerCase().includes(q))
+    )
+    if (partial) return this.playTrackById(partial.id)
+
+    if (/\bfavorit|favorite|kesukaan\b/i.test(q)) return this.playCategory('favorite')
+    if (/\blok?al|local\b/i.test(q)) return this.playCategory('local')
+    if (/\bonline|youtube|radio|stream\b/i.test(q)) return this.playCategory('online')
+    if (/\bfokus|focus|belajar|kerja\b/i.test(q)) return this.playCategory('focus')
+    if (/\bsantai|chill|relax\b/i.test(q)) return this.playCategory('chill')
+
+    return null
+  }
+
   duck(isDucking) {
     this.isDucked = isDucking
 
