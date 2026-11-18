@@ -58,7 +58,7 @@ import {
   runHermes
 } from './provider-service.js'
 import { startOpenRouterOAuthFlow, checkProviderQuota } from './oauth-service.js'
-import { installPackageOneClick } from './package-installer.js'
+import { installPackageOneClick, getInstallQueueState, isPackageInstallRunning } from './package-installer.js'
 
 const secretStore = createSecretStore(safeStorage)
 
@@ -292,6 +292,13 @@ function createLauncherWindow() {
   } else {
     launcherWindow.loadFile(join(__dirname, '../renderer/settings.html'))
   }
+
+  launcherWindow.on('close', (e) => {
+    if (isPackageInstallRunning()) {
+      e.preventDefault()
+      launcherWindow.hide()
+    }
+  })
 
   launcherWindow.on('closed', () => {
     launcherWindow = null
@@ -624,6 +631,11 @@ secureHandle('avatar:open-settings', () => {
 secureHandle('avatar:window-close', (event) => {
   const win = BrowserWindow.fromWebContents(event.sender)
   if (win) {
+    // Bila instalasi paket sedang berjalan di background, sembunyikan jendela tanpa mematikan proses
+    if (win === launcherWindow && isPackageInstallRunning()) {
+      win.hide()
+      return { ok: true, hiddenInBackground: true }
+    }
     win.destroy()
     if (win === launcherWindow) {
       launcherWindow = null
@@ -1094,26 +1106,35 @@ secureHandle('avatar:uninstall-kokoro-deps', async () => {
   }
 })
 
-// IPC: Instalasi 1-klik otomatis di latar belakang tanpa membuka terminal (Python / Hermes / 9Router / Kokoro / All)
+// IPC: Instalasi 1-klik otomatis di latar belakang tanpa membuka terminal (Python / Hermes / 9Router / Kokoro / All / Resume)
 secureHandle('avatar:install-package', async (event, pkgId) => {
   try {
     const id = String(pkgId || '').trim().toLowerCase()
     const res = await installPackageOneClick(id, {
       onProgress: (info) => {
-        if (event?.sender && !event.sender.isDestroyed()) {
-          event.sender.send('avatar:package-install-progress', info)
-        } else if (launcherWindow && !launcherWindow.isDestroyed()) {
+        if (launcherWindow && !launcherWindow.isDestroyed()) {
           launcherWindow.webContents.send('avatar:package-install-progress', info)
+        } else if (event?.sender && !event.sender.isDestroyed()) {
+          event.sender.send('avatar:package-install-progress', info)
         }
       }
     })
-    if ((id === 'kokoro' || id === 'all') && (res?.ok || res?.results?.kokoro?.ok)) {
+    if ((id === 'kokoro' || id === 'all' || id === 'resume') && (res?.ok || res?.results?.kokoro?.ok)) {
       cachedKokoroPip = { installed: true, lastCheck: Date.now() }
+    }
+    // Jika jendela sempat disembunyikan selama instalasi & avatar belum aktif, tampilkan kembali untuk menunjukkan hasil
+    if (launcherWindow && !launcherWindow.isDestroyed() && !launcherWindow.isVisible() && (!avatarWindow || avatarWindow.isDestroyed())) {
+      launcherWindow.show()
     }
     return res
   } catch (err) {
     return { ok: false, error: err?.message || String(err) }
   }
+})
+
+// IPC: Ambil state antrean & checklist instalasi paket terkini (untuk sinkronisasi saat jendela dibuka ulang)
+secureHandle('avatar:get-install-state', async () => {
+  return getInstallQueueState()
 })
 
 // IPC: buka folder penyimpanan paket di File Explorer / Finder

@@ -77,6 +77,7 @@ export const IPC_POLICY = {
   'avatar:install-kokoro-deps': ['settings'],
   'avatar:uninstall-kokoro-deps': ['settings'],
   'avatar:install-package': ['settings'],
+  'avatar:get-install-state': ['settings'],
   'avatar:open-package-folder': ['settings'],
   'avatar:clean-package': ['settings'],
   'avatar:trigger-idle-chatter': ['settings'],

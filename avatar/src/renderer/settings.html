@@ -263,6 +263,11 @@
                 <div id="pkg-global-progress-bar" class="pkg-progress-fill"></div>
               </div>
             </div>
+            <div id="pkg-resume-bar" style="display:flex; align-items:center; justify-content:space-between; gap:8px; margin-top:8px; flex-wrap:wrap;" hidden>
+              <span id="pkg-resume-hint" class="hint" style="margin:0; font-size:11.5px;">Ada paket yang terhenti/gagal di tengah jalan. Lanjutkan tanpa mengulang dari awal:</span>
+              <button type="button" id="pkg-resume-install-btn" class="mini-btn use" hidden>▶️ Lanjutkan Instalasi Tertunda (Continue)</button>
+            </div>
+            <div id="pkg-install-checklist" class="pkg-checklist" hidden></div>
             <p class="hint" style="margin: 8px 0 0;">Cukup klik tombol <strong>⚡ Install 1-Klik</strong> untuk pemasangan otomatis tanpa membuka terminal, atau klik kartu paket untuk pengaturan lanjutan.</p>
           </div>
 

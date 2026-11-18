@@ -11,7 +11,7 @@
  * 6. Tier 6: Manual Folder/File Picker Fallback di UI Pengaturan
  */
 
-import { existsSync, readFileSync, writeFileSync, mkdirSync, statSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync, mkdirSync, statSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { homedir } from 'node:os'
 import { createHash } from 'node:crypto'
@@ -165,8 +165,12 @@ export function resolveHermesBinary() {
   const candidatePaths = []
 
   if (isWin) {
-    // Lokasi standar pengguna
+    // Lokasi standar pengguna (termasuk jalur baru installer NousResearch %LOCALAPPDATA%\hermes\bin)
     candidatePaths.push(
+      join(home, 'AppData', 'Local', 'hermes', 'bin', 'hermes.exe'),
+      join(home, 'AppData', 'Local', 'hermes', 'bin', 'hermes.cmd'),
+      join(home, 'AppData', 'Local', 'hermes', 'hermes-agent', '.hermes', 'bin', 'hermes.exe'),
+      join(home, 'AppData', 'Local', 'hermes', 'hermes-agent', '.hermes', 'bin', 'hermes.cmd'),
       join(home, 'AppData', 'Local', 'hermes', 'hermes-agent', 'venv', 'Scripts', 'hermes.exe'),
       join(home, 'AppData', 'Local', 'hermes', 'hermes-agent', 'venv', 'Scripts', 'hermes.cmd'),
       join(home, 'AppData', 'Local', 'hermes', 'venv', 'Scripts', 'hermes.exe'),
@@ -181,6 +185,8 @@ export function resolveHermesBinary() {
     // Lokasi di seluruh logical drive (C:, D:, E:, dll)
     for (const d of drives) {
       candidatePaths.push(
+        `${d}:\\hermes\\bin\\hermes.exe`,
+        `${d}:\\hermes\\bin\\hermes.cmd`,
         `${d}:\\hermes\\hermes-agent\\venv\\Scripts\\hermes.exe`,
         `${d}:\\hermes\\hermes-agent\\venv\\Scripts\\hermes.cmd`,
         `${d}:\\hermes\\venv\\Scripts\\hermes.exe`,
@@ -276,13 +282,25 @@ export async function resolvePythonBinary() {
   // Tier 4: Multi-Drive Known Candidate Scanner
   const candidatePythons = []
   if (isWin) {
-    // Standard User AppData
+    // Standard User AppData & Hermes/uv Python
+    candidatePythons.push(
+      join(home, 'AppData', 'Local', 'hermes', 'hermes-agent', '.venv', 'Scripts', 'python.exe'),
+      join(home, 'AppData', 'Local', 'hermes', 'hermes-agent', 'venv', 'Scripts', 'python.exe'),
+      join(home, 'AppData', 'Local', 'hermes', 'venv', 'Scripts', 'python.exe')
+    )
     for (const ver of ['Python314', 'Python313', 'Python312', 'Python311', 'Python310']) {
       candidatePythons.push(
-        join(home, 'AppData', 'Local', 'Programs', 'Python', ver, 'python.exe'),
-        join(home, 'AppData', 'Local', 'hermes', 'hermes-agent', 'venv', 'Scripts', 'python.exe'),
-        join(home, 'AppData', 'Local', 'hermes', 'venv', 'Scripts', 'python.exe')
+        join(home, 'AppData', 'Local', 'Programs', 'Python', ver, 'python.exe')
       )
+    }
+    for (const uvRoot of [join(home, 'AppData', 'Roaming', 'uv', 'python'), join(home, 'AppData', 'Local', 'uv', 'python')]) {
+      try {
+        if (existsSync(uvRoot)) {
+          for (const entry of readdirSync(uvRoot)) {
+            candidatePythons.push(join(uvRoot, entry, 'python.exe'))
+          }
+        }
+      } catch {}
     }
 
     // Multi-drive root installs (C:\Python*, D:\Python*, Conda, Scoop, Choco)

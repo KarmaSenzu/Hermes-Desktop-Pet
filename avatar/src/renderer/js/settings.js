@@ -134,6 +134,7 @@ function navigateToSection(sectionId, pushHistory = true) {
 
   if (sectionId === 'package') {
     loadDetectedPathsOnce(false)
+    syncInstallStateFromMain()
   } else if (sectionId === 'llm') {
     closeLlmSubpanel()
     refreshProviderQuota(false)
@@ -280,6 +281,9 @@ const pkgGlobalProgressWrap = document.getElementById('pkg-global-progress-wrap'
 const pkgGlobalProgressText = document.getElementById('pkg-global-progress-text')
 const pkgGlobalProgressPct = document.getElementById('pkg-global-progress-pct')
 const pkgGlobalProgressBar = document.getElementById('pkg-global-progress-bar')
+const pkgResumeBar = document.getElementById('pkg-resume-bar')
+const pkgResumeInstallBtn = document.getElementById('pkg-resume-install-btn')
+const pkgInstallChecklist = document.getElementById('pkg-install-checklist')
 
 const pkgStatusHermes = document.getElementById('pkg-status-hermes')
 const pkgStatusRouter = document.getElementById('pkg-status-router')
@@ -611,6 +615,143 @@ function updatePackageQuickButtons(s = lastServiceStatus, dp = lastDetectedPaths
   })
 }
 
+function renderInstallChecklist(queueState) {
+  if (!pkgInstallChecklist || !queueState || !queueState.items) return
+  const order = ['python', 'hermes', '9router', 'kokoro']
+  const items = order.map((id) => queueState.items[id]).filter(Boolean)
+
+  const hasAnyProgress = Boolean(
+    queueState.active ||
+    items.some((it) => it.status !== 'pending' || (Number(it.percent) || 0) > 0)
+  )
+  const hasFailed = items.some((it) => it.status === 'failed')
+  const hasDone = items.some((it) => it.status === 'done')
+  const hasPending = items.some((it) => it.status === 'pending')
+  const canResume = !queueState.active && (hasFailed || (hasDone && hasPending))
+
+  if (!hasAnyProgress) {
+    pkgInstallChecklist.hidden = true
+    if (pkgResumeBar) pkgResumeBar.hidden = true
+    if (pkgResumeInstallBtn) pkgResumeInstallBtn.hidden = true
+    return
+  }
+
+  pkgInstallChecklist.hidden = false
+  pkgInstallChecklist.innerHTML = ''
+
+  const icons = {
+    pending: '⏸️',
+    running: '⏳',
+    done: '✅',
+    failed: '❌'
+  }
+
+  for (const item of items) {
+    const row = document.createElement('div')
+    row.className = `pkg-checklist-item ${item.status || 'pending'}`
+
+    const left = document.createElement('div')
+    left.className = 'pkg-checklist-left'
+
+    const iconEl = document.createElement('span')
+    iconEl.className = 'pkg-checklist-icon'
+    iconEl.textContent = icons[item.status] || '⏸️'
+
+    const infoEl = document.createElement('div')
+    infoEl.className = 'pkg-checklist-info'
+
+    const titleEl = document.createElement('span')
+    titleEl.className = 'pkg-checklist-title'
+    titleEl.textContent = item.label || item.id
+
+    const msgEl = document.createElement('span')
+    msgEl.className = 'pkg-checklist-msg'
+    msgEl.textContent = item.error || item.message || 'Menunggu'
+    msgEl.title = msgEl.textContent
+
+    infoEl.appendChild(titleEl)
+    infoEl.appendChild(msgEl)
+    left.appendChild(iconEl)
+    left.appendChild(infoEl)
+
+    const right = document.createElement('div')
+    right.className = 'pkg-checklist-status'
+
+    const pctEl = document.createElement('span')
+    pctEl.className = 'pkg-checklist-pct'
+    pctEl.textContent = `${Math.max(0, Math.min(100, Number(item.percent) || 0))}%`
+    right.appendChild(pctEl)
+
+    if (item.status === 'failed' && !queueState.active) {
+      const retryBtn = document.createElement('button')
+      retryBtn.type = 'button'
+      retryBtn.className = 'mini-btn browse'
+      retryBtn.textContent = '🔄 Coba Lagi'
+      retryBtn.addEventListener('click', (e) => {
+        e.stopPropagation()
+        runOneClickPackageInstall(item.id, retryBtn)
+      })
+      right.appendChild(retryBtn)
+    }
+
+    row.appendChild(left)
+    row.appendChild(right)
+    pkgInstallChecklist.appendChild(row)
+  }
+
+  if (pkgResumeBar) pkgResumeBar.hidden = !canResume
+  if (pkgResumeInstallBtn) pkgResumeInstallBtn.hidden = !canResume
+
+  if (queueState.active && pkgGlobalProgressWrap) {
+    pkgGlobalProgressWrap.hidden = false
+    const overallPct = Math.max(0, Math.min(100, Number(queueState.overallPercent) || 0))
+    if (pkgGlobalProgressPct) pkgGlobalProgressPct.textContent = `${overallPct}%`
+    if (pkgGlobalProgressBar) pkgGlobalProgressBar.style.width = `${overallPct}%`
+    const runningItem = items.find((it) => it.status === 'running')
+    if (runningItem && pkgGlobalProgressText) {
+      pkgGlobalProgressText.textContent = `[${runningItem.label}] ${runningItem.message || 'Memproses...'}`
+    }
+  }
+}
+
+async function syncInstallStateFromMain() {
+  if (typeof window.hermesAvatar?.getInstallState !== 'function') return
+  try {
+    const state = await window.hermesAvatar.getInstallState()
+    if (state) renderInstallChecklist(state)
+  } catch (err) {
+    console.warn('[Settings] Gagal sinkronisasi state instalasi:', err)
+  }
+}
+
+let pkgProgressListenerAttached = false
+function initPackageInstallProgressSync() {
+  if (pkgProgressListenerAttached) return
+  if (typeof window.hermesAvatar?.onPackageInstallProgress !== 'function') return
+  pkgProgressListenerAttached = true
+
+  window.hermesAvatar.onPackageInstallProgress((info) => {
+    if (!info) return
+    const pct = Math.max(0, Math.min(100, Number(info.percent) || 0))
+    const msg = String(info.message || 'Memproses instalasi otomatis...')
+
+    if (pkgGlobalProgressWrap) pkgGlobalProgressWrap.hidden = false
+    if (pkgGlobalProgressText) pkgGlobalProgressText.textContent = msg
+    if (pkgGlobalProgressPct) pkgGlobalProgressPct.textContent = `${pct}%`
+    if (pkgGlobalProgressBar) pkgGlobalProgressBar.style.width = `${pct}%`
+
+    const targetLogId = info.subPkg || (info.pkgId !== 'all' && info.pkgId !== 'resume' ? info.pkgId : null)
+    if (targetLogId) {
+      const inlineLog = document.getElementById(`pkg-inline-log-${targetLogId}`)
+      if (inlineLog) inlineLog.textContent = `⏳ [${pct}%] ${msg}`
+    }
+
+    if (info.queue) {
+      renderInstallChecklist(info.queue)
+    }
+  })
+}
+
 async function runOneClickPackageInstall(pkgId, triggerBtn = null) {
   const id = String(pkgId || '').trim().toLowerCase()
   if (!id || activeOneClickInstalls.has(id)) return
@@ -622,8 +763,11 @@ async function runOneClickPackageInstall(pkgId, triggerBtn = null) {
   activeOneClickInstalls.add(id)
   const relatedBtns = Array.from(document.querySelectorAll(`[data-oneclick-pkg="${id}"]`))
   if (triggerBtn && !relatedBtns.includes(triggerBtn)) relatedBtns.push(triggerBtn)
-  if (id === 'all' && pkgInstallAllBtn && !relatedBtns.includes(pkgInstallAllBtn)) {
+  if ((id === 'all' || id === 'resume') && pkgInstallAllBtn && !relatedBtns.includes(pkgInstallAllBtn)) {
     relatedBtns.push(pkgInstallAllBtn)
+  }
+  if (id === 'resume' && pkgResumeInstallBtn && !relatedBtns.includes(pkgResumeInstallBtn)) {
+    relatedBtns.push(pkgResumeInstallBtn)
   }
 
   const origLabels = new Map()
@@ -636,6 +780,7 @@ async function runOneClickPackageInstall(pkgId, triggerBtn = null) {
 
   const labels = {
     all: 'Semua Paket',
+    resume: 'Lanjutkan Instalasi Tertunda',
     hermes: 'Hermes Agent',
     '9router': '9Router Gateway',
     kokoro: 'Kokoro-TTS',
@@ -643,42 +788,29 @@ async function runOneClickPackageInstall(pkgId, triggerBtn = null) {
   }
   const pkgTitle = labels[id] || id
 
-  const updateProgressUi = (info) => {
-    const pct = Math.max(0, Math.min(100, Number(info?.percent) || 0))
-    const msg = String(info?.message || 'Memproses instalasi otomatis...')
-    if (pkgGlobalProgressWrap) {
-      pkgGlobalProgressWrap.hidden = false
-    }
-    if (pkgGlobalProgressText) pkgGlobalProgressText.textContent = msg
-    if (pkgGlobalProgressPct) pkgGlobalProgressPct.textContent = `${pct}%`
-    if (pkgGlobalProgressBar) pkgGlobalProgressBar.style.width = `${pct}%`
-
-    const targetLogId = info?.subPkg || (id !== 'all' ? id : null)
-    if (targetLogId) {
-      const inlineLog = document.getElementById(`pkg-inline-log-${targetLogId}`)
-      if (inlineLog) inlineLog.textContent = `⏳ [${pct}%] ${msg}`
-    }
+  const isBatch = id === 'all' || id === 'resume'
+  if (pkgGlobalProgressWrap) pkgGlobalProgressWrap.hidden = false
+  if (pkgGlobalProgressText) pkgGlobalProgressText.textContent = `Memulai ${pkgTitle} (berjalan otomatis di latar belakang)...`
+  if (pkgGlobalProgressPct) pkgGlobalProgressPct.textContent = '3%'
+  if (pkgGlobalProgressBar) pkgGlobalProgressBar.style.width = '3%'
+  if (!isBatch) {
+    const inlineLog = document.getElementById(`pkg-inline-log-${id}`)
+    if (inlineLog) inlineLog.textContent = `⏳ [3%] Menyiapkan ${pkgTitle} di latar belakang...`
   }
 
-  updateProgressUi({ pkgId: id, percent: 3, message: `Memulai instalasi otomatis ${pkgTitle} (tanpa terminal)...` })
-  showToast(`Menyiapkan ${pkgTitle}...`, 'Proses berjalan otomatis di latar belakang tanpa membuka terminal.', 'running', '📦', 8000)
-
-  let unsub = null
-  if (typeof window.hermesAvatar?.onPackageInstallProgress === 'function') {
-    unsub = window.hermesAvatar.onPackageInstallProgress((info) => {
-      if (!info) return
-      if (info.pkgId === id || id === 'all') {
-        updateProgressUi(info)
-      }
-    })
-  }
+  showToast(`Menyiapkan ${pkgTitle}...`, 'Proses berjalan senyap di latar belakang (bisa ditinggal).', 'running', '📦', 8000)
 
   try {
     const res = await window.hermesAvatar.installPackage(id)
     await loadDetectedPathsOnce(true)
     await refreshServiceStatus()
+    if (res?.queue) {
+      renderInstallChecklist(res.queue)
+    } else {
+      await syncInstallStateFromMain()
+    }
 
-    const inlineEl = id !== 'all' ? document.getElementById(`pkg-inline-log-${id}`) : null
+    const inlineEl = !isBatch ? document.getElementById(`pkg-inline-log-${id}`) : null
     if (res?.ok) {
       if (pkgGlobalProgressPct) pkgGlobalProgressPct.textContent = '100%'
       if (pkgGlobalProgressBar) pkgGlobalProgressBar.style.width = '100%'
@@ -686,18 +818,17 @@ async function runOneClickPackageInstall(pkgId, triggerBtn = null) {
       if (inlineEl) inlineEl.textContent = `✅ ${pkgTitle} berhasil disiapkan & siap digunakan.`
       showToast(`${pkgTitle} Siap! ✅`, 'Instalasi & aktivasi latar belakang berhasil diselesaikan.', 'success', '🎉', 5000)
     } else {
-      const errText = res?.error || 'Sebagian paket memerlukan pemeriksaan jaringan.'
+      const errText = res?.error || 'Sebagian paket gagal. Klik "Lanjutkan (Continue)" untuk mencoba kembali bagian yang gagal.'
       if (pkgGlobalProgressText) pkgGlobalProgressText.textContent = `⚠️ ${errText}`
       if (inlineEl) inlineEl.textContent = `❌ ${errText}`
-      showToast(`Pemasangan ${pkgTitle} Terkendala ⚠️`, errText, 'error', '❌', 7000)
+      showToast(`Pemasangan ${pkgTitle} Perlu Perhatian ⚠️`, errText, 'error', '❌', 7000)
     }
   } catch (err) {
     const errMsg = err?.message || String(err)
-    const inlineEl = id !== 'all' ? document.getElementById(`pkg-inline-log-${id}`) : null
+    const inlineEl = !isBatch ? document.getElementById(`pkg-inline-log-${id}`) : null
     if (inlineEl) inlineEl.textContent = `❌ Error: ${errMsg}`
     showToast(`Error Pemasangan ${pkgTitle}`, errMsg, 'error', '❌', 7000)
   } finally {
-    if (typeof unsub === 'function') unsub()
     activeOneClickInstalls.delete(id)
     for (const b of relatedBtns) {
       delete b.dataset.installing
@@ -919,10 +1050,15 @@ async function loadDetectedPathsOnce(force = false) {
 }
 
 function bindPackageActions() {
-  // 0. Tombol Instalasi 1-Klik Otomatis (Semua Paket & Per-Paket)
+  // 0. Tombol Instalasi 1-Klik Otomatis (Semua Paket, Continue/Resume & Per-Paket)
   pkgInstallAllBtn?.addEventListener('click', (e) => {
     e.stopPropagation()
     runOneClickPackageInstall('all', pkgInstallAllBtn)
+  })
+
+  pkgResumeInstallBtn?.addEventListener('click', (e) => {
+    e.stopPropagation()
+    runOneClickPackageInstall('resume', pkgResumeInstallBtn)
   })
 
   document.querySelectorAll('[data-oneclick-pkg]').forEach((btn) => {
@@ -3948,6 +4084,8 @@ function init() {
   initHistoryControls()
   initSidebarSearch()
   renderNav()
+  initPackageInstallProgressSync()
+  syncInstallStateFromMain()
   refreshServiceStatus()
   loadDetectedPathsOnce(false)
   bindPackageActions()

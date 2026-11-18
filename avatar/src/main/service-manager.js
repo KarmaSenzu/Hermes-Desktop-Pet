@@ -43,14 +43,44 @@ const HERMES_HOST = '127.0.0.1'
 const STATE_DIR = join(homedir(), '.hermes-avatar')
 const TOKEN_FILE = join(STATE_DIR, 'session-token')
 
+function readWindowsRegistryPath() {
+  if (process.platform !== 'win32') return []
+  const collected = []
+  const keys = [
+    'HKCU\\Environment',
+    'HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment'
+  ]
+  for (const key of keys) {
+    try {
+      const out = execSync(`reg query "${key}" /v Path`, {
+        timeout: 1200,
+        encoding: 'utf8',
+        windowsHide: true,
+        stdio: ['ignore', 'pipe', 'ignore']
+      })
+      const m = out.match(/Path\s+REG_(?:EXPAND_)?SZ\s+([^\r\n]+)/i)
+      if (m && m[1]) {
+        const expanded = m[1].replace(/%([^%]+)%/g, (_full, name) => process.env[name] || `%${name}%`)
+        for (const p of expanded.split(';')) {
+          const clean = p.trim()
+          if (clean) collected.push(clean)
+        }
+      }
+    } catch {
+      // Abaikan bila kunci registry Path tidak ada
+    }
+  }
+  return collected
+}
+
 /**
  * Pastikan process.env.PATH memiliki direktori umum binary (terutama di macOS GUI app
- * yang biasanya tidak mewarisi PATH terminal Homebrew/pyenv, serta Windows Python Scripts).
+ * yang biasanya tidak mewarisi PATH terminal Homebrew/pyenv, serta Windows Python/Hermes/NPM).
  */
-function fixSystemPath() {
+function fixSystemPath(options = {}) {
   const delimiter = process.platform === 'win32' ? ';' : ':'
   const currentPath = process.env.PATH || ''
-  const currentParts = currentPath.split(delimiter)
+  const currentParts = currentPath.split(delimiter).filter(Boolean)
   const home = homedir()
 
   // Di macOS, coba ambil PATH dari interactive login shell (zsh) bila diluncurkan via Finder/Dock
@@ -69,12 +99,23 @@ function fixSystemPath() {
     }
   }
 
+  // Muat ulang PATH dari Windows Registry (HKCU + HKLM) setelah instalasi paket baru
+  if (process.platform === 'win32' && options?.refreshRegistry) {
+    for (const p of readWindowsRegistryPath()) {
+      if (existsSync(p) && !currentParts.includes(p)) {
+        currentParts.unshift(p)
+      }
+    }
+  }
+
   const additionalPaths = process.platform === 'win32'
     ? [
         'C:\\Program Files\\nodejs',
         join(home, 'AppData', 'Roaming', 'npm'),
         join(home, 'AppData', 'Local', 'Programs', 'nodejs'),
         join(home, '.local', 'bin'),
+        join(home, 'AppData', 'Local', 'hermes', 'bin'),
+        join(home, 'AppData', 'Local', 'hermes', 'hermes-agent', '.hermes', 'bin'),
         join(home, 'AppData', 'Local', 'hermes', 'hermes-agent', 'venv', 'Scripts'),
         join(home, 'AppData', 'Local', 'hermes', 'venv', 'Scripts'),
         join(home, '.hermes', 'venv', 'Scripts'),

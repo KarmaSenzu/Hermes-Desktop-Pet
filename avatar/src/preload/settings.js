@@ -28,6 +28,7 @@ const settingsApi = {
   installKokoroDeps: () => ipcRenderer.invoke('avatar:install-kokoro-deps'),
   uninstallKokoroDeps: () => ipcRenderer.invoke('avatar:uninstall-kokoro-deps'),
   installPackage: (pkgId) => ipcRenderer.invoke('avatar:install-package', pkgId),
+  getInstallState: () => ipcRenderer.invoke('avatar:get-install-state'),
   onPackageInstallProgress: (callback) => {
     const handler = (_event, info) => callback(info)
     ipcRenderer.on('avatar:package-install-progress', handler)
