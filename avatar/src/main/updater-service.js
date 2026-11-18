@@ -4,7 +4,7 @@
 
 import { app } from 'electron'
 import { basename, dirname, join, posix, win32 } from 'node:path'
-import { mkdir, writeFile, rm } from 'node:fs/promises'
+import { mkdir, writeFile, rm, readdir, stat, cp } from 'node:fs/promises'
 import { existsSync, createWriteStream } from 'node:fs'
 import { createHash } from 'node:crypto'
 import { execFile, spawn } from 'node:child_process'
@@ -120,14 +120,48 @@ let pendingWindowsInstaller = null
 const psq = (s) => String(s ?? '').replace(/[\r\n\0]/g, '').replace(/'/g, "''")
 
 /**
- * Membangun skrip PowerShell murni yang aman dari injeksi metakarakter path.
+ * Membersihkan folder sementara sisa OTA update (hermes_ota_*) di OS temp
+ * agar storage pengguna tidak menumpuk setelah beberapa kali pembaruan.
+ */
+export async function cleanupStaleOtaTempDirs(tempRootOverride, maxAgeMs = 0) {
+  try {
+    const tempRoot = tempRootOverride || app.getPath('temp')
+    if (!tempRoot || !existsSync(tempRoot)) return { removed: 0 }
+    const entries = await readdir(tempRoot, { withFileTypes: true })
+    const now = Date.now()
+    let removed = 0
+    for (const ent of entries) {
+      if (!ent.isDirectory() || !/^hermes_ota_\d+$/.test(ent.name)) continue
+      const full = join(tempRoot, ent.name)
+      try {
+        if (maxAgeMs > 0) {
+          const st = await stat(full)
+          if (now - st.mtimeMs < maxAgeMs) continue
+        }
+        await rm(full, { recursive: true, force: true })
+        removed++
+      } catch {
+        // Lewati jika masih terkunci oleh proses lain
+      }
+    }
+    return { removed }
+  } catch {
+    return { removed: 0 }
+  }
+}
+
+/**
+ * Membangun skrip PowerShell murni yang aman dari injeksi metakarakter path,
+ * mendukung mode patch ringan (resources/app) & pembersihan otomatis folder temp.
  */
 export function buildWindowsUpdatePowerShell({
   stagingDir = '',
   destDir = '',
   exePath = '',
   waitPid = 0,
-  installerPath = ''
+  installerPath = '',
+  tempDir = '',
+  isPatch = false
 } = {}) {
   const safePid = Number.isInteger(Number(waitPid)) && Number(waitPid) > 0 ? Number(waitPid) : 0
   const waitBlock = safePid > 0
@@ -135,6 +169,13 @@ export function buildWindowsUpdatePowerShell({
     : 'Start-Sleep -Seconds 2'
 
   const safeExe = psq(exePath)
+  const safeTemp = psq(tempDir)
+  const cleanupBlock = safeTemp
+    ? [
+        `$tmpDir = '${safeTemp}'`,
+        `if ($tmpDir -and (Test-Path -LiteralPath $tmpDir)) { Remove-Item -LiteralPath $tmpDir -Recurse -Force -ErrorAction SilentlyContinue }`
+      ]
+    : []
 
   if (installerPath) {
     const safeInstaller = psq(installerPath)
@@ -143,12 +184,35 @@ export function buildWindowsUpdatePowerShell({
       `$installer = '${safeInstaller}'`,
       `$exe = '${safeExe}'`,
       `if (Test-Path -LiteralPath $installer) { Start-Process -FilePath $installer -ArgumentList '/S' -Wait }`,
+      ...cleanupBlock,
       `if ($exe -and (Test-Path -LiteralPath $exe)) { Start-Process -FilePath $exe }`
     ].join('; ')
   }
 
   const safeStaging = psq(stagingDir)
   const safeDest = psq(destDir)
+
+  if (isPatch) {
+    return [
+      waitBlock,
+      `$staging = '${safeStaging}'`,
+      `$appDir = '${safeDest}'`,
+      `$exe = '${safeExe}'`,
+      `$resDir = Join-Path $appDir 'resources'`,
+      `$targetApp = Join-Path $resDir 'app'`,
+      `$srcApp = Join-Path $staging 'app'`,
+      `$srcScripts = Join-Path $staging 'scripts'`,
+      `$srcExt = Join-Path $staging 'extensions'`,
+      `New-Item -ItemType Directory -Force -Path $targetApp | Out-Null`,
+      `if (Test-Path -LiteralPath $srcApp) { Get-ChildItem -LiteralPath $srcApp | Copy-Item -Destination $targetApp -Recurse -Force }`,
+      `if (Test-Path -LiteralPath $srcScripts) { New-Item -ItemType Directory -Force -Path (Join-Path $resDir 'scripts') | Out-Null; Get-ChildItem -LiteralPath $srcScripts | Copy-Item -Destination (Join-Path $resDir 'scripts') -Recurse -Force }`,
+      `if (Test-Path -LiteralPath $srcExt) { New-Item -ItemType Directory -Force -Path (Join-Path $resDir 'extensions') | Out-Null; Get-ChildItem -LiteralPath $srcExt | Copy-Item -Destination (Join-Path $resDir 'extensions') -Recurse -Force }`,
+      `if ((Test-Path -LiteralPath (Join-Path $resDir 'app.asar')) -and (Test-Path -LiteralPath (Join-Path $targetApp 'assets'))) { Remove-Item -LiteralPath (Join-Path $resDir 'app.asar') -Force -ErrorAction SilentlyContinue }`,
+      ...cleanupBlock,
+      `if ($exe -and (Test-Path -LiteralPath $exe)) { Start-Process -FilePath $exe }`
+    ].join('; ')
+  }
+
   return [
     waitBlock,
     `$staging = '${safeStaging}'`,
@@ -158,6 +222,7 @@ export function buildWindowsUpdatePowerShell({
     `$src = if ($inner) { $inner.FullName } else { $staging }`,
     `New-Item -ItemType Directory -Force -Path $appDir | Out-Null`,
     `Get-ChildItem -LiteralPath $src | Copy-Item -Destination $appDir -Recurse -Force`,
+    ...cleanupBlock,
     `if ($exe -and (Test-Path -LiteralPath $exe)) { Start-Process -FilePath $exe }`
   ].join('; ')
 }
@@ -249,6 +314,7 @@ export async function checkAppUpdate() {
             return {
               name: a.name,
               url: a.browser_download_url,
+              size: typeof a.size === 'number' ? a.size : null,
               digest: apiDigest || bodyDigest || null
             }
           })
@@ -258,12 +324,15 @@ export async function checkAppUpdate() {
     let downloadUrl = data.html_url
     let matchedAsset = null
     if (data.assets && Array.isArray(data.assets)) {
+      const patchAsset = data.assets.find((a) => a.name.endsWith('.zip') && /patch/i.test(a.name))
       if (process.platform === 'darwin') {
         matchedAsset =
+          patchAsset ||
           data.assets.find((a) => a.name.endsWith('.dmg')) ||
           data.assets.find((a) => a.name.endsWith('.zip') && a.name.includes('mac'))
       } else if (process.platform === 'win32') {
         matchedAsset =
+          patchAsset ||
           data.assets.find(
             (a) =>
               a.name.endsWith('.zip') &&
@@ -283,10 +352,17 @@ export async function checkAppUpdate() {
       }
     }
 
+    const isPatchUpdate = Boolean(matchedAsset && /patch/i.test(matchedAsset.name))
+    const assetSizeMb = typeof matchedAsset?.size === 'number'
+      ? Number((matchedAsset.size / (1024 * 1024)).toFixed(2))
+      : null
+
     return {
       ok: true,
       hasUpdate,
       canAutoUpdate: Boolean(matchedAsset),
+      isPatchUpdate,
+      assetSizeMb,
       currentVersion,
       latestVersion: latestTag.startsWith('v') ? latestTag : `v${latestTag}`,
       releaseName: data.name || data.tag_name || `Versi ${latestTag}`,
@@ -406,6 +482,7 @@ export async function downloadAndApplyUpdate(event, _downloadUrl, assetName) {
     }
 
     sendProgress({ stage: 'installing', percent: 100, transferredMb: finalMb, totalMb: finalMb })
+    const isPatch = /patch/i.test(filename)
 
     if (process.platform === 'darwin') {
       if (filename.endsWith('.dmg')) {
@@ -427,19 +504,62 @@ export async function downloadAndApplyUpdate(event, _downloadUrl, assetName) {
               resolve()
             })
           })
-          execFile('xattr', ['-cr', '/Applications/Hermes Desktop Pet.app'], () => {})
+          await new Promise((resolve) => execFile('xattr', ['-cr', '/Applications/Hermes Desktop Pet.app'], () => resolve()))
         }
 
-        execFile('hdiutil', ['detach', mountDir, '-force'], () => {})
+        await new Promise((resolve) => execFile('hdiutil', ['detach', mountDir, '-force'], () => resolve()))
       } else if (filename.endsWith('.zip')) {
-        await new Promise((resolve, reject) => {
-          execFile('unzip', ['-q', '-o', targetFilePath, '-d', '/Applications/'], (err) => {
-            if (err) return reject(err)
-            resolve()
+        if (isPatch) {
+          const stagingDir = join(tempDir, 'staging')
+          await mkdir(stagingDir, { recursive: true })
+          await new Promise((resolve, reject) => {
+            execFile('unzip', ['-q', '-o', targetFilePath, '-d', stagingDir], (err) => {
+              if (err) return reject(err)
+              resolve()
+            })
           })
-        })
-        execFile('xattr', ['-cr', '/Applications/Hermes Desktop Pet.app'], () => {})
+          const macResDir = '/Applications/Hermes Desktop Pet.app/Contents/Resources'
+          const patchAppSrc = join(stagingDir, 'app')
+          const patchScriptsSrc = join(stagingDir, 'scripts')
+          const patchExtSrc = join(stagingDir, 'extensions')
+          const macTargetApp = join(macResDir, 'app')
+          const macAsarPath = join(macResDir, 'app.asar')
+          const macTargetAssets = join(macTargetApp, 'assets')
+
+          if (existsSync(macAsarPath) && !existsSync(macTargetAssets)) {
+            const macAsarAssets = join(macAsarPath, 'assets')
+            if (existsSync(macAsarAssets)) {
+              await mkdir(macTargetAssets, { recursive: true })
+              await cp(macAsarAssets, macTargetAssets, { recursive: true })
+            }
+          }
+          if (existsSync(patchAppSrc)) {
+            await mkdir(macTargetApp, { recursive: true })
+            await cp(patchAppSrc, macTargetApp, { recursive: true, force: true })
+          }
+          if (existsSync(patchScriptsSrc)) {
+            await mkdir(join(macResDir, 'scripts'), { recursive: true })
+            await cp(patchScriptsSrc, join(macResDir, 'scripts'), { recursive: true, force: true })
+          }
+          if (existsSync(patchExtSrc)) {
+            await mkdir(join(macResDir, 'extensions'), { recursive: true })
+            await cp(patchExtSrc, join(macResDir, 'extensions'), { recursive: true, force: true })
+          }
+          if (existsSync(macAsarPath) && existsSync(macTargetAssets)) {
+            await rm(macAsarPath, { force: true }).catch(() => {})
+          }
+          await new Promise((resolve) => execFile('xattr', ['-cr', '/Applications/Hermes Desktop Pet.app'], () => resolve()))
+        } else {
+          await new Promise((resolve, reject) => {
+            execFile('unzip', ['-q', '-o', targetFilePath, '-d', '/Applications/'], (err) => {
+              if (err) return reject(err)
+              resolve()
+            })
+          })
+          await new Promise((resolve) => execFile('xattr', ['-cr', '/Applications/Hermes Desktop Pet.app'], () => resolve()))
+        }
       }
+      await rm(tempDir, { recursive: true, force: true }).catch(() => {})
       return { ok: true, readyToRestart: true, message: 'Update berhasil dipasang di /Applications!' }
     } else if (process.platform === 'win32') {
       const defaultDestDir = join(process.env.LOCALAPPDATA || homedir(), 'Programs', 'Hermes Desktop Pet')
@@ -466,20 +586,40 @@ export async function downloadAndApplyUpdate(event, _downloadUrl, assetName) {
           )
         })
 
+        // Jika masih memakai build asar lama dan menerima patch ringan, salin assets sebelum app.asar diganti
+        if (isPatch && app.isPackaged) {
+          const asarPath = join(destDir, 'resources', 'app.asar')
+          const asarAssets = join(asarPath, 'assets')
+          const targetAssets = join(destDir, 'resources', 'app', 'assets')
+          if (existsSync(asarPath) && !existsSync(targetAssets) && existsSync(asarAssets)) {
+            await mkdir(targetAssets, { recursive: true })
+            await cp(asarAssets, targetAssets, { recursive: true })
+          }
+        }
+
         const batContent = buildWindowsUpdateBatch({
           stagingDir,
           destDir,
           exePath,
-          waitPid: process.pid
+          waitPid: process.pid,
+          tempDir,
+          isPatch
         })
         await writeFile(updateScriptPath, batContent, 'utf-8')
         pendingWindowsInstaller = updateScriptPath
-        return { ok: true, readyToRestart: true, message: 'Pembaruan siap diterapkan seketika saat restart!' }
+        return {
+          ok: true,
+          readyToRestart: true,
+          message: isPatch
+            ? 'Patch ringan siap diterapkan saat restart!'
+            : 'Pembaruan siap diterapkan seketika saat restart!'
+        }
       } else if (filename.endsWith('.exe')) {
         const batContent = buildWindowsUpdateBatch({
           installerPath: targetFilePath,
           exePath,
-          waitPid: process.pid
+          waitPid: process.pid,
+          tempDir
         })
         await writeFile(updateScriptPath, batContent, 'utf-8')
         pendingWindowsInstaller = updateScriptPath
@@ -489,9 +629,10 @@ export async function downloadAndApplyUpdate(event, _downloadUrl, assetName) {
       if (filename.endsWith('.AppImage')) {
         const binDest = join(homedir(), '.local', 'bin', 'hermes-desktop-pet')
         await mkdir(join(homedir(), '.local', 'bin'), { recursive: true })
-        execFile('chmod', ['+x', targetFilePath], () => {})
-        execFile('cp', [targetFilePath, binDest], () => {})
-        execFile('chmod', ['+x', binDest], () => {})
+        await new Promise((resolve) => execFile('chmod', ['+x', targetFilePath], () => resolve()))
+        await new Promise((resolve, reject) => execFile('cp', [targetFilePath, binDest], (err) => (err ? reject(err) : resolve())))
+        await new Promise((resolve) => execFile('chmod', ['+x', binDest], () => resolve()))
+        await rm(tempDir, { recursive: true, force: true }).catch(() => {})
         return { ok: true, readyToRestart: true }
       }
     }

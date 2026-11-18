@@ -1,4 +1,8 @@
 import { describe, it, expect, vi } from 'vitest'
+import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
+import { existsSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 
 vi.mock('electron', () => ({
   app: {
@@ -18,7 +22,8 @@ import {
   isValidRedirectHost,
   extractSha256FromReleaseBody,
   buildWindowsUpdatePowerShell,
-  buildWindowsUpdateBatch
+  buildWindowsUpdateBatch,
+  cleanupStaleOtaTempDirs
 } from '../src/main/updater-service.js'
 
 describe('updater-service', () => {
@@ -135,5 +140,42 @@ describe('updater-service', () => {
     const decoded = Buffer.from(m[1], 'base64').toString('utf16le')
     expect(decoded).toContain("$installer = 'C:\\Temp\\Hermes''Setup & calc.exe'")
     expect(decoded).toContain("ArgumentList '/S' -Wait")
+  })
+
+  it('buildWindowsUpdatePowerShell mode isPatch menargetkan resources\\app dan menghapus tempDir', () => {
+    const ps = buildWindowsUpdatePowerShell({
+      stagingDir: 'C:\\temp\\hermes_ota_123\\staging',
+      destDir: 'C:\\Users\\Test\\AppData\\Local\\Programs\\Hermes Desktop Pet',
+      exePath: 'C:\\Users\\Test\\AppData\\Local\\Programs\\Hermes Desktop Pet\\Hermes Desktop Pet.exe',
+      waitPid: 4321,
+      tempDir: 'C:\\temp\\hermes_ota_123',
+      isPatch: true
+    })
+
+    expect(ps).toContain("$targetApp = Join-Path $resDir 'app'")
+    expect(ps).toContain("$tmpDir = 'C:\\temp\\hermes_ota_123'")
+    expect(ps).toContain('Remove-Item -LiteralPath $tmpDir -Recurse -Force')
+    expect(ps).not.toMatch(/[\r\n]/)
+  })
+
+  it('cleanupStaleOtaTempDirs menghapus folder hermes_ota_* dan membiarkan folder lain utuh', async () => {
+    const mockTemp = await mkdtemp(join(tmpdir(), 'hermes-cleanup-test-'))
+    try {
+      const stale1 = join(mockTemp, 'hermes_ota_1700000001')
+      const stale2 = join(mockTemp, 'hermes_ota_1700000002')
+      const unrelated = join(mockTemp, 'other_app_cache')
+      await mkdir(stale1, { recursive: true })
+      await mkdir(stale2, { recursive: true })
+      await mkdir(unrelated, { recursive: true })
+      await writeFile(join(stale1, 'old.zip'), 'dummy')
+
+      const res = await cleanupStaleOtaTempDirs(mockTemp, 0)
+      expect(res.removed).toBe(2)
+      expect(existsSync(stale1)).toBe(false)
+      expect(existsSync(stale2)).toBe(false)
+      expect(existsSync(unrelated)).toBe(true)
+    } finally {
+      await rm(mockTemp, { recursive: true, force: true })
+    }
   })
 })

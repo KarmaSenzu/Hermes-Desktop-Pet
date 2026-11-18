@@ -3884,7 +3884,14 @@ async function checkAppUpdates(interactive = false) {
     if (res.hasUpdate) {
       if (banner) banner.classList.remove('hidden')
       if (bannerTag) bannerTag.textContent = latestVer
-      if (bannerDesc) bannerDesc.textContent = `Versi ${latestVer} sudah tersedia dengan perbaikan bug dan peningkatan fitur.`
+      const patchNote = res.isPatchUpdate && res.assetSizeMb
+        ? `⚡ Patch Ringan (${res.assetSizeMb} MB) — hanya mengunduh kode yang berubah.`
+        : (res.assetSizeMb ? `Ukuran unduhan: ${res.assetSizeMb} MB.` : '')
+      if (bannerDesc) {
+        bannerDesc.textContent = patchNote
+          ? `Versi ${latestVer} tersedia! ${patchNote}`
+          : `Versi ${latestVer} sudah tersedia dengan perbaikan bug dan peningkatan fitur.`
+      }
       if (footerUpdateBadge) footerUpdateBadge.style.display = 'inline-block'
       if (homeVerBadge) {
         homeVerBadge.textContent = `Update ${latestVer} Tersedia! 🚀`
@@ -3966,7 +3973,8 @@ async function triggerOtaUpdate() {
   if (bannerProgressStatus) bannerProgressStatus.textContent = 'Menghubungkan ke server pembaruan...'
   if (modalProgressStatus) modalProgressStatus.textContent = 'Menghubungkan ke server pembaruan...'
 
-  showToast('Mengunduh Pembaruan ⚡', `Mengunduh rilis ${cachedUpdateInfo.latestVersion}...`, 'info', '⬇')
+  const sizeInfo = cachedUpdateInfo?.assetSizeMb ? ` (${cachedUpdateInfo.assetSizeMb} MB)` : ''
+  showToast('Mengunduh Pembaruan ⚡', `Mengunduh rilis ${cachedUpdateInfo.latestVersion}${sizeInfo}...`, 'info', '⬇')
 
   try {
     const res = await window.hermesAvatar?.downloadAndApplyUpdate?.(cachedUpdateInfo.downloadUrl, cachedUpdateInfo.assetName)
@@ -4027,14 +4035,17 @@ function showUpdateModal() {
 
   if (!modal) return
 
-  const cur = cachedUpdateInfo?.currentVersion || '0.1.4'
-  const lat = cachedUpdateInfo?.latestVersion || 'v0.1.4'
+  const cur = cachedUpdateInfo?.currentVersion || '0.1.6'
+  const lat = cachedUpdateInfo?.latestVersion || 'v0.1.6'
   const date = cachedUpdateInfo?.releaseDate || 'Rilis Terbaru'
   const changelog = cachedUpdateInfo?.changelog || 'Pembaruan stabilitas dan perbaikan bug.'
+  const sizeBadge = cachedUpdateInfo?.isPatchUpdate && cachedUpdateInfo?.assetSizeMb
+    ? ` · ⚡ Patch Ringan (${cachedUpdateInfo.assetSizeMb} MB)`
+    : (cachedUpdateInfo?.assetSizeMb ? ` · ${cachedUpdateInfo.assetSizeMb} MB` : '')
 
   if (curVerEl) curVerEl.textContent = cur.startsWith('v') ? cur : `v${cur}`
   if (latVerEl) latVerEl.textContent = lat.startsWith('v') ? lat : `v${lat}`
-  if (dateEl) dateEl.textContent = date
+  if (dateEl) dateEl.textContent = `${date}${sizeBadge}`
   if (changelogEl) changelogEl.textContent = changelog
 
   if (cliCmdEl) {

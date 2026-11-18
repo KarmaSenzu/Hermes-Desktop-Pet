@@ -17,7 +17,7 @@ function cspPlugin() {
 
 export default defineConfig({
   main: {
-    plugins: [externalizeDepsPlugin()],
+    plugins: [externalizeDepsPlugin({ exclude: ['ws', 'yaml', 'msedge-tts'] })],
     build: {
       rollupOptions: {
         input: {

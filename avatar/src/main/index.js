@@ -46,7 +46,7 @@ import { resolveTerminalAction } from './actions.js'
 import { createAppRegistry, computeAppId } from './app-registry.js'
 import { RPC_ALLOWED_METHODS } from './ipc-policy.js'
 import { readPngSize, estimateTextureMB } from './png-size.js'
-import { checkAppUpdate, downloadAndApplyUpdate, relaunchApp } from './updater-service.js'
+import { checkAppUpdate, downloadAndApplyUpdate, relaunchApp, cleanupStaleOtaTempDirs } from './updater-service.js'
 import { getLiveWeather, getLiveNews } from './feed-service.js'
 import { synthesizeTts } from './tts-service.js'
 import {
@@ -515,6 +515,10 @@ export function resolveModelPath(modelPath) {
     join(__dirname, '../../', cleanRel),
     join(process.resourcesPath, modelPath),
     join(process.resourcesPath, cleanRel),
+    join(process.resourcesPath, 'app', modelPath),
+    join(process.resourcesPath, 'app', cleanRel),
+    join(process.resourcesPath, 'app.asar', modelPath),
+    join(process.resourcesPath, 'app.asar', cleanRel),
     join(process.resourcesPath, 'app.asar.unpacked', modelPath),
     join(process.resourcesPath, 'app.asar.unpacked', cleanRel),
     join(homedir(), '.hermes-avatar', modelPath),
@@ -540,6 +544,8 @@ export function getFixedRoots() {
   return [
     join(app.getAppPath(), 'assets'),
     process.resourcesPath,
+    process.resourcesPath ? join(process.resourcesPath, 'app', 'assets') : null,
+    process.resourcesPath ? join(process.resourcesPath, 'app.asar', 'assets') : null,
     join(homedir(), '.hermes-avatar')
   ].filter(Boolean)
 }
@@ -2182,6 +2188,7 @@ app.whenReady().then(() => {
   approveStartupRoots()
   registerModelProtocol()
   ensureDeployedCompanionAndScripts()
+  cleanupStaleOtaTempDirs().catch(() => {})
 
   // Set icon Dock di macOS ke personal companion profile avatar
   if (process.platform === 'darwin' && app.dock) {

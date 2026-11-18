@@ -49,6 +49,11 @@ jobs:
         working-directory: avatar
         run: npx --yes electron-builder --win --publish never
 
+      - name: Build Lightweight OTA Code Patch
+        if: runner.os == 'Windows'
+        working-directory: avatar
+        run: npm run build:patch
+
       - name: Package macOS Executable
         if: runner.os == 'macOS'
         working-directory: avatar

@@ -15,6 +15,7 @@
   "scripts": {
     "dev": "electron-vite dev --watch",
     "build": "electron-vite build",
+    "build:patch": "node scripts/build-ota-patch.mjs",
     "preview": "electron-vite preview",
     "start": "electron-vite preview",
     "test": "vitest run",
@@ -42,6 +43,7 @@
   "build": {
     "appId": "com.karmasenzu.hermesdesktoppet",
     "productName": "Hermes Desktop Pet",
+    "asar": false,
     "directories": {
       "output": "dist",
       "buildResources": "build"
