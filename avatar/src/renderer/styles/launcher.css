@@ -2333,10 +2333,23 @@ textarea:focus-visible {
   border: 1px solid rgba(255, 69, 58, 0.35);
 }
 
-.badge.warn {
+.badge.warn,
+.badge.warning {
   background: rgba(255, 159, 10, 0.18);
   color: #ffd60a;
   border: 1px solid rgba(255, 159, 10, 0.35);
+}
+
+.badge.ready {
+  background: rgba(48, 209, 88, 0.18);
+  color: #30d158;
+  border: 1px solid rgba(48, 209, 88, 0.38);
+}
+
+.badge.info {
+  background: rgba(10, 132, 255, 0.18);
+  color: #60a5fa;
+  border: 1px solid rgba(10, 132, 255, 0.38);
 }
 
 /* ===== Package Hub Styles ===== */
@@ -2900,4 +2913,864 @@ textarea:focus-visible {
 
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(140, 140, 145, 0.55);
+}
+
+/* ===== Mode Sederhana vs Mode Teknis & Preset Cepat AI ===== */
+body[data-ui-mode="simple"] .dev-only:not(.force-visible),
+body[data-ui-mode="simple"] .command-box-group:not(.force-visible),
+body[data-ui-mode="simple"] [data-terminal-cmd]:not(.force-visible) {
+  display: none !important;
+}
+
+.llm-preset-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(175px, 1fr));
+  gap: 8px;
+  padding: 12px 14px;
+}
+
+.llm-preset-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--surface-input);
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.15s ease, background 0.15s ease, transform 0.1s ease;
+}
+
+.llm-preset-btn:hover {
+  background: var(--surface-hover);
+  border-color: var(--border-strong);
+}
+
+.llm-preset-btn.active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.llm-preset-title {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.llm-preset-sub {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+/* ===== Monitor Kuota & Dual-Track (OAuth Resmi + 9Router Opsional) ===== */
+.quota-monitor-box {
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.quota-top-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.quota-badges {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.quota-summary-text {
+  font-size: 13px;
+  color: var(--text);
+  line-height: 1.45;
+}
+
+.quota-metrics-row {
+  font-size: 11.5px;
+  color: var(--text-secondary);
+}
+
+.quota-progress-track {
+  width: 100%;
+  height: 7px;
+  border-radius: 99px;
+  background: var(--surface-input);
+  border: 1px solid var(--border-soft);
+  overflow: hidden;
+}
+
+.quota-progress-fill {
+  height: 100%;
+  width: 0%;
+  border-radius: 99px;
+  background: var(--green);
+  transition: width 0.25s ease, background 0.25s ease;
+}
+
+.dual-track-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+  padding: 14px;
+}
+
+.dual-track-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 14px;
+  border-radius: var(--radius-lg);
+  background: var(--surface-input);
+  border: 1px solid var(--border);
+}
+
+.dual-track-card.track-oauth {
+  border-color: rgba(10, 132, 255, 0.35);
+}
+
+.dual-track-card.track-router {
+  border-color: rgba(191, 90, 242, 0.35);
+}
+
+.dual-track-header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.dual-track-title {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.dual-track-desc {
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.45;
+}
+
+.dual-track-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+/* ===== Pusat Login OAuth Resmi & Paket Gratis (Dual-Track Hub) ===== */
+.oauth-hub-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px;
+}
+
+.oauth-section-subhead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.oauth-section-title {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.oauth-section-note {
+  font-size: 11.5px;
+  color: var(--text-secondary);
+}
+
+.oauth-provider-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(295px, 1fr));
+  gap: 12px;
+}
+
+.oauth-provider-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 13px 14px;
+  border-radius: var(--radius-lg);
+  background: var(--surface-input);
+  border: 1px solid var(--border);
+  transition: border-color 0.18s ease, background 0.18s ease, box-shadow 0.18s ease;
+}
+
+.oauth-provider-card:hover {
+  border-color: rgba(10, 132, 255, 0.45);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.14);
+}
+
+.oauth-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.oauth-card-identity {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.oauth-card-emblem {
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-md);
+  background: rgba(10, 132, 255, 0.14);
+  border: 1px solid rgba(10, 132, 255, 0.28);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 17px;
+  flex-shrink: 0;
+}
+
+.oauth-card-titles {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.oauth-card-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.oauth-tier-pill {
+  font-size: 10.5px;
+  color: var(--text-secondary);
+}
+
+.oauth-steps-box {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 9px 10px;
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid var(--border-soft);
+}
+
+.oauth-step-line {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  font-size: 11.5px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+.oauth-step-badge {
+  width: 17px;
+  height: 17px;
+  border-radius: 50%;
+  background: rgba(10, 132, 255, 0.2);
+  color: #60a5fa;
+  font-size: 10px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.oauth-card-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.oauth-full-btn {
+  width: 100%;
+  justify-content: center;
+  text-align: center;
+  padding: 7px 10px;
+}
+
+.oauth-quick-paste-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.oauth-inline-key {
+  flex: 1;
+  min-width: 0;
+  font-size: 11.5px;
+  padding: 5px 8px;
+}
+
+.oauth-paste-activate-btn {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.oauth-router-bridge-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border-radius: var(--radius-lg);
+  background: var(--surface-input);
+  border: 1px solid rgba(191, 90, 242, 0.35);
+}
+
+.oauth-router-bridge-card .oauth-card-emblem {
+  background: rgba(191, 90, 242, 0.16);
+  border-color: rgba(191, 90, 242, 0.32);
+}
+
+.oauth-router-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.oauth-router-chip {
+  font-size: 10.5px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgba(191, 90, 242, 0.12);
+  border: 1px solid rgba(191, 90, 242, 0.28);
+  color: var(--text-secondary);
+}
+
+.oauth-router-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* ===== Dual-View Monitor Kuota (Kartu 9Router + OAuth Ring) ===== */
+.quota-view-tabs {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px;
+  border-radius: var(--radius);
+  background: var(--surface-input);
+  border: 1px solid var(--border-soft);
+}
+
+.quota-tab-btn {
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 11.5px;
+  font-weight: 500;
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.quota-tab-btn:hover {
+  color: var(--text);
+}
+
+.quota-tab-btn.active {
+  background: var(--accent);
+  color: #fff;
+}
+
+.quota-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding-top: 6px;
+  border-top: 1px solid var(--border-soft);
+}
+
+.quota-toolbar-left,
+.quota-toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.quota-mini-select {
+  font-size: 11.5px;
+  padding: 4px 8px;
+  min-width: 115px;
+}
+
+.quota-pill-btn {
+  font-size: 11.5px;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  background: var(--surface-input);
+  color: var(--text-secondary);
+}
+
+.quota-pill-btn.active {
+  border-color: var(--green);
+  color: var(--green);
+  background: rgba(48, 209, 88, 0.12);
+}
+
+.router-accounts-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.router-acc-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 12px 13px;
+  border-radius: var(--radius-lg);
+  background: var(--surface-input);
+  border: 1px solid var(--border);
+}
+
+.router-acc-card.expired {
+  opacity: 0.78;
+}
+
+.router-acc-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.router-acc-identity {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.router-acc-icon {
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius-sm);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  background: rgba(94, 92, 230, 0.22);
+  color: #a5b4fc;
+  flex-shrink: 0;
+}
+
+.router-acc-icon.oauth {
+  background: rgba(10, 132, 255, 0.2);
+  color: #60a5fa;
+}
+
+.router-acc-titles {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.router-acc-provider {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.router-acc-name {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.router-acc-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.acc-mini-refresh {
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 13px;
+  padding: 2px 4px;
+  border-radius: var(--radius-sm);
+}
+
+.acc-mini-refresh:hover {
+  color: var(--text);
+  background: var(--surface-hover);
+}
+
+.acc-status-pill {
+  width: 26px;
+  height: 14px;
+  border-radius: 99px;
+  background: rgba(255, 255, 255, 0.14);
+  position: relative;
+  display: inline-block;
+}
+
+.acc-status-pill::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 0.15s ease;
+}
+
+.acc-status-pill.on {
+  background: var(--orange);
+}
+
+.acc-status-pill.on::after {
+  transform: translateX(12px);
+}
+
+.acc-quotas-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.acc-quota-row {
+  display: grid;
+  grid-template-columns: 95px 1fr 76px;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+}
+
+.acc-quota-label-col {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.acc-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--green);
+}
+
+.acc-dot.low {
+  background: var(--red);
+}
+
+.acc-dot.mid {
+  background: var(--orange);
+}
+
+.acc-bar-col {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.acc-bar-track {
+  width: 100%;
+  height: 4px;
+  border-radius: 99px;
+  background: rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+}
+
+.acc-bar-fill {
+  height: 100%;
+  border-radius: 99px;
+  background: var(--green);
+}
+
+.acc-bar-fill.low {
+  background: var(--red);
+}
+
+.acc-bar-fill.mid {
+  background: var(--orange);
+}
+
+.acc-bar-meta {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  color: var(--text-secondary);
+}
+
+.acc-pct-text {
+  font-weight: 600;
+  color: var(--green);
+}
+
+.acc-pct-text.mid {
+  color: var(--orange);
+}
+
+.acc-pct-text.low {
+  color: var(--red);
+}
+
+.acc-quotas-subhead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 10.5px;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+
+.acc-plan-tag {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 99px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border-soft);
+  color: var(--text-secondary);
+  max-width: 150px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.acc-pagination-box {
+  margin-top: 8px;
+  padding: 6px 8px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-soft);
+  background: rgba(255, 255, 255, 0.02);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.acc-pagination-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.acc-pagination-btns {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.acc-page-btn {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 10.5px;
+  padding: 3px 9px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.acc-page-btn:hover:not(:disabled) {
+  background: var(--surface-hover);
+}
+
+.acc-page-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.acc-reset-text {
+  text-align: right;
+  font-size: 10px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.acc-expired-box {
+  padding: 12px 6px 6px;
+  text-align: center;
+  font-size: 11.5px;
+  color: var(--text-secondary);
+}
+
+.acc-expired-footer {
+  font-size: 10px;
+  color: var(--text-muted);
+  border-top: 1px solid var(--border-soft);
+  padding-top: 6px;
+}
+
+/* ===== Gaya 2: Cincin Limit Model OAuth (Donut Ring SVG) ===== */
+.oauth-rings-container {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: 6px;
+}
+
+.oauth-model-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.oauth-group-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.oauth-group-info {
+  font-size: 11px;
+  color: var(--text-secondary);
+  cursor: help;
+}
+
+.oauth-limit-card {
+  border-radius: var(--radius-lg);
+  background: var(--surface-input);
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.oauth-limit-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px 14px;
+}
+
+.oauth-limit-row + .oauth-limit-row {
+  border-top: 1px solid var(--border-soft);
+}
+
+.oauth-limit-texts {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.oauth-limit-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.oauth-limit-sub {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.oauth-limit-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.oauth-limit-pct {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--text);
+  min-width: 38px;
+  text-align: right;
+}
+
+.oauth-limit-pct.mid {
+  color: var(--orange);
+}
+
+.oauth-limit-pct.low {
+  color: var(--red);
+}
+
+.quota-donut-svg {
+  width: 28px;
+  height: 28px;
+  transform: rotate(-90deg);
+}
+
+.quota-donut-bg {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.12);
+  stroke-width: 3.5;
+}
+
+.quota-donut-fg {
+  fill: none;
+  stroke: var(--green);
+  stroke-width: 3.5;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 0.3s ease;
+}
+
+.quota-donut-fg.mid {
+  stroke: var(--orange);
+}
+
+.quota-donut-fg.low {
+  stroke: var(--red);
+}
+
+/* ===== Sub-Panel Navigasi LLM & Provider (2-Level ala Animasi & Emote) ===== */
+.llm-subpanel.hidden {
+  display: none !important;
+}
+
+.llm-subpanel > .group-header:first-child {
+  margin-top: 4px;
+}
+
+.llm-subpanel-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 4px 0 8px;
+}
+
+#llm-detail-view .back-btn {
+  margin-bottom: 12px;
 }

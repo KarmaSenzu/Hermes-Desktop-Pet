@@ -16,13 +16,14 @@
 const KEY = 'hermes-avatar-settings'
 
 const DEFAULT_SETTINGS = {
+  uiMode: 'simple', // 'simple' (ramah pemula) | 'advanced' (opsi teknis developer)
   tts: {
     enabled: true,
-    provider: 'kokoro',    // 'kokoro' (Lokal AI) | 'edge' (Microsoft Cloud)
-    voice: 'af_heart',     // Suara default anime: af_heart
+    provider: 'edge',           // 'edge' (Cloud, Zero-Install) | 'kokoro' (Lokal AI Opsional)
+    voice: 'id-ID-GadisNeural', // Suara default Bahasa Indonesia natural langsung siap pakai
     kokoroEndpoint: 'http://127.0.0.1:8880',
-    speed: 1.0,            // kecepatan bicara (0.5 - 2.0)
-    verbosity: 'concise'   // 'concise' | 'full' — seberapa ringkas jawaban dibaca
+    speed: 1.0,                 // kecepatan bicara (0.5 - 2.0)
+    verbosity: 'concise'        // 'concise' | 'full' — seberapa ringkas jawaban dibaca
   },
   stt: {
     model: 'base',
@@ -33,7 +34,8 @@ const DEFAULT_SETTINGS = {
     bargeIn: true      // izinkan interupsi saat Hermes bicara
   },
   llm: {
-    providers: []
+    providers: [],
+    dailyUsage: { date: '', count: 0 }
   },
   characters: [
     {
@@ -83,6 +85,7 @@ export function loadSettings() {
     if (!raw) return structuredClone(DEFAULT_SETTINGS)
     const parsed = JSON.parse(raw)
     const merged = { ...structuredClone(DEFAULT_SETTINGS), ...parsed }
+    merged.uiMode = merged.uiMode === 'advanced' ? 'advanced' : 'simple'
     if (!merged.characters || merged.characters.length === 0) {
       merged.characters = structuredClone(DEFAULT_SETTINGS.characters)
     }
@@ -99,6 +102,17 @@ export function loadSettings() {
     }
     if (!Array.isArray(merged.idleReminder.lines) || merged.idleReminder.lines.length === 0) {
       merged.idleReminder.lines = [...DEFAULT_SETTINGS.idleReminder.lines]
+    }
+    if (Array.isArray(merged.llm?.providers)) {
+      merged.llm.providers = merged.llm.providers.map((prov) => {
+        if (!prov || typeof prov !== 'object') return prov
+        const isGemini = String(prov.baseUrl || '').toLowerCase().includes('generativelanguage.googleapis.com')
+        const mod = String(prov.model || '').replace(/^models\//i, '')
+        if (isGemini && /^gemini-(?:1\.0|1\.5|2\.0|2\.5)-flash(?:-(?:exp|latest))?$/i.test(mod)) {
+          return { ...prov, model: 'gemini-3.5-flash-lite' }
+        }
+        return prov
+      })
     }
     return merged
   } catch {

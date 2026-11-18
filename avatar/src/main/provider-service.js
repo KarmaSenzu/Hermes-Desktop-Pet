@@ -15,6 +15,21 @@ import { resolveHermesCmd, resolveRouterApiKey } from './service-manager.js'
 import { resolveHermesConfigPath } from './path-resolver.js'
 import { applyProviderConfig, setEnvVar } from './hermes-config.js'
 
+const DEPRECATED_GEMINI_RE = /^(gemini-(?:1\.0|1\.5|2\.0|2\.5)-flash(?:-(?:exp|latest))?)$/i
+
+export function normalizeGeminiModel(baseUrl, modelName) {
+  const m = String(modelName || '').trim()
+  if (!m) return m
+  if (!String(baseUrl || '').toLowerCase().includes('generativelanguage.googleapis.com')) {
+    return m
+  }
+  const clean = m.replace(/^models\//i, '')
+  if (DEPRECATED_GEMINI_RE.test(clean)) {
+    return 'gemini-3.5-flash-lite'
+  }
+  return clean
+}
+
 export async function testProviderConnection({ url, model, apiKey, resolveApiKeyFor }) {
   try {
     const target = String(url || '').trim()
@@ -26,12 +41,13 @@ export async function testProviderConnection({ url, model, apiKey, resolveApiKey
     }
 
     const base = target.replace(/\/+$/, '')
-    const endpoint = base.endsWith('/v1') ? `${base}/chat/completions` : `${base}/v1/chat/completions`
+    const hasApiPath = /\/(v\d+(?:beta\d*)?|openai)$/i.test(base)
+    const endpoint = hasApiPath ? `${base}/chat/completions` : `${base}/v1/chat/completions`
     const u = new URL(endpoint)
     const mod = u.protocol === 'https:' ? https : http
 
     const body = JSON.stringify({
-      model: modelName,
+      model: normalizeGeminiModel(target, modelName),
       messages: [{ role: 'user', content: 'ping' }],
       max_tokens: 5
     })
@@ -165,16 +181,26 @@ export async function updateHermesProviderConfig({ name, baseUrl, apiKey, model 
     if (fromDoc) provUrl = String(fromDoc).trim()
     else provUrl = 'http://localhost:20128/v1'
   }
+  effectiveModel = normalizeGeminiModel(provUrl, effectiveModel)
 
   let provName = String(name || '').trim()
+  const jsProviders = doc.toJS()?.providers || {}
   if (!provName) {
     const fromDoc = doc.getIn(['model', 'provider'])
     if (fromDoc && String(fromDoc).trim() !== 'custom') {
       provName = String(fromDoc).trim()
     } else {
-      const jsProviders = doc.toJS()?.providers || {}
-      const firstSaved = Object.values(jsProviders)[0]?.name
-      provName = firstSaved ? String(firstSaved).trim() : 'custom'
+      const targetNorm = provUrl.replace(/\/+$/, '').toLowerCase()
+      const entries = Object.values(jsProviders).filter((p) => p && typeof p === 'object')
+      const urlMatched = entries.filter(
+        (p) => String(p.base_url || '').trim().replace(/\/+$/, '').toLowerCase() === targetNorm
+      )
+      const preferred =
+        urlMatched.find((p) => p.api_key && p.api_key === process.env.OPENAI_API_KEY) ||
+        urlMatched.find((p) => !isLocalRouterUrl(provUrl) && p.name !== '212') ||
+        urlMatched[0] ||
+        entries[0]
+      provName = preferred?.name ? String(preferred.name).trim() : 'custom'
     }
   }
 
@@ -194,14 +220,19 @@ export async function updateHermesProviderConfig({ name, baseUrl, apiKey, model 
   }
 
   if (!keyVal || keyVal === 'no-key-required') {
-    if (process.env.OPENAI_API_KEY && process.env.OPENAI_API_KEY !== 'no-key-required') {
+    const safeName = provName.replace(/[^a-zA-Z0-9_-]/g, '_') || 'custom'
+    const curKey = doc.getIn(['providers', safeName, 'api_key'])
+    const existingEnvUrl = String(doc.getIn(['model', 'base_url']) || '').trim().replace(/\/+$/, '').toLowerCase()
+    const targetNormUrl = provUrl.trim().replace(/\/+$/, '').toLowerCase()
+
+    if (curKey && String(curKey).trim() !== 'no-key-required') {
+      keyVal = String(curKey).trim()
+    } else if (
+      process.env.OPENAI_API_KEY &&
+      process.env.OPENAI_API_KEY !== 'no-key-required' &&
+      (!existingEnvUrl || existingEnvUrl === targetNormUrl)
+    ) {
       keyVal = process.env.OPENAI_API_KEY
-    } else {
-      const safeName = provName.replace(/[^a-zA-Z0-9_-]/g, '_') || 'custom'
-      const curKey = doc.getIn(['providers', safeName, 'api_key'])
-      if (curKey && String(curKey).trim() !== 'no-key-required') {
-        keyVal = String(curKey).trim()
-      }
     }
   }
 
@@ -277,9 +308,27 @@ export async function fetchEndpointModels({ baseUrl, apiKey, resolveApiKeyFor })
     }
     const data = await resp.json()
     const rawList = Array.isArray(data) ? data : (data?.data || [])
-    const models = rawList
+    let models = rawList
       .map((m) => (typeof m === 'string' ? m : (m.id || m.name)))
       .filter(Boolean)
+
+    if (targetUrl.toLowerCase().includes('generativelanguage.googleapis.com')) {
+      const priority = ['gemini-3.5-flash-lite', 'gemini-flash-lite-latest', 'gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-3.5-flash']
+      models = models
+        .map((m) => m.replace(/^models\//i, ''))
+        .filter((m) => (
+          !DEPRECATED_GEMINI_RE.test(m) &&
+          !/(embedding|aqa|lyria|tts|transcribe|live|image|robotics|nano-banana|deep-research|antigravity)/i.test(m)
+        ))
+        .sort((a, b) => {
+          const ia = priority.indexOf(a)
+          const ib = priority.indexOf(b)
+          if (ia !== -1 && ib !== -1) return ia - ib
+          if (ia !== -1) return -1
+          if (ib !== -1) return 1
+          return a.localeCompare(b)
+        })
+    }
     return { ok: true, models }
   } catch (err) {
     return { ok: false, error: err?.message || String(err) }

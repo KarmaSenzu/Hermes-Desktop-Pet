@@ -14,6 +14,7 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { homedir } from 'node:os'
+import { createHash } from 'node:crypto'
 import { execSync, execFile } from 'node:child_process'
 
 const CONFIG_DIR = join(homedir(), '.hermes-avatar')
@@ -440,24 +441,60 @@ export function resolveRouterBinary() {
  * Otomatis mengambil API key aktif dari database lokal 9Router agar tidak 401
  * --------------------------------------------------------------------------
  */
-export async function resolveRouterApiKey() {
+function getRouterDataDirs() {
   const home = homedir()
-  const candidateDbs = [
-    join(process.env.APPDATA || '', '9router', 'db', 'data.sqlite'),
-    join(home, 'AppData', 'Roaming', '9router', 'db', 'data.sqlite'),
-    join(home, '.config', '9router', 'db', 'data.sqlite'),
-    join(home, '.9router', 'db', 'data.sqlite')
-  ]
+  return Array.from(new Set([
+    process.env.APPDATA ? join(process.env.APPDATA, '9router') : '',
+    join(home, 'AppData', 'Roaming', '9router'),
+    process.env.LOCALAPPDATA ? join(process.env.LOCALAPPDATA, '9router') : '',
+    join(home, '.config', '9router'),
+    join(home, '.9router'),
+    join(home, 'Library', 'Application Support', '9router')
+  ].filter(Boolean)))
+}
+
+function getRouterDbPaths() {
+  return getRouterDataDirs().map((d) => join(d, 'db', 'data.sqlite'))
+}
+
+/**
+ * Menghitung token CLI lokal 9Router (x-9r-cli-token) dari berkas machine-id & auth/cli-secret
+ * sesuai mekanisme autentikasi lokal 9Router (:20128).
+ */
+export function resolveRouterCliToken() {
+  for (const dir of getRouterDataDirs()) {
+    const midPath = join(dir, 'machine-id')
+    const secPath = join(dir, 'auth', 'cli-secret')
+    if (!existsSync(midPath) || !existsSync(secPath)) continue
+    try {
+      const mid = readFileSync(midPath, 'utf8').trim()
+      const sec = readFileSync(secPath, 'utf8').trim()
+      if (mid && sec) {
+        return createHash('sha256')
+          .update(mid + '9r-cli-auth' + sec)
+          .digest('hex')
+          .substring(0, 16)
+      }
+    } catch {
+      // Lanjutkan pemeriksaan ke kandidat direktori berikutnya
+    }
+  }
+  return null
+}
+
+export async function resolveRouterApiKey() {
+  const candidateDbs = getRouterDbPaths()
 
   for (const dbPath of candidateDbs) {
     if (!dbPath || !existsSync(dbPath)) continue
 
+    let db = null
     try {
       const { DatabaseSync } = await import('node:sqlite')
       if (process.env.HERMES_DEBUG) {
         console.log('[HERMES_DEBUG] node:sqlite import berhasil, DatabaseSync:', typeof DatabaseSync)
       }
-      const db = new DatabaseSync(dbPath, { readOnly: true })
+      db = new DatabaseSync(dbPath, { readOnly: true })
       // Prioritaskan key yang namanya mengandung 'hermes', atau key aktif yang paling baru dibuat
       const row = db.prepare(`
         SELECT key, name, createdAt
@@ -473,10 +510,478 @@ export async function resolveRouterApiKey() {
       }
     } catch (err) {
       console.warn('[PathResolver] Gagal query 9router db via node:sqlite:', err?.message || err)
+    } finally {
+      try { db?.close?.() } catch {}
     }
   }
 
   return { key: null, name: null, ok: false }
+}
+
+function formatRouterProviderLabel(providerKey, specificData) {
+  const k = String(providerKey || '').toLowerCase()
+  if (k === 'codebuddy-cn') return 'Codebuddy-Cn'
+  if (k === 'codebuddy-intl') return 'Codebuddy-Intl'
+  if (k === 'kiro') return 'Kiro (Claude OAuth)'
+  if (k.includes('gemini') || k === 'antigravity') return 'Google Gemini'
+  if (k === 'codex' || k === 'openai') return 'OpenAI / Codex'
+  if (k === 'claude' || k === 'anthropic') return 'Claude Code'
+  if (k === 'qwen') return 'Qwen Code'
+  if (k.startsWith('openai-compatible')) {
+    return String(specificData?.nodeName || 'OpenAI-Compatible')
+  }
+  return providerKey
+    ? providerKey.split(/[-_]/).map((s) => s.charAt(0).toUpperCase() + s.slice(1)).join('-')
+    : 'Provider'
+}
+
+function clampPct(val) {
+  return Math.max(0, Math.min(100, Math.round(val)))
+}
+
+/**
+ * Memformat angka kredit/kuota dengan maksimal 2 angka desimal dan pemisah ribuan.
+ */
+export function formatQuotaNumber(val) {
+  const num = Number(val)
+  if (!Number.isFinite(num)) return '0'
+  return num.toLocaleString('en-US', { maximumFractionDigits: 2 })
+}
+
+/**
+ * Memformat hitungan mundur waktu reset/kadaluarsa kuota (mis. "in 13d 3h 1m" / "expires in 19d 1h 36m").
+ */
+export function formatQuotaCountdown(resetAt, recurring = true, nowMs = Date.now()) {
+  if (!resetAt) return ''
+  try {
+    const targetMs = new Date(resetAt).getTime()
+    if (!Number.isFinite(targetMs)) return ''
+    const diffMs = targetMs - nowMs
+    if (diffMs <= 0) return 'resetting...'
+
+    const totalMins = Math.ceil(diffMs / 60000)
+    let dur = ''
+    if (totalMins < 60) {
+      dur = `${totalMins}m`
+    } else {
+      const hours = Math.floor(totalMins / 60)
+      const mins = totalMins % 60
+      if (hours < 24) {
+        dur = `${hours}h ${mins}m`
+      } else {
+        const days = Math.floor(hours / 24)
+        const remHours = hours % 24
+        dur = `${days}d ${remHours}h ${mins}m`
+      }
+    }
+
+    return recurring !== false ? `in ${dur}` : `expires in ${dur}`
+  } catch {
+    return ''
+  }
+}
+
+function mapRouterQuotaLabel(providerKey, rawName, entry) {
+  const p = String(providerKey || '').toLowerCase()
+  if (p === 'codex') {
+    if (rawName === 'spark_session') return 'Spark (5h)'
+    if (rawName === 'spark_weekly') return 'Spark (Weekly)'
+    if (rawName === 'session') return '5h'
+    if (rawName === 'weekly') return 'Weekly'
+    if (rawName === 'review_session') return 'Review (5h)'
+    if (rawName === 'review_weekly') return 'Review (Weekly)'
+  }
+  if (p === 'qoder') {
+    if (rawName === 'user') return 'Personal'
+    if (rawName === 'organization') return 'Organization'
+  }
+  if (p === 'kiro' && rawName === 'credit') {
+    return 'Credit'
+  }
+  if (p === 'antigravity' && entry?.displayName) {
+    return String(entry.displayName)
+  }
+  return String(rawName || 'Quota')
+}
+
+/**
+ * Menormalkan struktur objek `quotas` dari respons `/api/usage/<connectionId>` 9Router
+ * menjadi array seragam lengkap untuk UI kartu & ringkasan kuota.
+ */
+export function normalizeRouterUsageQuotas(providerKey, usageData, nowMs = Date.now()) {
+  if (!usageData || typeof usageData !== 'object' || !usageData.quotas || typeof usageData.quotas !== 'object') {
+    return []
+  }
+
+  const p = String(providerKey || '').toLowerCase()
+  const result = []
+
+  for (const [rawName, q] of Object.entries(usageData.quotas)) {
+    if (!q || typeof q !== 'object') continue
+    if (p === 'qoder' && rawName === 'organization' && (Number(q.total) || 0) === 0) continue
+    if (rawName === 'error' && q.message) continue
+
+    const label = mapRouterQuotaLabel(p, rawName, q)
+    const unlimited = q.unlimited === true
+    const rawUsed = Math.max(0, Number(q.used ?? 0) || 0)
+    const rawTotal = Math.max(0, Number(q.total ?? 0) || 0)
+    const used = Math.round(rawUsed * 100) / 100
+    const limitNum = Math.round(rawTotal * 100) / 100
+    const limit = unlimited ? '∞' : limitNum
+
+    let remainingPct
+    if (unlimited) {
+      remainingPct = 100
+    } else if (typeof q.remainingPercentage === 'number' && Number.isFinite(q.remainingPercentage)) {
+      remainingPct = clampPct(q.remainingPercentage)
+    } else if (rawTotal > 0) {
+      remainingPct = clampPct(((rawTotal - rawUsed) / rawTotal) * 100)
+    } else if (typeof q.remaining === 'number' && Number.isFinite(q.remaining)) {
+      remainingPct = clampPct(q.remaining)
+    } else {
+      remainingPct = 0
+    }
+
+    const recurring = q.recurring !== false
+    const resetAt = q.resetAt || null
+    const resetText = formatQuotaCountdown(resetAt, recurring, nowMs) || (unlimited ? 'unlimited' : '-')
+
+    result.push({
+      label,
+      rawKey: rawName,
+      used,
+      limit,
+      usedFormatted: formatQuotaNumber(used),
+      limitFormatted: unlimited ? '∞' : formatQuotaNumber(limitNum),
+      remainingPct,
+      resetAt,
+      recurring,
+      unlimited,
+      resetText
+    })
+  }
+
+  return result
+}
+
+async function fetchJsonWithTimeout(fetchImpl, url, headers, timeoutMs = 4500) {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    const resp = await fetchImpl(url, { method: 'GET', headers, signal: controller.signal })
+    const data = await resp.json().catch(() => null)
+    return { ok: resp.ok, status: resp.status, data }
+  } catch {
+    return { ok: false, status: 0, data: null }
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+async function readLocalRouterUsageBuckets() {
+  const buckets = {
+    gemini: { w: 0, h5: 0 },
+    claudeGpt: { w: 0, h5: 0 },
+    deepseekGlm: { w: 0, h5: 0 }
+  }
+
+  for (const dbPath of getRouterDbPaths()) {
+    if (!dbPath || !existsSync(dbPath)) continue
+    let db = null
+    try {
+      const { DatabaseSync } = await import('node:sqlite')
+      db = new DatabaseSync(dbPath, { readOnly: true })
+      const modelRows = db.prepare(`
+        SELECT LOWER(COALESCE(model, '')) AS m,
+          COUNT(*) AS reqs7d,
+          SUM(CASE WHEN timestamp >= datetime('now', '-5 hours') THEN 1 ELSE 0 END) AS reqs5h
+        FROM usageHistory
+        WHERE timestamp >= datetime('now', '-7 days')
+        GROUP BY LOWER(COALESCE(model, ''))
+      `).all()
+      for (const mr of modelRows) {
+        const name = String(mr.m || '')
+        const w = Number(mr.reqs7d || 0)
+        const h5 = Number(mr.reqs5h || 0)
+        if (name.includes('gemini')) {
+          buckets.gemini.w += w
+          buckets.gemini.h5 += h5
+        } else if (name.includes('claude') || name.includes('gpt') || /\bo[134]\b/.test(name)) {
+          buckets.claudeGpt.w += w
+          buckets.claudeGpt.h5 += h5
+        } else if (name.includes('deepseek') || name.includes('glm') || name.includes('qwen')) {
+          buckets.deepseekGlm.w += w
+          buckets.deepseekGlm.h5 += h5
+        }
+      }
+      return { buckets, dbPath }
+    } catch {
+      // Abaikan jika SQLite gagal dibaca
+    } finally {
+      try { db?.close?.() } catch {}
+    }
+  }
+
+  return { buckets, dbPath: null }
+}
+
+function buildFallbackGroup(id, title, tooltip, b, weekCap, fiveHrCap) {
+  const wPct = clampPct(100 - (b.w / weekCap) * 100)
+  const h5Pct = clampPct(100 - (b.h5 / fiveHrCap) * 100)
+  return {
+    id,
+    title,
+    tooltip,
+    rows: [
+      {
+        label: 'Weekly Limit Remaining',
+        subtext: b.w > 0
+          ? `Terpakai ${b.w} dari estimasi ${weekCap} req minggu ini · reset berkala.`
+          : 'Belum ada pemakaian pada jendela mingguan ini.',
+        remainingPct: wPct
+      },
+      {
+        label: 'Five Hour Limit Remaining',
+        subtext: b.h5 > 0
+          ? `Terpakai ${b.h5} dari ${fiveHrCap} req dalam 5 jam terakhir.`
+          : 'Kuota 5-jam penuh (100% siap digunakan).',
+        remainingPct: h5Pct
+      }
+    ]
+  }
+}
+
+function buildSyncedModelGroups(accounts, buckets) {
+  const pickAccountForProviders = (keys) => {
+    const matches = (accounts || []).filter(
+      (a) => keys.includes(String(a.providerKey || '').toLowerCase()) && Array.isArray(a.quotas) && a.quotas.length > 0
+    )
+    return matches.find((a) => a.isActive !== false) || matches[0] || null
+  }
+
+  const deepseekAcc = pickAccountForProviders([
+    'codebuddy-cn', 'codebuddy-intl', 'deepseek', 'glm', 'glm-cn', 'kimi', 'minimax', 'minimax-cn'
+  ])
+  const claudeAcc = pickAccountForProviders([
+    'kiro', 'claude', 'anthropic', 'codex', 'openai', 'github', 'grok-cli', 'zed'
+  ])
+  const geminiAcc = pickAccountForProviders([
+    'gemini', 'gemini-cli', 'antigravity'
+  ])
+
+  const buildFromLiveAccount = (id, title, tooltip, acc, fallbackBucket, weekCap, fiveHrCap) => {
+    if (!acc || !acc.quotas?.length) {
+      return buildFallbackGroup(id, title, tooltip, fallbackBucket, weekCap, fiveHrCap)
+    }
+
+    const qList = acc.quotas
+    const q1 = qList.find((q) => /monthly|weekly|credit|personal|session|5h/i.test(q.label)) || qList[0]
+    const otherQuotas = qList.filter((q) => q !== q1)
+
+    const rows = [
+      {
+        label: `${q1.label} Limit Remaining`,
+        subtext: `Terpakai ${q1.usedFormatted} / ${q1.limitFormatted} kredit (${acc.accountName}${acc.plan ? ` · ${acc.plan}` : ''})${q1.resetText && q1.resetText !== '-' ? ` · reset ${q1.resetText}` : ''}.`,
+        remainingPct: q1.remainingPct
+      }
+    ]
+
+    if (otherQuotas.length > 0) {
+      const q2 = otherQuotas[0]
+      rows.push({
+        label: `${q2.label} Remaining`,
+        subtext: `Terpakai ${q2.usedFormatted} / ${q2.limitFormatted} kredit (${acc.accountName})${q2.resetText && q2.resetText !== '-' ? ` · ${q2.resetText}` : ''}.`,
+        remainingPct: q2.remainingPct
+      })
+    }
+
+    if (qList.length > 2) {
+      const numeric = qList.filter((q) => !q.unlimited && typeof q.limit === 'number' && q.limit > 0)
+      if (numeric.length > 0) {
+        const totalUsed = numeric.reduce((sum, q) => sum + (Number(q.used) || 0), 0)
+        const totalLimit = numeric.reduce((sum, q) => sum + (Number(q.limit) || 0), 0)
+        const totalPct = totalLimit > 0 ? clampPct(((totalLimit - totalUsed) / totalLimit) * 100) : 100
+        rows.push({
+          label: `Total ${qList.length} Quotas Remaining`,
+          subtext: `Gabungan ${qList.length} paket kredit aktif (${acc.accountName}): terpakai ${formatQuotaNumber(totalUsed)} / ${formatQuotaNumber(totalLimit)}.`,
+          remainingPct: totalPct
+        })
+      }
+    } else if (otherQuotas.length === 0) {
+      const h5 = fallbackBucket?.h5 || 0
+      rows.push({
+        label: 'Five Hour Limit Remaining',
+        subtext: h5 > 0
+          ? `Terpakai ${h5} dari ${fiveHrCap} req dalam 5 jam terakhir.`
+          : 'Kuota jendela 5-jam penuh (100% siap digunakan).',
+        remainingPct: clampPct(100 - (h5 / fiveHrCap) * 100)
+      })
+    }
+
+    return { id, title, tooltip, rows }
+  }
+
+  return [
+    buildFromLiveAccount(
+      'gemini',
+      geminiAcc ? `${geminiAcc.providerLabel} · Gemini Models` : 'Gemini Models',
+      'Kuota mingguan & 5-jam model Google Gemini',
+      geminiAcc,
+      buckets.gemini,
+      1500,
+      100
+    ),
+    buildFromLiveAccount(
+      'claude-gpt',
+      claudeAcc ? `${claudeAcc.providerLabel} · Claude and GPT Models` : 'Claude and GPT models',
+      'Kuota real-time model Claude, Kiro, dan GPT via 9Router',
+      claudeAcc,
+      buckets.claudeGpt,
+      500,
+      100
+    ),
+    buildFromLiveAccount(
+      'deepseek-glm',
+      deepseekAcc ? `${deepseekAcc.providerLabel} · DeepSeek & GLM Models` : 'DeepSeek & GLM Models',
+      'Kuota real-time model DeepSeek, GLM, & paket Bonus Codebuddy',
+      deepseekAcc,
+      buckets.deepseekGlm,
+      1500,
+      100
+    )
+  ]
+}
+
+/**
+ * --------------------------------------------------------------------------
+ * 3.2. RESOLVER: AKUN & KUOTA 9ROUTER (SINKRONISASI REAL-TIME :20128 + FALLBACK SQLITE)
+ * --------------------------------------------------------------------------
+ */
+export async function resolveRouterAccountsQuota({
+  force = false,
+  routerBaseUrl = 'http://127.0.0.1:20128',
+  fetchImpl = globalThis.fetch
+} = {}) {
+  const { buckets, dbPath } = await readLocalRouterUsageBuckets()
+  const base = String(routerBaseUrl || 'http://127.0.0.1:20128').replace(/\/+$/, '')
+
+  // Jalur Utama: Panggil API lokal 9Router untuk data kuota real-time tiap akun
+  if (typeof fetchImpl === 'function') {
+    const cliToken = resolveRouterCliToken()
+    const headers = { Accept: 'application/json' }
+    if (cliToken) {
+      headers['x-9r-cli-token'] = cliToken
+    }
+
+    const listResp = await fetchJsonWithTimeout(
+      fetchImpl,
+      `${base}/api/providers/client?page=1&pageSize=100&accountStatus=all&sort=priority`,
+      headers,
+      4000
+    )
+
+    if (listResp.ok && Array.isArray(listResp.data?.connections)) {
+      const rawConns = listResp.data.connections
+
+      // Kelompokkan per provider sesuai urutan kemunculan (identik dengan /dashboard/quota 9Router)
+      const byProvider = new Map()
+      for (const conn of rawConns) {
+        const key = String(conn.provider || '')
+        if (!byProvider.has(key)) byProvider.set(key, [])
+        byProvider.get(key).push(conn)
+      }
+      const groupedConns = Array.from(byProvider.values()).flat()
+
+      const accounts = await Promise.all(groupedConns.map(async (conn) => {
+        const usageUrl = `${base}/api/usage/${encodeURIComponent(conn.id)}${force ? '?force=1' : ''}`
+        const usageResp = await fetchJsonWithTimeout(fetchImpl, usageUrl, headers, 5500)
+        const usageData = usageResp.data && typeof usageResp.data === 'object' ? usageResp.data : null
+        const quotas = usageResp.ok ? normalizeRouterUsageQuotas(conn.provider, usageData) : []
+        const testStatus = String(conn.testStatus || (usageResp.status === 401 ? 'expired' : 'unknown'))
+        const usageMessage = String(usageData?.message || usageData?.error || '').trim()
+        const providerLabel = formatRouterProviderLabel(conn.provider, conn.providerSpecificData)
+        const isExpiredOrInvalid = quotas.length === 0 && Boolean(
+          usageMessage || testStatus === 'unavailable' || testStatus === 'error' || testStatus === 'expired'
+        )
+
+        return {
+          id: conn.id,
+          source: '9router',
+          providerKey: conn.provider,
+          providerLabel,
+          accountName: String(conn.name || conn.email || conn.displayName || 'Account'),
+          authType: String(conn.authType || 'apikey'),
+          isActive: conn.isActive !== false,
+          testStatus: quotas.length > 0 ? 'active' : testStatus,
+          plan: usageData?.plan || null,
+          totalQuotas: quotas.length,
+          isExpiredOrInvalid,
+          errorMessage: isExpiredOrInvalid
+            ? (usageMessage || `${providerLabel} credential invalid or expired.`)
+            : null,
+          quotas
+        }
+      }))
+
+      const modelGroups = buildSyncedModelGroups(accounts, buckets)
+      return { ok: true, liveSynced: true, accounts, modelGroups }
+    }
+  }
+
+  // Jalur Fallback Offline: baca daftar akun langsung dari data.sqlite jika 9Router :20128 tidak aktif
+  const targetDbs = dbPath ? [dbPath] : getRouterDbPaths()
+  for (const candidateDb of targetDbs) {
+    if (!candidateDb || !existsSync(candidateDb)) continue
+
+    let db = null
+    try {
+      const { DatabaseSync } = await import('node:sqlite')
+      db = new DatabaseSync(candidateDb, { readOnly: true })
+
+      const connRows = db.prepare(`
+        SELECT id, provider, authType, name, priority, isActive, data
+        FROM providerConnections
+        ORDER BY CASE WHEN priority IS NULL THEN 9999 ELSE priority END ASC, createdAt DESC
+      `).all()
+
+      const accounts = connRows.map((row) => {
+        let d = {}
+        try { d = JSON.parse(row.data || '{}') } catch {}
+        const psd = d.providerSpecificData || {}
+        const testStatus = String(d.testStatus || 'unknown')
+        const isExpiredOrInvalid = testStatus === 'unavailable' || testStatus === 'error' || testStatus === 'expired'
+        const providerLabel = formatRouterProviderLabel(row.provider, psd)
+
+        return {
+          id: row.id,
+          source: '9router',
+          providerKey: row.provider,
+          providerLabel,
+          accountName: String(row.name || 'Account'),
+          authType: String(row.authType || 'apikey'),
+          isActive: Boolean(row.isActive),
+          testStatus,
+          plan: null,
+          totalQuotas: 0,
+          isExpiredOrInvalid,
+          errorMessage: isExpiredOrInvalid
+            ? `${providerLabel} credential invalid or expired.`
+            : '9Router (:20128) sedang offline — jalankan 9Router untuk sinkronisasi kredit real-time.',
+          quotas: []
+        }
+      })
+
+      const modelGroups = buildSyncedModelGroups(accounts, buckets)
+      return { ok: true, liveSynced: false, accounts, modelGroups }
+    } catch (err) {
+      console.warn('[PathResolver] Gagal baca fallback kuota akun 9router:', err?.message || err)
+      return { ok: false, liveSynced: false, accounts: [], modelGroups: [] }
+    } finally {
+      try { db?.close?.() } catch {}
+    }
+  }
+
+  return { ok: false, liveSynced: false, accounts: [], modelGroups: [] }
 }
 
 /**

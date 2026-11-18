@@ -134,6 +134,9 @@ function navigateToSection(sectionId, pushHistory = true) {
 
   if (sectionId === 'package') {
     loadDetectedPathsOnce(false)
+  } else if (sectionId === 'llm') {
+    closeLlmSubpanel()
+    refreshProviderQuota(false)
   }
 }
 
@@ -216,6 +219,42 @@ function initThemeSwitcher() {
       applyTheme(next)
     })
   }
+}
+
+function applyUiMode(mode) {
+  const normalized = mode === 'advanced' ? 'advanced' : 'simple'
+  document.body.setAttribute('data-ui-mode', normalized)
+  const iconEl = document.getElementById('ui-mode-icon')
+  const textEl = document.getElementById('ui-mode-text')
+  if (normalized === 'advanced') {
+    if (iconEl) iconEl.textContent = '🛠️'
+    if (textEl) textEl.textContent = 'Mode Teknis'
+  } else {
+    if (iconEl) iconEl.textContent = '✨'
+    if (textEl) textEl.textContent = 'Mode Sederhana'
+  }
+}
+
+function initUiModeSwitcher() {
+  const initialMode = settings.uiMode === 'advanced' ? 'advanced' : 'simple'
+  applyUiMode(initialMode)
+
+  const toggleBtn = document.getElementById('ui-mode-toggle-btn')
+  toggleBtn?.addEventListener('click', () => {
+    const current = document.body.getAttribute('data-ui-mode') === 'advanced' ? 'advanced' : 'simple'
+    const next = current === 'simple' ? 'advanced' : 'simple'
+    settings.uiMode = next
+    saveSettings(settings)
+    applyUiMode(next)
+    showToast(
+      next === 'simple' ? 'Mode Sederhana Aktif ✨' : 'Mode Teknis Aktif 🛠️',
+      next === 'simple'
+        ? 'Menampilkan antarmuka ringkas yang ramah pengguna.'
+        : 'Menampilkan seluruh opsi port, URL endpoint, dan terminal developer.',
+      'info',
+      next === 'simple' ? '✨' : '🛠️'
+    )
+  })
 }
 
 // --- Status service & Package Hub & Home Prerequisites ---
@@ -569,7 +608,8 @@ async function refreshServiceStatus() {
     }
 
     // Tampilkan alert banner di Home bila ada service inti yang belum jalan
-    const allReady = s.hermes && s.router && isTtsOk
+    const needRouter = !!settings.routerChecked
+    const allReady = s.hermes && (!needRouter || s.router) && isTtsOk
     if (homeSetupAlert) {
       homeSetupAlert.classList.toggle('hidden', allReady)
     }
@@ -1440,12 +1480,21 @@ startBtn.addEventListener('click', async () => {
       s = await window.hermesAvatar.getServiceStatus()
     }
 
-    // Bila menggunakan Kokoro TTS dan servernya belum aktif, coba nyalakan otomatis
+    // Bila menggunakan Kokoro TTS dan servernya belum aktif, coba nyalakan otomatis; fallback aman ke Edge-TTS
     if (settings.tts?.provider === 'kokoro' && !s.kokoro) {
       showToast('Menyiapkan Vokal Kokoro...', 'Menyalakan server Kokoro TTS...', 'running', '🎙️')
       await window.hermesAvatar.startKokoroServer()
       await new Promise((r) => setTimeout(r, 1400))
       s = await window.hermesAvatar.getServiceStatus()
+      if (!s.kokoro) {
+        settings.tts.provider = 'edge'
+        if (/^[a-z]{2}_/i.test(settings.tts.voice || '')) {
+          settings.tts.voice = 'id-ID-GadisNeural'
+        }
+        saveSettings(settings)
+        loadVoiceUI()
+        showToast('Menggunakan Suara Cloud Otomatis 🔊', 'Layanan suara lokal belum terpasang; beralih otomatis ke Edge-TTS agar avatar langsung siap bicara.', 'info', '🔊', 4500)
+      }
     }
 
     // Periksa status model AI / LLM (Otak Percakapan)
@@ -1861,6 +1910,7 @@ function maskKey(key) {
 let editingProviderId = null // null = mode tambah; id = mode edit
 
 function renderLlmList() {
+  updateOAuthHubStatusBadges()
   const providers = settings.llm.providers || []
   if (providers.length === 0) {
     llmList.innerHTML = '<p class="hint" style="padding:16px;">Belum ada provider yang tersimpan.</p>'
@@ -1901,44 +1951,13 @@ function renderLlmList() {
     btn.addEventListener('click', async () => {
       const id = btn.dataset.id
       const p = settings.llm.providers.find((x) => x.id === id)
-      if (!p?.model) { statusEl.textContent = '⚠️ Model kosong.'; return }
-
       btn.disabled = true
       const original = btn.textContent
       btn.textContent = '⏳ Mengaktifkan…'
-      showToast('Mengaktifkan Provider...', `Menyetel ${p.name} (${p.model}) ke Hermes...`, 'running', '🧠')
-
       try {
-        // Set full provider config ke Hermes (kirim p.apiKey ciphertext apa adanya, atau '')
-        const res = await window.hermesAvatar.setLlmProvider({
-          name: p.name,
-          baseUrl: p.baseUrl || 'http://localhost:20128/v1',
-          apiKey: p.apiKey || '',
-          model: p.model
-        })
-        if (!res.ok) {
-          showToast('Gagal Mengaktifkan Provider', res.error || 'Terjadi kesalahan konfigurasi', 'error', '❌', 6000)
-          throw new Error(res.error)
-        }
-
-        settings.llm.activeId = p.id
-        saveSettings(settings)
-
-        if (res.warning) {
-          statusEl.textContent = `✓ Provider "${p.name}" disimpan, tetapi: ${res.warning}`
-          showToast('Perhatian Restart Hermes ⚠️', res.warning, 'warning', '⚠️', 6000)
-        } else {
-          statusEl.textContent = `✓ Provider "${p.name}" diaktifkan (${p.model}).`
-          showToast('Provider Diaktifkan! ✅', `${p.name} kini aktif sebagai otak percakapan avatar (${p.model})`, 'success', '✨', 4500)
-        }
-
-        renderLlmList()
-        await refreshLlmActive()
-        await refreshModelOptions()
-        await refreshServiceStatus()
+        await activateLlmProvider(p)
       } catch (err) {
         statusEl.textContent = `✗ Gagal aktifkan: ${err?.message || err}`
-        showToast('Gagal Mengaktifkan Provider', err?.message || err, 'error', '❌')
       } finally {
         btn.disabled = false
         btn.textContent = original
@@ -1978,6 +1997,7 @@ function renderLlmList() {
       llmModel.value = p.model || ''
       llmAddBtn.textContent = 'Simpan Perubahan'
       statusEl.textContent = `Mengedit: ${p.name}`
+      openLlmSubpanel('add-provider')
     })
   })
 
@@ -2022,14 +2042,799 @@ function renderLlmList() {
   })
 }
 
+async function activateLlmProvider(p) {
+  if (!p?.model) {
+    statusEl.textContent = '⚠️ Model kosong.'
+    return false
+  }
+  showToast('Mengaktifkan Provider...', `Menyetel ${p.name} (${p.model}) ke Hermes...`, 'running', '🧠')
+  const res = await window.hermesAvatar.setLlmProvider({
+    name: p.name,
+    baseUrl: p.baseUrl || 'http://127.0.0.1:20128/v1',
+    apiKey: p.apiKey || '',
+    model: p.model
+  })
+  if (!res.ok) {
+    showToast('Gagal Mengaktifkan Provider', res.error || 'Terjadi kesalahan konfigurasi', 'error', '❌', 6000)
+    throw new Error(res.error)
+  }
+
+  settings.llm.activeId = p.id
+  saveSettings(settings)
+
+  if (res.warning) {
+    statusEl.textContent = `✓ Provider "${p.name}" disimpan, tetapi: ${res.warning}`
+    showToast('Perhatian Restart Hermes ⚠️', res.warning, 'warning', '⚠️', 6000)
+  } else {
+    statusEl.textContent = `✓ Provider "${p.name}" diaktifkan (${p.model}).`
+    showToast('Provider Diaktifkan! ✅', `${p.name} kini aktif sebagai otak percakapan avatar (${p.model})`, 'success', '✨', 4500)
+  }
+
+  updateOAuthHubStatusBadges()
+  renderLlmList()
+  await refreshLlmActive()
+  await refreshModelOptions()
+  await refreshServiceStatus()
+  await refreshProviderQuota(false)
+  return true
+}
+
+let cachedQuotaData = { accounts: [], modelGroups: [] }
+let quotaViewMode = 'both'
+let quotaHideExpired = false
+let quotaAutoRefreshEnabled = true
+let quotaCountdownSec = 55
+let quotaTimerStarted = false
+const QUOTAS_PER_PAGE = 10
+const accountQuotaPages = new Map()
+
+function getQuotaBarColor(pct) {
+  if (pct < 30) return 'var(--red, #ff453a)'
+  if (pct <= 70) return 'var(--orange, #ff9f0a)'
+  return 'var(--green, #30d158)'
+}
+
+function getQuotaColorClass(pct) {
+  const n = Number(pct ?? 100)
+  if (n < 30) return 'low'
+  if (n <= 70) return 'mid'
+  return ''
+}
+
+function renderDonutSvg(pct) {
+  const safePct = Math.max(0, Math.min(100, Number(pct) || 0))
+  const circumference = 2 * Math.PI * 11
+  const offset = circumference * (1 - safePct / 100)
+  const cls = getQuotaColorClass(safePct)
+  return `<svg class="quota-donut-svg" viewBox="0 0 28 28" aria-hidden="true">
+    <circle class="quota-donut-bg" cx="14" cy="14" r="11"></circle>
+    <circle class="quota-donut-fg ${cls}" cx="14" cy="14" r="11" stroke-dasharray="${circumference.toFixed(2)}" stroke-dashoffset="${offset.toFixed(2)}"></circle>
+  </svg>`
+}
+
+function applyQuotaViewVisibility() {
+  const accSec = document.getElementById('quota-accounts-section')
+  const ringSec = document.getElementById('quota-rings-section')
+  if (accSec) accSec.style.display = quotaViewMode === 'rings' ? 'none' : 'block'
+  if (ringSec) ringSec.style.display = quotaViewMode === 'cards' ? 'none' : 'block'
+}
+
+function syncQuotaProviderFilterOptions(accounts) {
+  const sel = document.getElementById('quota-filter-provider')
+  if (!sel) return
+  const prev = sel.value || 'all'
+  const labels = Array.from(new Set((accounts || []).map((a) => a.providerLabel).filter(Boolean)))
+  sel.innerHTML = '<option value="all">All Providers</option>' + labels
+    .map((lbl) => `<option value="${escapeHtml(lbl)}">${escapeHtml(lbl)}</option>`)
+    .join('')
+  sel.value = labels.includes(prev) ? prev : 'all'
+}
+
+function renderRouterAccountCards() {
+  const grid = document.getElementById('quota-accounts-grid')
+  if (!grid) return
+  const providerVal = document.getElementById('quota-filter-provider')?.value || 'all'
+  const statusVal = document.getElementById('quota-filter-status')?.value || 'all'
+
+  let list = [...(cachedQuotaData.accounts || [])]
+  if (providerVal !== 'all') {
+    list = list.filter((a) => a.providerLabel === providerVal)
+  }
+  if (statusVal === 'available') {
+    list = list.filter((a) => !a.isExpiredOrInvalid)
+  } else if (statusVal === 'expired') {
+    list = list.filter((a) => a.isExpiredOrInvalid)
+  }
+  if (quotaHideExpired) {
+    list = list.filter((a) => !a.isExpiredOrInvalid)
+  }
+
+  // Urutkan akun sehat/tersedia di atas agar cepat terlihat, pertahankan urutan lain dari backend
+  list.sort((a, b) => Number(a.isExpiredOrInvalid) - Number(b.isExpiredOrInvalid))
+
+  if (list.length === 0) {
+    grid.innerHTML = '<p class="hint" style="padding:10px 2px;">Tidak ada akun yang cocok dengan filter saat ini.</p>'
+    return
+  }
+
+  grid.innerHTML = list.map((acc) => {
+    const iconCls = acc.authType === 'oauth' ? 'oauth' : ''
+    const iconGlyph = acc.authType === 'oauth' ? '🔗' : '🤖'
+    const pillCls = acc.isActive ? 'on' : ''
+    const quotas = Array.isArray(acc.quotas) ? acc.quotas : []
+    const totalQuotas = acc.totalQuotas || quotas.length
+    let bodyHtml = ''
+
+    if (acc.isExpiredOrInvalid) {
+      const msg = escapeHtml(acc.errorMessage || `${acc.providerLabel} credential invalid or expired.`)
+      bodyHtml = `<div class="acc-expired-box">${msg}</div><div class="acc-expired-footer">${msg}</div>`
+    } else if (quotas.length === 0) {
+      const msg = escapeHtml(acc.errorMessage || 'Belum ada data kuota tersedia untuk koneksi ini.')
+      bodyHtml = `<div class="acc-expired-box">${msg}</div>`
+    } else {
+      const totalPages = Math.max(1, Math.ceil(totalQuotas / QUOTAS_PER_PAGE))
+      let curPage = Number(accountQuotaPages.get(acc.id) || 1)
+      if (!Number.isFinite(curPage) || curPage < 1) curPage = 1
+      if (curPage > totalPages) curPage = totalPages
+      accountQuotaPages.set(acc.id, curPage)
+
+      const startIdx = (curPage - 1) * QUOTAS_PER_PAGE
+      const pageQuotas = quotas.slice(startIdx, startIdx + QUOTAS_PER_PAGE)
+
+      const subheadHtml = `<div class="acc-quotas-subhead">
+        <span>${totalQuotas} quota${totalQuotas > 1 ? 's' : ''}</span>
+        ${acc.plan ? `<span class="acc-plan-tag" title="${escapeHtml(acc.plan)}">${escapeHtml(acc.plan)}</span>` : ''}
+      </div>`
+
+      const rows = pageQuotas.map((q) => {
+        const pct = Math.max(0, Math.min(100, Number(q.remainingPct ?? 100)))
+        const cls = getQuotaColorClass(pct)
+        const usedText = q.usedFormatted ?? String(q.used ?? 0)
+        const limitText = q.limitFormatted ?? String(q.limit ?? 0)
+        const metaRight = q.unlimited ? 'Unlimited' : `${pct}%`
+        const metaLeft = q.unlimited ? `${usedText} used · Unlimited` : `${usedText} / ${limitText}`
+        return `<div class="acc-quota-row">
+          <div class="acc-quota-label-col" title="${escapeHtml(q.label)}">
+            <span class="acc-dot ${cls}"></span>
+            <span>${escapeHtml(q.label)}</span>
+          </div>
+          <div class="acc-bar-col">
+            <div class="acc-bar-track"><div class="acc-bar-fill ${cls}" style="width:${pct}%"></div></div>
+            <div class="acc-bar-meta">
+              <span>${escapeHtml(metaLeft)}</span>
+              <span class="acc-pct-text ${cls}">${escapeHtml(metaRight)}</span>
+            </div>
+          </div>
+          <div class="acc-reset-text">${escapeHtml(q.resetText || '')}</div>
+        </div>`
+      }).join('')
+
+      const shownStart = startIdx + 1
+      const shownEnd = Math.min(startIdx + QUOTAS_PER_PAGE, totalQuotas)
+      const paginationHtml = totalPages > 1
+        ? `<div class="acc-pagination-box">
+            <div class="acc-pagination-meta">
+              <span>Showing ${shownStart}-${shownEnd} of ${totalQuotas}</span>
+              <span>Page ${curPage} / ${totalPages}</span>
+            </div>
+            <div class="acc-pagination-btns">
+              <button type="button" class="acc-page-btn" data-acc-id="${escapeHtml(acc.id)}" data-page="${curPage - 1}" ${curPage <= 1 ? 'disabled' : ''}>Prev</button>
+              <button type="button" class="acc-page-btn" data-acc-id="${escapeHtml(acc.id)}" data-page="${curPage + 1}" ${curPage >= totalPages ? 'disabled' : ''}>Next</button>
+            </div>
+          </div>`
+        : ''
+
+      bodyHtml = `${subheadHtml}<div class="acc-quotas-list">${rows}</div>${paginationHtml}`
+    }
+
+    return `<div class="router-acc-card ${acc.isExpiredOrInvalid ? 'expired' : ''}">
+      <div class="router-acc-header">
+        <div class="router-acc-identity">
+          <span class="router-acc-icon ${iconCls}">${iconGlyph}</span>
+          <div class="router-acc-titles">
+            <span class="router-acc-provider">${escapeHtml(acc.providerLabel)}</span>
+            <span class="router-acc-name">${escapeHtml(acc.accountName)}</span>
+          </div>
+        </div>
+        <div class="router-acc-actions">
+          <button type="button" class="acc-mini-refresh" title="Segarkan status akun">↻</button>
+          <span class="acc-status-pill ${pillCls}" title="${acc.isActive ? 'Aktif' : 'Nonaktif'}"></span>
+        </div>
+      </div>
+      ${bodyHtml}
+    </div>`
+  }).join('')
+
+  grid.querySelectorAll('.acc-mini-refresh').forEach((btn) => {
+    btn.addEventListener('click', () => refreshProviderQuota(true))
+  })
+
+  grid.querySelectorAll('.acc-page-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const accId = btn.dataset.accId
+      const nextPage = Number(btn.dataset.page || 1)
+      if (accId && Number.isFinite(nextPage)) {
+        accountQuotaPages.set(accId, nextPage)
+        renderRouterAccountCards()
+      }
+    })
+  })
+}
+
+function renderOAuthModelRings() {
+  const container = document.getElementById('quota-rings-container')
+  if (!container) return
+  const groups = cachedQuotaData.modelGroups || []
+  if (groups.length === 0) {
+    container.innerHTML = ''
+    return
+  }
+
+  container.innerHTML = groups.map((grp) => {
+    const rowsHtml = (grp.rows || []).map((r) => {
+      const pct = Math.max(0, Math.min(100, Number(r.remainingPct ?? 100)))
+      const cls = getQuotaColorClass(pct)
+      return `<div class="oauth-limit-row">
+        <div class="oauth-limit-texts">
+          <span class="oauth-limit-title">${escapeHtml(r.label)}</span>
+          <span class="oauth-limit-sub">${escapeHtml(r.subtext || '')}</span>
+        </div>
+        <div class="oauth-limit-right">
+          <span class="oauth-limit-pct ${cls}">${pct}%</span>
+          ${renderDonutSvg(pct)}
+        </div>
+      </div>`
+    }).join('')
+
+    return `<div class="oauth-model-group">
+      <div class="oauth-group-title">
+        <span>${escapeHtml(grp.title)}</span>
+        <span class="oauth-group-info" title="${escapeHtml(grp.tooltip || '')}">ⓘ</span>
+      </div>
+      <div class="oauth-limit-card">${rowsHtml}</div>
+    </div>`
+  }).join('')
+}
+
+async function refreshProviderQuota(interactive = false) {
+  const tierEl = document.getElementById('quota-tier-label')
+  const complianceEl = document.getElementById('quota-compliance-badge')
+  const summaryEl = document.getElementById('quota-summary-text')
+  const metricsEl = document.getElementById('quota-metrics-row')
+  const barEl = document.getElementById('quota-progress-bar')
+  const btnEl = document.getElementById('quota-refresh-btn')
+  if (!tierEl || !summaryEl) return
+
+  const providers = settings.llm?.providers || []
+  const activeProv = providers.find((p) => p.id === settings.llm?.activeId) || providers[0]
+
+  if (btnEl) {
+    btnEl.disabled = true
+    btnEl.textContent = 'Memeriksa…'
+  }
+  quotaCountdownSec = 55
+
+  try {
+    const res = await window.hermesAvatar?.checkProviderQuota?.(
+      activeProv?.baseUrl || '',
+      activeProv?.apiKey || ''
+    )
+
+    if (res && Array.isArray(res.accounts)) {
+      cachedQuotaData = {
+        accounts: res.accounts || [],
+        modelGroups: res.modelGroups || []
+      }
+      syncQuotaProviderFilterOptions(cachedQuotaData.accounts)
+      renderRouterAccountCards()
+      renderOAuthModelRings()
+      applyQuotaViewVisibility()
+    }
+
+    if (!res || !res.ok) {
+      if (res?.unconfigured) {
+        tierEl.textContent = 'Belum Ada Akun'
+        tierEl.className = 'badge'
+        if (complianceEl) complianceEl.textContent = 'Siap Dihubungkan'
+        summaryEl.textContent = 'Gunakan tombol Login 1-Klik OpenRouter (Gratis) atau Hubungkan 9Router Lokal di bawah.'
+        if (metricsEl) metricsEl.textContent = 'Belum ada provider AI yang tersimpan.'
+      } else {
+        const provLabel = activeProv?.name || res?.configuredProvider || 'Hermes Config'
+        const modelLabel = activeProv?.model || res?.configuredModel || '-'
+        tierEl.textContent = 'Tidak Terjangkau'
+        tierEl.className = 'badge warning'
+        if (complianceEl) complianceEl.textContent = 'Perlu Cek Koneksi'
+        summaryEl.textContent = res?.error || 'Tidak dapat menghubungi endpoint provider saat ini.'
+        if (metricsEl) metricsEl.textContent = `Provider aktif: ${provLabel} (${modelLabel})`
+        if (interactive) {
+          showToast('Gagal Memeriksa Kuota', res?.error || 'Endpoint tidak merespons', 'warning', '⚠️')
+        }
+      }
+      if (barEl) barEl.style.width = '0%'
+      const quotaBadgeEl = document.getElementById('llm-menu-badge-quota')
+      if (quotaBadgeEl) {
+        quotaBadgeEl.className = 'format-count-pill off'
+        quotaBadgeEl.textContent = '⚡ Cek Kuota'
+      }
+      return
+    }
+
+    const provDisplayName = activeProv?.name || res.configuredProvider || (res.providerType === '9router' ? '9Router Lokal' : 'Hermes Config')
+    const provDisplayModel = activeProv?.model || res.configuredModel || '-'
+
+    tierEl.textContent = res.tierLabel || 'Aktif'
+    tierEl.className = res.isFreeTier || res.providerType === 'openrouter' ? 'badge ready' : 'badge info'
+    if (complianceEl) complianceEl.textContent = res.complianceBadge || 'Patuh ToS'
+    summaryEl.textContent = res.summary || 'Provider siap digunakan.'
+
+    let pct = 100
+    let metrics = `Provider: ${provDisplayName} · Model: ${provDisplayModel}`
+
+    if (res.providerType === 'openrouter' && typeof res.limit === 'number' && res.limit > 0 && typeof res.limitRemaining === 'number') {
+      pct = Math.max(0, Math.min(100, Math.round((res.limitRemaining / res.limit) * 100)))
+      metrics = `Sisa kredit: $${res.limitRemaining.toFixed(2)} / $${res.limit.toFixed(2)} · Pemakaian: $${(res.usage ?? 0).toFixed(2)}`
+    } else if (res.rateLimits?.reqRemaining !== null && res.rateLimits?.reqRemaining !== undefined && res.rateLimits?.reqLimit) {
+      pct = Math.max(0, Math.min(100, Math.round((res.rateLimits.reqRemaining / res.rateLimits.reqLimit) * 100)))
+      const tokPart = res.rateLimits.tokRemaining !== null && res.rateLimits.tokRemaining !== undefined
+        ? ` · Sisa token: ${res.rateLimits.tokRemaining}`
+        : ''
+      metrics = `Sisa request: ${res.rateLimits.reqRemaining}/${res.rateLimits.reqLimit}${tokPart}`
+    } else if (res.providerType === '9router') {
+      pct = typeof res.primaryQuotaPct === 'number'
+        ? res.primaryQuotaPct
+        : (res.modelsCount > 0 ? 100 : 15)
+      const accPart = res.primaryAccountSummary ? ` · ${res.primaryAccountSummary}` : ''
+      metrics = `Jalur 9Router Lokal · Model aktif: ${provDisplayModel} · ${res.modelsCount ?? 0} model${accPart}`
+    } else {
+      const hintPart = res.dailyLimitHint ? ` · Batas gratis ~${res.dailyLimitHint} req/hari` : ''
+      const modelPart = typeof res.modelsCount === 'number' ? ` · ${res.modelsCount} model tersedia` : ''
+      metrics = `Provider: ${provDisplayName} (${provDisplayModel})${modelPart}${hintPart}`
+    }
+
+    if (barEl) {
+      barEl.style.width = `${pct}%`
+      barEl.style.background = getQuotaBarColor(pct)
+    }
+    if (metricsEl) metricsEl.textContent = metrics
+
+    const quotaBadgeEl = document.getElementById('llm-menu-badge-quota')
+    if (quotaBadgeEl) {
+      const accCount = Array.isArray(res.accounts) ? res.accounts.length : 0
+      const pctShow = typeof res.primaryQuotaPct === 'number' ? res.primaryQuotaPct : pct
+      quotaBadgeEl.className = 'format-count-pill on'
+      quotaBadgeEl.textContent = accCount > 0
+        ? `🟢 ${accCount} Akun · Sisa ${pctShow}%`
+        : `🟢 Sisa ${pctShow}%`
+    }
+    updateOAuthHubStatusBadges()
+    if (interactive) {
+      showToast('Status Kuota Diperbarui 📊', res.summary, 'success', '📊')
+    }
+  } catch (err) {
+    tierEl.textContent = 'Perlu Muat Ulang'
+    tierEl.className = 'badge warning'
+    if (complianceEl) complianceEl.textContent = 'Info'
+    summaryEl.textContent = err?.message || 'Terjadi kesalahan saat memeriksa kuota.'
+    if (barEl) barEl.style.width = '0%'
+    if (interactive) {
+      showToast('Gagal Cek Kuota', err?.message || String(err), 'error', '❌')
+    }
+  } finally {
+    if (btnEl) {
+      btnEl.disabled = false
+      btnEl.textContent = 'Cek Kuota ↻'
+    }
+  }
+}
+
+function openLlmSubpanel(subId) {
+  const menuView = document.getElementById('llm-menu-view')
+  const detailView = document.getElementById('llm-detail-view')
+  if (!menuView || !detailView) return
+
+  menuView.classList.add('hidden')
+  detailView.classList.remove('hidden')
+
+  detailView.querySelectorAll('.llm-subpanel').forEach((panelEl) => {
+    const isTarget = panelEl.dataset.subpanel === subId
+    panelEl.classList.toggle('hidden', !isTarget)
+  })
+
+  const contentEl = document.querySelector('.content')
+  if (contentEl) contentEl.scrollTop = 0
+
+  if (subId === 'quota-monitor') {
+    refreshProviderQuota(false)
+  }
+}
+
+function closeLlmSubpanel() {
+  const menuView = document.getElementById('llm-menu-view')
+  const detailView = document.getElementById('llm-detail-view')
+  if (!menuView || !detailView) return
+
+  detailView.classList.add('hidden')
+  detailView.querySelectorAll('.llm-subpanel').forEach((panelEl) => {
+    panelEl.classList.add('hidden')
+  })
+  menuView.classList.remove('hidden')
+
+  const contentEl = document.querySelector('.content')
+  if (contentEl) contentEl.scrollTop = 0
+
+  document.querySelectorAll('#llm-sub-menu .format-item[data-llm-sub]').forEach((item) => {
+    const triggerOpen = () => {
+      const subId = item.dataset.llmSub
+      if (subId) openLlmSubpanel(subId)
+    }
+    item.addEventListener('click', triggerOpen)
+    item.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault()
+        triggerOpen()
+      }
+    })
+  })
+
+  document.getElementById('llm-back-btn')?.addEventListener('click', () => {
+    closeLlmSubpanel()
+  })
+
+  document.getElementById('btn-jump-quota-from-router')?.addEventListener('click', () => {
+    openLlmSubpanel('quota-monitor')
+  })
+
+  document.getElementById('btn-jump-add-provider')?.addEventListener('click', () => {
+    resetProviderForm()
+    openLlmSubpanel('add-provider')
+  })
+
+  updateOAuthHubStatusBadges()
+}
+
+function updateOAuthHubStatusBadges() {
+  const providers = settings.llm?.providers || []
+  const activeId = settings.llm?.activeId || (providers[0] ? providers[0].id : null)
+  const hubTargets = {
+    openrouter: ['https://openrouter.ai'],
+    gemini: ['https://generativelanguage.googleapis.com'],
+    groq: ['https://api.groq.com'],
+    mistral: ['https://api.mistral.ai'],
+    '9router': ['http://127.0.0.1:20128', 'http://localhost:20128']
+  }
+
+  let oauthActive = false
+  let routerSavedOrActive = false
+
+  for (const [key, origins] of Object.entries(hubTargets)) {
+    const el = document.getElementById(`hub-status-${key}`)
+    const matches = providers.filter((prov) => {
+      const origin = getUrlOrigin(prov.baseUrl)
+      if (origin && origins.includes(origin)) return true
+      return key === '9router' && prov.authType === '9router'
+    })
+    const isActive = matches.some((prov) => prov.id === activeId)
+    if (key === '9router' && (isActive || matches.length > 0)) {
+      routerSavedOrActive = true
+    } else if (key !== '9router' && isActive) {
+      oauthActive = true
+    }
+
+    if (!el) continue
+    if (isActive) {
+      el.className = 'badge ready'
+      el.textContent = 'Aktif ✓'
+    } else if (matches.length > 0) {
+      el.className = 'badge info'
+      el.textContent = 'Tersimpan'
+    } else {
+      el.className = 'badge'
+      el.textContent = 'Siap Login'
+    }
+  }
+
+  const savedMenuBadge = document.getElementById('llm-menu-badge-saved')
+  if (savedMenuBadge) {
+    savedMenuBadge.className = `format-count-pill ${providers.length > 0 ? 'on' : 'off'}`
+    savedMenuBadge.textContent = `${providers.length} Tersimpan`
+  }
+
+  const oauthMenuBadge = document.getElementById('llm-menu-badge-oauth')
+  if (oauthMenuBadge) {
+    oauthMenuBadge.className = 'format-count-pill on'
+    oauthMenuBadge.textContent = oauthActive ? '🟢 OAuth Aktif' : '🛡️ 4 Penyedia Gratis'
+  }
+
+  const hasLiveRouterAcc = (cachedQuotaData?.accounts || []).some(
+    (a) => a.source === '9router' && !a.isExpiredOrInvalid
+  )
+  const routerMenuBadge = document.getElementById('llm-menu-badge-router')
+  if (routerMenuBadge) {
+    if (routerSavedOrActive || hasLiveRouterAcc) {
+      routerMenuBadge.className = 'format-count-pill on'
+      routerMenuBadge.textContent = '🟢 Aktif (:20128)'
+    } else {
+      routerMenuBadge.className = 'format-count-pill off'
+      routerMenuBadge.textContent = 'Siap Hubungkan'
+    }
+  }
+}
+
+function upsertLlmProvider(entry) {
+  settings.llm = settings.llm || { providers: [] }
+  settings.llm.providers = settings.llm.providers || []
+  const existing = settings.llm.providers.find(
+    (x) => x.baseUrl === entry.baseUrl && (!entry.authType || !x.authType || x.authType === entry.authType)
+  )
+  if (existing) {
+    existing.name = entry.name
+    existing.apiKey = entry.apiKey
+    existing.model = entry.model
+    existing.authType = entry.authType
+    saveSettings(settings)
+    return existing
+  }
+  const created = { id: Date.now().toString(36), ...entry }
+  settings.llm.providers.push(created)
+  saveSettings(settings)
+  return created
+}
+
+function initDualTrackActions() {
+  const oauthBtn = document.getElementById('btn-oauth-openrouter')
+  const geminiKeyBtn = document.getElementById('btn-get-gemini-key')
+  const quickRouterBtn = document.getElementById('btn-quick-9router')
+  const openRouterWebBtn = document.getElementById('btn-open-9router-web')
+  const quotaRefreshBtn = document.getElementById('quota-refresh-btn')
+
+  quotaRefreshBtn?.addEventListener('click', () => {
+    refreshProviderQuota(true)
+  })
+
+  document.querySelectorAll('#quota-view-tabs .quota-tab-btn').forEach((tabBtn) => {
+    tabBtn.addEventListener('click', () => {
+      quotaViewMode = tabBtn.dataset.quotaView || 'both'
+      document.querySelectorAll('#quota-view-tabs .quota-tab-btn').forEach((b) => {
+        b.classList.toggle('active', b === tabBtn)
+      })
+      applyQuotaViewVisibility()
+    })
+  })
+
+  document.getElementById('quota-filter-provider')?.addEventListener('change', renderRouterAccountCards)
+  document.getElementById('quota-filter-status')?.addEventListener('change', renderRouterAccountCards)
+
+  const hideExpiredBtn = document.getElementById('quota-toggle-empty-btn')
+  hideExpiredBtn?.addEventListener('click', () => {
+    quotaHideExpired = !quotaHideExpired
+    hideExpiredBtn.classList.toggle('active', quotaHideExpired)
+    hideExpiredBtn.textContent = quotaHideExpired ? '✅ Show All' : '🚫 Hide Expired'
+    renderRouterAccountCards()
+  })
+
+  const autoRefreshBtn = document.getElementById('quota-autorefresh-btn')
+  if (autoRefreshBtn) {
+    autoRefreshBtn.classList.toggle('active', quotaAutoRefreshEnabled)
+    autoRefreshBtn.addEventListener('click', () => {
+      quotaAutoRefreshEnabled = !quotaAutoRefreshEnabled
+      autoRefreshBtn.classList.toggle('active', quotaAutoRefreshEnabled)
+    })
+  }
+
+  if (!quotaTimerStarted) {
+    quotaTimerStarted = true
+    setInterval(() => {
+      const countdownEl = document.getElementById('quota-countdown')
+      const llmPanelActive = document.getElementById('panel-llm')?.classList.contains('active')
+      if (!quotaAutoRefreshEnabled || document.visibilityState === 'hidden') return
+      if (!llmPanelActive) return
+      quotaCountdownSec--
+      if (quotaCountdownSec <= 0) {
+        quotaCountdownSec = 55
+        refreshProviderQuota(false)
+      }
+      if (countdownEl) countdownEl.textContent = String(quotaCountdownSec)
+    }, 1000)
+  }
+
+  applyQuotaViewVisibility()
+
+  oauthBtn?.addEventListener('click', async () => {
+    oauthBtn.disabled = true
+    const origText = oauthBtn.textContent
+    oauthBtn.textContent = '⏳ Menunggu Login di Browser…'
+    showToast('Login OpenRouter OAuth 🔗', 'Selesaikan otorisasi di browser Anda untuk menghubungkan akun secara otomatis.', 'running', '🔗', 6000)
+    try {
+      const res = await window.hermesAvatar?.startOAuthLogin?.('openrouter')
+      if (!res?.ok || !res.provider) {
+        throw new Error(res?.error || 'Login OAuth dibatalkan atau gagal')
+      }
+      const savedProv = upsertLlmProvider(res.provider)
+      await activateLlmProvider(savedProv)
+      showToast('Akun OpenRouter Terhubung! 🎉', 'Login OAuth berhasil dan langsung diaktifkan.', 'success', '✨', 5000)
+    } catch (err) {
+      statusEl.textContent = `✗ OAuth gagal: ${err?.message || err}`
+      showToast('Login OAuth Gagal', err?.message || String(err), 'error', '❌', 6000)
+    } finally {
+      oauthBtn.disabled = false
+      oauthBtn.textContent = origText
+    }
+  })
+
+  geminiKeyBtn?.addEventListener('click', () => {
+    document.querySelector('#llm-preset-grid [data-preset="gemini"]')?.click()
+    window.hermesAvatar?.openExternalUrl?.('https://aistudio.google.com/app/apikey')
+    showToast('Google AI Studio Dibuka 🔑', 'Buat API key gratis di browser, lalu tempel di kolom API Key.', 'info', '🔑', 5000)
+  })
+
+  quickRouterBtn?.addEventListener('click', async () => {
+    quickRouterBtn.disabled = true
+    const origText = quickRouterBtn.textContent
+    quickRouterBtn.textContent = '⏳ Menghubungkan 9Router…'
+    showToast('Menghubungkan 9Router Lokal...', 'Mendeteksi service 9Router di port 20128...', 'running', '⚡')
+    try {
+      await window.hermesAvatar?.startRouter?.().catch(() => {})
+      const baseUrl = 'http://127.0.0.1:20128/v1'
+      const epRes = await window.hermesAvatar?.fetchEndpointModels?.(baseUrl, '')
+      if (!epRes?.ok) {
+        throw new Error(epRes?.error || '9Router tidak aktif di port 20128. Pastikan 9Router sudah terpasang dan berjalan.')
+      }
+      const detectedModel = Array.isArray(epRes.models) && epRes.models.length > 0 ? epRes.models[0] : 'default'
+      const savedProv = upsertLlmProvider({
+        name: '9Router Lokal',
+        baseUrl,
+        apiKey: '',
+        model: detectedModel,
+        authType: '9router'
+      })
+      await activateLlmProvider(savedProv)
+    } catch (err) {
+      statusEl.textContent = `✗ 9Router gagal terhubung: ${err?.message || err}`
+      showToast('9Router Belum Aktif', err?.message || String(err), 'warning', '⚠️', 6000)
+    } finally {
+      quickRouterBtn.disabled = false
+      quickRouterBtn.textContent = origText
+    }
+  })
+
+  openRouterWebBtn?.addEventListener('click', () => {
+    window.hermesAvatar?.openExternalUrl?.('http://127.0.0.1:20128')
+    showToast('Dashboard 9Router Dibuka 🌐', 'Kelola akun login 9Router Anda di browser.', 'info', '🌐', 3500)
+  })
+
+  document.getElementById('btn-open-9router-providers')?.addEventListener('click', () => {
+    window.hermesAvatar?.openExternalUrl?.('http://127.0.0.1:20128/dashboard/providers')
+    showToast(
+      'Halaman Akun 9Router Dibuka 🔐',
+      'Tambahkan atau login akun OAuth (Claude, Codex, Gemini CLI, Kiro) lewat dashboard 9Router.',
+      'info',
+      '🔐',
+      4500
+    )
+  })
+
+  document.querySelectorAll('#oauth-login-hub [data-open-url]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const url = btn.dataset.openUrl
+      if (url) window.hermesAvatar?.openExternalUrl?.(url)
+      const target = btn.dataset.presetTarget
+      if (target) {
+        document.querySelector(`#llm-preset-grid [data-preset="${target}"]`)?.click()
+      }
+      showToast(
+        'Halaman Login Provider Dibuka 🌐',
+        'Masuk dengan akun Google/GitHub Anda, salin API Key, lalu klik "Tempel & Aktifkan ⚡" di kartu ini.',
+        'info',
+        '🔑',
+        5500
+      )
+    })
+  })
+
+  document.querySelectorAll('.oauth-paste-activate-btn').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const card = btn.closest('.oauth-provider-card')
+      const inlineInput = card?.querySelector('.oauth-inline-key')
+      let rawKey = (inlineInput?.value || '').trim()
+
+      if (!rawKey) {
+        try {
+          rawKey = (await navigator.clipboard.readText() || '').trim()
+        } catch {
+          rawKey = ''
+        }
+      }
+
+      if (!rawKey || /^https?:\/\//i.test(rawKey) || rawKey.length < 8) {
+        inlineInput?.focus()
+        showToast(
+          'API Key Belum Ditemukan',
+          'Silakan klik tombol Login di langkah 1 untuk menyalin API Key terlebih dahulu, lalu klik Tempel & Aktifkan.',
+          'warning',
+          '🔑',
+          5500
+        )
+        return
+      }
+
+      const name = btn.dataset.name || 'Provider AI'
+      const baseUrl = btn.dataset.baseurl || ''
+      const model = btn.dataset.model || ''
+      if (!baseUrl || !model) return
+
+      btn.disabled = true
+      const origText = btn.textContent
+      btn.textContent = '⏳ Mengaktifkan…'
+      try {
+        const keyRes = await encryptProviderKey(rawKey, baseUrl)
+        if (!keyRes.ok) return
+        const savedProv = upsertLlmProvider({
+          name,
+          baseUrl,
+          apiKey: keyRes.value,
+          model,
+          authType: 'apikey'
+        })
+        if (inlineInput) inlineInput.value = ''
+        await activateLlmProvider(savedProv)
+      } catch (err) {
+        statusEl.textContent = `✗ Gagal mengaktifkan ${name}: ${err?.message || err}`
+        showToast('Gagal Mengaktifkan Provider', err?.message || String(err), 'error', '❌', 6000)
+      } finally {
+        btn.disabled = false
+        btn.textContent = origText
+      }
+    })
+  })
+
+  updateOAuthHubStatusBadges()
+}
+
+function initLlmPresets() {
+  const grid = document.getElementById('llm-preset-grid')
+  const baseUrlRow = document.getElementById('llm-base-url-row')
+  if (!grid) return
+
+  grid.querySelectorAll('.llm-preset-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      grid.querySelectorAll('.llm-preset-btn').forEach((b) => b.classList.remove('active'))
+      btn.classList.add('active')
+
+      editingProviderId = null
+      llmAddBtn.textContent = 'Simpan & Aktifkan Provider ⚡'
+      llmName.value = btn.dataset.name || ''
+      llmBaseUrl.value = btn.dataset.baseurl || ''
+      llmModel.value = btn.dataset.model || ''
+
+      const isCustom = btn.dataset.preset === 'custom'
+      if (baseUrlRow) {
+        baseUrlRow.classList.toggle('force-visible', isCustom)
+      }
+
+      if (btn.dataset.needskey === '0') {
+        llmApiKey.value = ''
+        llmApiKey.placeholder = 'Kosongkan saja (otomatis untuk layanan lokal)'
+      } else {
+        llmApiKey.placeholder = 'Tempel API key Anda di sini...'
+        llmApiKey.focus()
+      }
+      statusEl.textContent = isCustom
+        ? 'Silakan isi alamat server, API key, dan nama model kustom Anda.'
+        : `Preset "${llmName.value}" dipilih. Tempel API key lalu klik Simpan & Aktifkan.`
+    })
+  })
+}
+
 function resetProviderForm() {
   editingProviderId = null
   llmName.value = ''
   llmBaseUrl.value = ''
   llmApiKey.value = ''
-  llmApiKey.placeholder = 'Kosong = otomatis untuk 9Router lokal'
+  llmApiKey.placeholder = 'Tempel API key di sini (opsional untuk lokal)...'
   llmModel.value = ''
-  llmAddBtn.textContent = 'Simpan Provider'
+  llmAddBtn.textContent = 'Simpan & Aktifkan Provider ⚡'
+  document.getElementById('llm-base-url-row')?.classList.remove('force-visible')
+  document.querySelectorAll('#llm-preset-grid .llm-preset-btn').forEach((b) => b.classList.remove('active'))
 }
 
 // escapeHtml diimpor dari utils.js
@@ -2086,6 +2891,26 @@ function showConfirm(message, { title = 'Konfirmasi', okLabel = 'Hapus', danger 
   })
 }
 
+async function encryptProviderKey(keyInput, baseUrl) {
+  if (!keyInput) return { ok: true, value: '' }
+  const encRes = await window.hermesAvatar.encryptSecret(keyInput, baseUrl)
+  if (!encRes?.ok) {
+    statusEl.textContent = `⚠️ Gagal mengenkripsi kunci: ${encRes?.error || 'URL atau kunci tidak valid'}`
+    showToast('Enkripsi Kunci Gagal', encRes?.error || 'URL atau kunci tidak valid', 'error', '❌', 6000)
+    return { ok: false }
+  }
+  return { ok: true, value: encRes.value }
+}
+
+function getUrlOrigin(raw) {
+  try {
+    const u = new URL(String(raw || '').trim())
+    return (u.protocol === 'http:' || u.protocol === 'https:') ? u.origin : null
+  } catch {
+    return null
+  }
+}
+
 llmAddBtn.addEventListener('click', async () => {
   const name = llmName.value.trim()
   if (!name) {
@@ -2095,85 +2920,69 @@ llmAddBtn.addEventListener('click', async () => {
   }
 
   const baseUrl = llmBaseUrl.value.trim()
-  const keyInput = llmApiKey.value.trim()
-  let apiKeyEnc = ''
-
-  function getUrlOrigin(raw) {
-    try {
-      const u = new URL(String(raw || '').trim())
-      return (u.protocol === 'http:' || u.protocol === 'https:') ? u.origin : null
-    } catch {
-      return null
-    }
+  if (!baseUrl) {
+    statusEl.textContent = '⚠️ Pilih salah satu preset penyedia AI di atas terlebih dahulu.'
+    showToast('Pilih Preset AI', 'Silakan klik salah satu preset penyedia AI di atas terlebih dahulu.', 'warning', '⚠️')
+    return
   }
 
+  const keyInput = llmApiKey.value.trim()
+  const model = llmModel.value.trim()
+  const keyRes = await encryptProviderKey(keyInput, baseUrl)
+  if (!keyRes.ok) return
+
+  let savedProvider = null
+
   if (editingProviderId) {
-    // Mode edit: update provider yang ada.
     const p = settings.llm.providers.find((x) => x.id === editingProviderId)
     if (!p) {
       resetProviderForm()
       return
     }
-
-    if (keyInput) {
-      const encRes = await window.hermesAvatar.encryptSecret(keyInput, baseUrl)
-      if (!encRes?.ok) {
-        statusEl.textContent = `⚠️ Gagal mengenkripsi kunci: ${encRes?.error || 'URL atau kunci tidak valid'}`
-        showToast('Enkripsi Kunci Gagal', encRes?.error || 'URL atau kunci tidak valid', 'error', '❌', 6000)
-        return
-      }
-      apiKeyEnc = encRes.value
-    } else {
-      const oldOrigin = getUrlOrigin(p.baseUrl)
-      const newOrigin = getUrlOrigin(baseUrl)
-      if (oldOrigin && newOrigin && oldOrigin === newOrigin) {
+    let apiKeyEnc = keyRes.value
+    if (!keyInput) {
+      const sameOrigin = getUrlOrigin(p.baseUrl) && getUrlOrigin(p.baseUrl) === getUrlOrigin(baseUrl)
+      if (sameOrigin) {
         apiKeyEnc = p.apiKey || ''
       } else {
-        apiKeyEnc = ''
         statusEl.textContent = 'URL berubah, kunci lama tidak dibawa. Masukkan ulang jika perlu.'
         showToast('Perhatian Kunci API ⚠️', 'URL berubah, kunci lama tidak dibawa. Masukkan ulang jika perlu.', 'warning', '⚠️', 6000)
       }
     }
-
     p.name = name
     p.baseUrl = baseUrl
     p.apiKey = apiKeyEnc
-    p.model = llmModel.value.trim()
-    saveSettings(settings)
+    p.model = model
+    savedProvider = p
     if (!statusEl.textContent.includes('URL berubah')) {
       statusEl.textContent = 'Provider diperbarui.'
     }
-    showToast('Provider Diperbarui! ✅', `Konfigurasi ${name} telah diupdate`, 'success', '💾')
-    resetProviderForm()
   } else {
-    // Mode tambah provider baru.
-    if (keyInput) {
-      const encRes = await window.hermesAvatar.encryptSecret(keyInput, baseUrl)
-      if (!encRes?.ok) {
-        statusEl.textContent = `⚠️ Gagal mengenkripsi kunci: ${encRes?.error || 'URL atau kunci tidak valid'}`
-        showToast('Enkripsi Kunci Gagal', encRes?.error || 'URL atau kunci tidak valid', 'error', '❌', 6000)
-        return
-      }
-      apiKeyEnc = encRes.value
-    } else {
-      apiKeyEnc = ''
-    }
-
-    settings.llm.providers.push({
+    savedProvider = {
       id: Date.now().toString(36),
       name,
       baseUrl,
-      apiKey: apiKeyEnc,
-      model: llmModel.value.trim()
-    })
-    saveSettings(settings)
+      apiKey: keyRes.value,
+      model
+    }
+    settings.llm.providers.push(savedProvider)
     statusEl.textContent = 'Provider ditambahkan.'
-    showToast('Provider Ditambahkan! 🎉', `${name} berhasil ditambahkan ke daftar LLM`, 'success', '💾')
-    resetProviderForm()
   }
 
+  saveSettings(settings)
+  resetProviderForm()
   renderLlmList()
   await refreshModelOptions()
+
+  if (savedProvider.model && savedProvider.baseUrl) {
+    try {
+      await activateLlmProvider(savedProvider)
+    } catch (err) {
+      statusEl.textContent = `✓ Tersimpan, namun gagal aktifkan: ${err?.message || err}`
+    }
+  } else {
+    showToast('Provider Tersimpan! 🎉', `${name} berhasil disimpan ke daftar LLM`, 'success', '💾')
+  }
 })
 
 // --- LLM via RPC (model aktif + switch via dropdown) ---
@@ -2293,6 +3102,7 @@ async function refreshModelOptions() {
 llmRefreshBtn.addEventListener('click', () => {
   refreshLlmActive()
   refreshModelOptions()
+  refreshProviderQuota(false)
 })
 
 // --- Skill Hermes ---
@@ -2652,13 +3462,13 @@ async function triggerOtaUpdate() {
     showToast('Memulai Ulang Aplikasi... 🔄', 'Menerapkan pembaruan versi terbaru...', 'running', '🚀')
     setTimeout(() => {
       window.hermesAvatar?.relaunchApp?.()
-    }, 600)
+    }, 400)
     return
   }
 
   if (isUpdating) return
-  if (!cachedUpdateInfo || !cachedUpdateInfo.downloadUrl) {
-    showToast('URL Unduhan Tidak Ditemukan', 'Membuka halaman rilis di browser...', 'warning', '🌐')
+  if (!cachedUpdateInfo || !cachedUpdateInfo.downloadUrl || !cachedUpdateInfo.assetName) {
+    showToast('Paket Pembaruan Belum Tersedia', 'Membuka halaman rilis di browser untuk unduhan manual...', 'warning', '🌐')
     window.hermesAvatar?.openExternalUrl?.(cachedUpdateInfo?.releaseUrl || 'https://github.com/KarmaSenzu/Hermes-Desktop-Pet/releases')
     return
   }
@@ -2689,6 +3499,9 @@ async function triggerOtaUpdate() {
   if (bannerProgressWrap) bannerProgressWrap.classList.remove('hidden')
   if (modalProgressWrap) modalProgressWrap.classList.remove('hidden')
 
+  if (bannerProgressStatus) bannerProgressStatus.textContent = 'Menghubungkan ke server pembaruan...'
+  if (modalProgressStatus) modalProgressStatus.textContent = 'Menghubungkan ke server pembaruan...'
+
   showToast('Mengunduh Pembaruan ⚡', `Mengunduh rilis ${cachedUpdateInfo.latestVersion}...`, 'info', '⬇')
 
   try {
@@ -2700,24 +3513,28 @@ async function triggerOtaUpdate() {
       if (bannerProgressBar) bannerProgressBar.style.width = '100%'
       if (modalProgressBar) modalProgressBar.style.width = '100%'
 
-      if (bannerProgressStatus) bannerProgressStatus.textContent = 'Pembaruan siap diterapkan! ✅'
-      if (modalProgressStatus) modalProgressStatus.textContent = 'Pembaruan siap diterapkan! ✅'
+      const restartMsg = 'Pembaruan selesai! Memulai ulang otomatis dalam 2 detik... 🚀'
+      if (bannerProgressStatus) bannerProgressStatus.textContent = restartMsg
+      if (modalProgressStatus) modalProgressStatus.textContent = restartMsg
 
       if (bannerProgressPercent) bannerProgressPercent.textContent = '100%'
       if (modalProgressPercent) modalProgressPercent.textContent = '100%'
 
       if (bannerBtn) {
         bannerBtn.disabled = false
-        bannerBtn.textContent = 'Mulai Ulang & Terapkan 🔄'
+        bannerBtn.textContent = 'Memulai Ulang… 🔄'
         bannerBtn.style.background = '#10b981'
       }
       if (modalBtn) {
         modalBtn.disabled = false
-        modalBtn.textContent = 'Mulai Ulang & Terapkan 🔄'
+        modalBtn.textContent = 'Memulai Ulang… 🔄'
         modalBtn.style.background = '#10b981'
       }
 
-      showToast('Pembaruan Berhasil Dipasang! 🎉', 'Klik tombol "Mulai Ulang" untuk membuka versi terbaru.', 'success', '✨', 8000)
+      showToast('Pembaruan Selesai! 🎉', 'Memulai ulang aplikasi secara otomatis...', 'success', '✨', 5000)
+      setTimeout(() => {
+        window.hermesAvatar?.relaunchApp?.()
+      }, 1800)
     } else {
       throw new Error(res?.error || 'Gagal menerapkan pembaruan')
     }
@@ -2840,8 +3657,22 @@ function initAppUpdateChecker() {
 
   // Listener kemajuan unduhan real-time dari main process
   window.hermesAvatar?.onUpdateProgress?.((info) => {
-    const p = `${info.percent}%`
-    const desc = `Mengunduh: ${info.transferredMb || 0} MB / ${info.totalMb || 0} MB (${p})`
+    const p = `${info.percent ?? 0}%`
+    const stage = info.stage || 'downloading'
+    let desc = `Mengunduh pembaruan: ${info.transferredMb || 0} MB / ${info.totalMb || 0} MB (${p})`
+    if (stage === 'verifying') {
+      desc = 'Memverifikasi keaslian paket pembaruan...'
+      if (isUpdating) {
+        if (downloadBtn) downloadBtn.textContent = 'Memverifikasi… 🔒'
+        if (modalDownload) modalDownload.textContent = 'Memverifikasi… 🔒'
+      }
+    } else if (stage === 'installing') {
+      desc = 'Menyiapkan instalasi pembaruan...'
+      if (isUpdating) {
+        if (downloadBtn) downloadBtn.textContent = 'Memasang… ⚙️'
+        if (modalDownload) modalDownload.textContent = 'Memasang… ⚙️'
+      }
+    }
 
     const bannerProgressBar = document.getElementById('banner-progress-bar')
     const bannerProgressStatus = document.getElementById('banner-progress-status')
@@ -2877,6 +3708,9 @@ function init() {
   initProfileAvatar()
   adaptPlatformCommands()
   initThemeSwitcher()
+  initUiModeSwitcher()
+  initLlmPresets()
+  initDualTrackActions()
   initWindowControls()
   initHistoryControls()
   initSidebarSearch()

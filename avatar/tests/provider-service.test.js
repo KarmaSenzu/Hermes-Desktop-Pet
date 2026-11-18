@@ -1,7 +1,15 @@
 import { describe, it, expect } from 'vitest'
-import { testProviderConnection, updateHermesProviderConfig, runHermes } from '../src/main/provider-service.js'
+import { testProviderConnection, updateHermesProviderConfig, normalizeGeminiModel, runHermes } from '../src/main/provider-service.js'
 
 describe('provider-service', () => {
+  it('normalizeGeminiModel memigrasikan model Gemini usang dan menghapus prefix models/', () => {
+    const geminiUrl = 'https://generativelanguage.googleapis.com/v1beta/openai'
+    expect(normalizeGeminiModel(geminiUrl, 'gemini-2.0-flash')).toBe('gemini-3.5-flash-lite')
+    expect(normalizeGeminiModel(geminiUrl, 'models/gemini-2.5-flash')).toBe('gemini-3.5-flash-lite')
+    expect(normalizeGeminiModel(geminiUrl, 'models/gemini-3.8-flash')).toBe('gemini-3.8-flash')
+    expect(normalizeGeminiModel('https://api.openai.com/v1', 'gemini-2.0-flash')).toBe('gemini-2.0-flash')
+  })
+
   it('testProviderConnection menolak URL kosong atau non-http/https', async () => {
     const res1 = await testProviderConnection({ url: '', model: 'gpt-4' })
     expect(res1.ok).toBe(false)

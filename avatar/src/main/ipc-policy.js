@@ -99,12 +99,16 @@ export const IPC_POLICY = {
   'avatar:test-connection': ['settings'],
   'avatar:set-llm-provider': ['settings'],
   'avatar:fetch-endpoint-models': ['settings'],
+  'avatar:start-oauth-login': ['settings'],
+  'avatar:check-provider-quota': ['settings'],
   'avatar:set-tts-config': ['settings'],
   'avatar:set-stt-config': ['settings'],
   'avatar:encrypt-secret': ['settings'],
 
-  // Fitur Info Langsung (Weather/News) & TTS
+  // Fitur Info Langsung (Weather/News), Layar/Failover & TTS
   'avatar:get-live-weather': ['avatar'],
   'avatar:get-live-news': ['avatar'],
+  'avatar:capture-screen': ['avatar'],
+  'avatar:failover-llm-provider': ['avatar'],
   'avatar:tts': ['avatar', 'settings']
 }

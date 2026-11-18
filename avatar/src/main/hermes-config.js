@@ -72,7 +72,7 @@ export function applyProviderConfig(cfgText, { name, baseUrl, apiKey, model }) {
 
   const existingIdx = customList.findIndex((it) => it && it.name === validName)
   if (existingIdx >= 0) {
-    customList[existingIdx] = newEntry
+    customList = [newEntry, ...customList.filter((_, idx) => idx !== existingIdx)]
   } else {
     customList.push(newEntry)
   }

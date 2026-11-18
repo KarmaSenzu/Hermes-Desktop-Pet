@@ -63,7 +63,11 @@
             </div>
             <h2 id="current-section-title" class="current-section-title">Home</h2>
           </div>
-          <div class="header-right">
+          <div class="header-right" style="display:flex; align-items:center; gap:8px;">
+            <button type="button" id="ui-mode-toggle-btn" class="theme-toggle-btn" title="Ganti antara tampilan ramah pemula atau tampilan teknis developer">
+              <span id="ui-mode-icon" class="theme-icon">✨</span>
+              <span id="ui-mode-text" class="theme-text">Mode Sederhana</span>
+            </button>
             <button type="button" id="theme-toggle-btn" class="theme-toggle-btn" title="Ganti Mode Hitam / Putih">
               <span id="theme-icon" class="theme-icon">🌙</span>
               <span id="theme-text" class="theme-text">Mode Gelap</span>
@@ -144,18 +148,18 @@
               </div>
               <div class="format-info-col">
                 <div class="format-title-line">
-                  <span class="format-title">Hermes Daemon (Otak AI)</span>
+                  <span class="format-title">Mesin Kecerdasan Avatar</span>
                 </div>
-                <p class="format-desc-text">WebSocket JSON-RPC daemon di port 9119</p>
+                <p class="format-desc-text">Otomatis aktif di latar belakang saat avatar berjalan</p>
               </div>
               <div class="row-control" style="display:flex; align-items:center; gap:8px;">
                 <span id="hermes-status" class="badge">…</span>
-                <button type="button" id="home-start-hermes-btn" class="mini-btn use" style="display:none;" title="Jalankan Hermes serve otomatis">Nyalakan ⚡</button>
+                <button type="button" id="home-start-hermes-btn" class="mini-btn use" style="display:none;" title="Jalankan layanan AI otomatis">Nyalakan ⚡</button>
               </div>
             </div>
 
             <!-- 3. 9Router -->
-            <div class="settings-row">
+            <div class="settings-row dev-only">
               <div class="format-emblem theme-blue">
                 <svg class="lucide-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg>
               </div>
@@ -291,7 +295,7 @@
 
               <!-- Sub-panel Manage -->
               <div class="pkg-tab-panel" data-panel="manage">
-                <div class="package-meta">
+                <div class="package-meta dev-only">
                   <span>Port Target: <code>9119</code></span> · 
                   <span>Protokol: <code>WebSocket JSON-RPC</code></span>
                 </div>
@@ -358,7 +362,7 @@
 
               <!-- Sub-panel Manage -->
               <div class="pkg-tab-panel" data-panel="manage">
-                <div class="package-meta">
+                <div class="package-meta dev-only">
                   <span>Port Target: <code>20128</code></span> · 
                   <span>Perintah Service: <code>9router</code></span>
                 </div>
@@ -431,7 +435,7 @@
 
               <!-- Sub-panel Manage -->
               <div class="pkg-tab-panel" data-panel="manage">
-                <div class="package-meta">
+                <div class="package-meta dev-only">
                   <span>Port Server: <code>8880</code></span> · 
                   <span>Lokasi Folder Model: <code id="pkg-kokoro-location" style="word-break: break-all;">~/.hermes-avatar/packages/kokoro/</code></span>
                   <span class="badge" id="pkg-kokoro-source-badge" style="font-size:10px;">…</span>
@@ -635,16 +639,16 @@
 
               <!-- Sub-panel Manage -->
               <div class="pkg-tab-panel" data-panel="manage">
-                <div class="package-meta">
+                <div class="package-meta dev-only">
                   <span>Port Bridge Lokal: <code>9124</code></span> · 
                   <span>Status: <code id="pkg-bridge-status-text">Memeriksa…</code></span>
                 </div>
-                <p class="row-desc">Bridge HTTP lokal berjalan di port 9124 untuk menghubungkan browser dengan avatar secara aman (hanya localhost):</p>
+                <p class="row-desc">Menghubungkan browser Chrome/Edge Anda dengan avatar secara aman:</p>
                 <div style="display:flex; gap:8px; margin: 8px 0 10px; flex-wrap:wrap;">
                   <button type="button" id="pkg-test-bridge-btn" class="mini-btn primary">⚡ Tes Koneksi Bridge</button>
                   <button type="button" class="terminal-action-btn secondary-term" data-terminal-action="ping-bridge" data-terminal-cmd="curl http://127.0.0.1:9124/api/ping">Cek via Curl di Terminal</button>
                 </div>
-                <div class="command-box-group">
+                <div class="command-box-group force-visible">
                   <span class="command-box-label">Fitur Ekstensi:</span>
                   <ul style="margin: 4px 0 0 16px; font-size:12px; color:var(--text-secondary); line-height:1.6;">
                     <li><strong>Shortcut Cepat:</strong> Tekan <kbd>Alt + A</kbd> di browser untuk langsung menanyakan teks yang diblok ke avatar.</li>
@@ -815,7 +819,7 @@
                 </div>
               </div>
             </div>
-            <div class="settings-row" id="kokoro-endpoint-field">
+            <div class="settings-row dev-only" id="kokoro-endpoint-field">
               <div class="format-emblem theme-teal">
                 <svg class="lucide-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" x2="20" y1="19" y2="19"/></svg>
               </div>
@@ -986,90 +990,451 @@
 
         <!-- LLM -->
         <section id="panel-llm" class="panel">
-          <h1>LLM & Provider</h1>
-          <p class="subtitle">Konfigurasi model AI & koneksi penyedia (via Hermes).</p>
+          <h1>LLM &amp; Provider</h1>
+          <p class="subtitle">Kelola model AI aktif, monitor kuota, login akun OAuth resmi, jembatan 9Router, dan daftar penyedia.</p>
 
-          <div class="group-header">Model AI Aktif Saat Ini</div>
-          <div class="card">
-            <div class="settings-row">
-              <div class="format-emblem theme-indigo">
-                <svg class="lucide-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z"/><path d="M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z"/><path d="M12 2v2"/><path d="M12 12v2"/><path d="M12 20v2"/></svg>
-              </div>
-              <div class="format-info-col">
-                <div class="format-title-line">
-                  <span class="format-title">Model Terpasang</span>
+          <!-- VIEW 1: Menu Utama LLM & Provider (Model Aktif + Sub-Menu Terstruktur) -->
+          <div id="llm-menu-view">
+            <div class="group-header">Model AI Aktif Saat Ini</div>
+            <div class="card">
+              <div class="settings-row">
+                <div class="format-emblem theme-indigo">
+                  <svg class="lucide-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z"/><path d="M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z"/><path d="M12 2v2"/><path d="M12 12v2"/><path d="M12 20v2"/></svg>
                 </div>
-                <p class="format-desc-text">Model yang digunakan untuk berpikir dan menjawab</p>
+                <div class="format-info-col">
+                  <div class="format-title-line">
+                    <span class="format-title">Model Terpasang</span>
+                  </div>
+                  <p class="format-desc-text">Model yang digunakan untuk berpikir dan menjawab</p>
+                </div>
+                <div class="row-control">
+                  <div id="llm-active" class="llm-active"></div>
+                  <button type="button" id="llm-refresh-btn" class="mini-btn browse" style="margin-left: 6px;">Segarkan ↻</button>
+                </div>
               </div>
-              <div class="row-control">
-                <div id="llm-active" class="llm-active"></div>
-                <button id="llm-refresh-btn" class="mini-btn browse" style="margin-left: 6px;">Segarkan ↻</button>
+              <div class="settings-row">
+                <div class="format-emblem theme-purple">
+                  <svg class="lucide-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/></svg>
+                </div>
+                <div class="format-info-col">
+                  <div class="format-title-line">
+                    <span class="format-title">Ganti Model Cepat</span>
+                  </div>
+                  <p class="format-desc-text">Pilih dari daftar model yang terdeteksi</p>
+                </div>
+                <div class="row-control">
+                  <select id="llm-switch-model" class="mac-select"></select>
+                  <button type="button" id="llm-switch-btn" class="mini-btn primary" style="margin-left: 6px;">Terapkan</button>
+                </div>
               </div>
             </div>
-            <div class="settings-row">
-              <div class="format-emblem theme-purple">
-                <svg class="lucide-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/></svg>
-              </div>
-              <div class="format-info-col">
-                <div class="format-title-line">
-                  <span class="format-title">Ganti Model Cepat</span>
+
+            <div class="group-header">Kategori Pengaturan AI &amp; Provider</div>
+            <div class="card">
+              <div id="llm-sub-menu" class="anim-menu-list">
+                <div class="format-item" data-llm-sub="quota-monitor" tabindex="0">
+                  <div class="format-emblem theme-emerald">
+                    <svg class="lucide-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.48 12H2"/></svg>
+                  </div>
+                  <div class="format-info-col">
+                    <div class="format-title-line">
+                      <span class="format-title">Monitor Kuota &amp; Status Akun Aktif</span>
+                    </div>
+                    <p class="format-desc-text">Pantau sisa kredit bulanan, Bonus Pack 9Router, dan cincin limit model OAuth secara real-time</p>
+                  </div>
+                  <div class="format-status-col">
+                    <span id="llm-menu-badge-quota" class="format-count-pill on">⚡ Memuat…</span>
+                    <span class="format-arrow">›</span>
+                  </div>
                 </div>
-                <p class="format-desc-text">Pilih dari daftar model yang terdeteksi</p>
-              </div>
-              <div class="row-control">
-                <select id="llm-switch-model" class="mac-select"></select>
-                <button id="llm-switch-btn" class="mini-btn primary" style="margin-left: 6px;">Terapkan</button>
+
+                <div class="format-item" data-llm-sub="oauth-hub" tabindex="0">
+                  <div class="format-emblem theme-blue">
+                    <svg class="lucide-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></svg>
+                  </div>
+                  <div class="format-info-col">
+                    <div class="format-title-line">
+                      <span class="format-title">Login Akun Resmi &amp; Paket Gratis (OAuth)</span>
+                    </div>
+                    <p class="format-desc-text">Masuk 1-klik dengan akun Google atau GitHub (OpenRouter, Google Gemini AI Studio, Groq, Mistral)</p>
+                  </div>
+                  <div class="format-status-col">
+                    <span id="llm-menu-badge-oauth" class="format-count-pill on">🛡️ 4 Penyedia Gratis</span>
+                    <span class="format-arrow">›</span>
+                  </div>
+                </div>
+
+                <div class="format-item" data-llm-sub="router-bridge" tabindex="0">
+                  <div class="format-emblem theme-purple">
+                    <svg class="lucide-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="8" x="2" y="2" rx="2" ry="2"/><rect width="20" height="8" x="2" y="14" rx="2" ry="2"/><line x1="6" x2="6.01" y1="6" y2="6"/><line x1="6" x2="6.01" y1="18" y2="18"/></svg>
+                  </div>
+                  <div class="format-info-col">
+                    <div class="format-title-line">
+                      <span class="format-title">Jembatan Multi-Akun 9Router Lokal (:20128)</span>
+                    </div>
+                    <p class="format-desc-text">Hubungkan 9Router lokal untuk memakai akun OAuth Claude, ChatGPT Codex, Kiro, &amp; Codebuddy</p>
+                  </div>
+                  <div class="format-status-col">
+                    <span id="llm-menu-badge-router" class="format-count-pill off">Siap Hubungkan</span>
+                    <span class="format-arrow">›</span>
+                  </div>
+                </div>
+
+                <div class="format-item" data-llm-sub="add-provider" tabindex="0">
+                  <div class="format-emblem theme-amber">
+                    <svg class="lucide-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/></svg>
+                  </div>
+                  <div class="format-info-col">
+                    <div class="format-title-line">
+                      <span class="format-title">Pilih Preset &amp; Tambah Provider Baru</span>
+                    </div>
+                    <p class="format-desc-text">Pilih cepat 8 preset penyedia AI atau atur koneksi server OpenAI-compatible kustom</p>
+                  </div>
+                  <div class="format-status-col">
+                    <span id="llm-menu-badge-preset" class="format-count-pill off">8 Preset AI</span>
+                    <span class="format-arrow">›</span>
+                  </div>
+                </div>
+
+                <div class="format-item" data-llm-sub="saved-providers" tabindex="0">
+                  <div class="format-emblem theme-teal">
+                    <svg class="lucide-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>
+                  </div>
+                  <div class="format-info-col">
+                    <div class="format-title-line">
+                      <span class="format-title">Daftar Provider AI Tersimpan</span>
+                    </div>
+                    <p class="format-desc-text">Kelola, uji koneksi, aktifkan, edit, atau hapus daftar penyedia AI yang telah disimpan</p>
+                  </div>
+                  <div class="format-status-col">
+                    <span id="llm-menu-badge-saved" class="format-count-pill off">0 Tersimpan</span>
+                    <span class="format-arrow">›</span>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
 
-          <div class="group-header">Tambah Endpoint Provider Baru</div>
-          <div class="card">
-            <div class="settings-row">
-              <div class="row-label">
-                <span class="row-title">Nama Penyedia</span>
-              </div>
-              <div class="row-control">
-                <input id="llm-name" type="text" class="mac-input" placeholder="cth. 9Router / DeepSeek" />
-              </div>
-            </div>
-            <div class="settings-row">
-              <div class="row-label">
-                <span class="row-title">Base URL (OpenAI-Compatible)</span>
-              </div>
-              <div class="row-control">
-                <input id="llm-base-url" type="text" class="mac-input" placeholder="http://localhost:20128/v1" />
-              </div>
-            </div>
-            <div class="settings-row">
-              <div class="row-label">
-                <span class="row-title">API Key (Opsional / Rahasia)</span>
-              </div>
-              <div class="row-control">
-                <input id="llm-api-key" type="password" class="mac-input" placeholder="sk-..." />
-              </div>
-            </div>
-            <div class="settings-row">
-              <div class="row-label">
-                <span class="row-title">Model Identifier</span>
-              </div>
-              <div class="row-control">
-                <input id="llm-model" type="text" class="mac-input" placeholder="cbcn/deepseek-v4-pro" />
-              </div>
-            </div>
-            <div class="settings-row">
-              <div class="row-label">
-                <span class="row-title">Aksi</span>
-              </div>
-              <div class="row-control">
-                <button id="llm-add-btn" class="mini-btn primary">Simpan Provider</button>
-              </div>
-            </div>
-          </div>
+          <!-- VIEW 2: Detail Sub-Panel (Ditampilkan satu per satu saat menu diklik) -->
+          <div id="llm-detail-view" class="hidden">
+            <button type="button" id="llm-back-btn" class="back-btn">‹ Kembali ke Menu LLM &amp; Provider</button>
 
-          <div class="group-header">Daftar Provider Tersimpan</div>
-          <div class="card">
-            <div id="llm-list" class="llm-list"></div>
+            <!-- Sub-Panel 1: Monitor Kuota & Status Akun Aktif -->
+            <div id="llm-subpanel-quota" class="llm-subpanel hidden" data-subpanel="quota-monitor">
+              <div class="group-header">Monitor Kuota &amp; Status Akun Aktif</div>
+              <div class="card" id="llm-quota-card">
+                <div class="quota-monitor-box">
+                  <div class="quota-top-row">
+                    <div class="quota-badges">
+                      <span id="quota-tier-label" class="badge">Memeriksa paket…</span>
+                      <span id="quota-compliance-badge" class="badge info">Patuh ToS</span>
+                    </div>
+                    <div class="quota-view-tabs" id="quota-view-tabs">
+                      <button type="button" class="quota-tab-btn active" data-quota-view="both">⚡ Keduanya</button>
+                      <button type="button" class="quota-tab-btn" data-quota-view="cards">🗂️ Kartu Akun</button>
+                      <button type="button" class="quota-tab-btn" data-quota-view="rings">⭕ Limit Model</button>
+                    </div>
+                  </div>
+
+                  <div id="quota-summary-text" class="quota-summary-text">Pilih atau hubungkan provider AI untuk melihat status kuota dan batas pemakaian.</div>
+                  <div class="quota-progress-track">
+                    <div id="quota-progress-bar" class="quota-progress-fill"></div>
+                  </div>
+                  <div id="quota-metrics-row" class="quota-metrics-row">Pemakaian sesi &amp; informasi rate-limit akan tampil di sini.</div>
+
+                  <div class="quota-toolbar">
+                    <div class="quota-toolbar-left">
+                      <select id="quota-filter-provider" class="mac-select quota-mini-select">
+                        <option value="all">All Providers</option>
+                      </select>
+                      <select id="quota-filter-status" class="mac-select quota-mini-select">
+                        <option value="all">All accounts</option>
+                        <option value="available">Available only</option>
+                        <option value="expired">Expired / Invalid</option>
+                      </select>
+                      <button type="button" id="quota-toggle-empty-btn" class="mini-btn quota-pill-btn">🚫 Hide Expired</button>
+                    </div>
+                    <div class="quota-toolbar-right">
+                      <button type="button" id="quota-autorefresh-btn" class="mini-btn quota-pill-btn">⏱️ Auto-refresh (<span id="quota-countdown">55</span>s)</button>
+                      <button type="button" id="quota-refresh-btn" class="mini-btn browse">↻ Cek Kuota</button>
+                    </div>
+                  </div>
+
+                  <div id="quota-accounts-section">
+                    <div id="quota-accounts-grid" class="router-accounts-grid"></div>
+                  </div>
+
+                  <div id="quota-rings-section">
+                    <div id="quota-rings-container" class="oauth-rings-container"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Sub-Panel 2: Login Akun Resmi & Paket Gratis (OAuth) -->
+            <div id="llm-subpanel-oauth" class="llm-subpanel hidden" data-subpanel="oauth-hub">
+              <div class="group-header">Login Akun Resmi &amp; Paket Gratis (Patuh ToS)</div>
+              <div class="card" id="oauth-login-hub">
+                <div class="oauth-hub-wrapper">
+                  <div class="oauth-section-subhead">
+                    <span class="oauth-section-title">🛡️ Jalur 1: OAuth Resmi &amp; Paket Gratis (Tanpa 9Router)</span>
+                    <span class="oauth-section-note">Masuk langsung memakai akun Google / GitHub resmi penyedia AI.</span>
+                  </div>
+
+                  <div class="oauth-provider-grid">
+                    <!-- Kartu 1: OpenRouter OAuth PKCE -->
+                    <div class="oauth-provider-card" data-hub-card="openrouter">
+                      <div class="oauth-card-top">
+                        <div class="oauth-card-identity">
+                          <span class="oauth-card-emblem">🌐</span>
+                          <div class="oauth-card-titles">
+                            <span class="oauth-card-name">OpenRouter (OAuth Resmi)</span>
+                            <span class="oauth-tier-pill">OAuth PKCE 1-Klik · Model :free</span>
+                          </div>
+                        </div>
+                        <span id="hub-status-openrouter" class="badge">Siap Login</span>
+                      </div>
+                      <div class="oauth-steps-box">
+                        <div class="oauth-step-line">
+                          <span class="oauth-step-badge">1</span>
+                          <span>Klik tombol di bawah, lalu pilih <strong>Login with Google</strong> atau <strong>GitHub</strong> di browser.</span>
+                        </div>
+                        <div class="oauth-step-line">
+                          <span class="oauth-step-badge">✓</span>
+                          <span>Token otomatis kembali ke aplikasi &amp; langsung aktif tanpa salin kunci manual.</span>
+                        </div>
+                      </div>
+                      <div class="oauth-card-actions">
+                        <button type="button" id="btn-oauth-openrouter" class="mini-btn primary oauth-full-btn">🔗 Login 1-Klik via Google / GitHub (OAuth)</button>
+                      </div>
+                    </div>
+
+                    <!-- Kartu 2: Google Gemini -->
+                    <div class="oauth-provider-card" data-hub-card="gemini">
+                      <div class="oauth-card-top">
+                        <div class="oauth-card-identity">
+                          <span class="oauth-card-emblem">✨</span>
+                          <div class="oauth-card-titles">
+                            <span class="oauth-card-name">Google Gemini (AI Studio)</span>
+                            <span class="oauth-tier-pill">Gratis ~1.500 req/hari</span>
+                          </div>
+                        </div>
+                        <span id="hub-status-gemini" class="badge">Siap Login</span>
+                      </div>
+                      <div class="oauth-steps-box">
+                        <div class="oauth-step-line">
+                          <span class="oauth-step-badge">1</span>
+                          <span>Klik <strong>Login Akun Google</strong> → masuk AI Studio &amp; klik <em>Create API Key</em>.</span>
+                        </div>
+                        <div class="oauth-step-line">
+                          <span class="oauth-step-badge">2</span>
+                          <span>Salin kunci Anda lalu klik <strong>Tempel &amp; Aktifkan</strong> di bawah.</span>
+                        </div>
+                      </div>
+                      <div class="oauth-card-actions">
+                        <button type="button" id="btn-get-gemini-key" class="mini-btn browse oauth-full-btn">🌐 1. Login Akun Google (Buka AI Studio)</button>
+                        <div class="oauth-quick-paste-row">
+                          <input type="password" class="mac-input oauth-inline-key" data-hub-provider="gemini" placeholder="Atau tempel key Gemini (AIza...) di sini" />
+                          <button type="button" class="mini-btn use oauth-paste-activate-btn" data-hub-provider="gemini" data-name="Google Gemini" data-baseurl="https://generativelanguage.googleapis.com/v1beta/openai" data-model="gemini-3.5-flash-lite">📋 2. Tempel &amp; Aktifkan ⚡</button>
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- Kartu 3: Groq Cloud -->
+                    <div class="oauth-provider-card" data-hub-card="groq">
+                      <div class="oauth-card-top">
+                        <div class="oauth-card-identity">
+                          <span class="oauth-card-emblem">🚀</span>
+                          <div class="oauth-card-titles">
+                            <span class="oauth-card-name">Groq Cloud (LPU Cepat)</span>
+                            <span class="oauth-tier-pill">Gratis 14.400 req/hari</span>
+                          </div>
+                        </div>
+                        <span id="hub-status-groq" class="badge">Siap Login</span>
+                      </div>
+                      <div class="oauth-steps-box">
+                        <div class="oauth-step-line">
+                          <span class="oauth-step-badge">1</span>
+                          <span>Klik <strong>Login Groq Console</strong> (via Google / GitHub) &amp; buat API Key.</span>
+                        </div>
+                        <div class="oauth-step-line">
+                          <span class="oauth-step-badge">2</span>
+                          <span>Salin kunci Anda lalu klik <strong>Tempel &amp; Aktifkan</strong> di bawah.</span>
+                        </div>
+                      </div>
+                      <div class="oauth-card-actions">
+                        <button type="button" id="btn-get-groq-key" class="mini-btn browse oauth-full-btn" data-open-url="https://console.groq.com/keys" data-preset-target="groq">🌐 1. Login Google / GitHub di Groq Console</button>
+                        <div class="oauth-quick-paste-row">
+                          <input type="password" class="mac-input oauth-inline-key" data-hub-provider="groq" placeholder="Atau tempel key Groq (gsk_...) di sini" />
+                          <button type="button" class="mini-btn use oauth-paste-activate-btn" data-hub-provider="groq" data-name="Groq Cloud" data-baseurl="https://api.groq.com/openai/v1" data-model="llama-3.3-70b-versatile">📋 2. Tempel &amp; Aktifkan ⚡</button>
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- Kartu 4: Mistral AI -->
+                    <div class="oauth-provider-card" data-hub-card="mistral">
+                      <div class="oauth-card-top">
+                        <div class="oauth-card-identity">
+                          <span class="oauth-card-emblem">🌪️</span>
+                          <div class="oauth-card-titles">
+                            <span class="oauth-card-name">Mistral AI (La Plateforme)</span>
+                            <span class="oauth-tier-pill">Paket Experiment Gratis</span>
+                          </div>
+                        </div>
+                        <span id="hub-status-mistral" class="badge">Siap Login</span>
+                      </div>
+                      <div class="oauth-steps-box">
+                        <div class="oauth-step-line">
+                          <span class="oauth-step-badge">1</span>
+                          <span>Klik <strong>Login Mistral Console</strong> (Google/GitHub/Microsoft) &amp; buat API Key.</span>
+                        </div>
+                        <div class="oauth-step-line">
+                          <span class="oauth-step-badge">2</span>
+                          <span>Salin kunci Anda lalu klik <strong>Tempel &amp; Aktifkan</strong> di bawah.</span>
+                        </div>
+                      </div>
+                      <div class="oauth-card-actions">
+                        <button type="button" id="btn-get-mistral-key" class="mini-btn browse oauth-full-btn" data-open-url="https://console.mistral.ai/api-keys">🌐 1. Login Google / GitHub di Mistral Console</button>
+                        <div class="oauth-quick-paste-row">
+                          <input type="password" class="mac-input oauth-inline-key" data-hub-provider="mistral" placeholder="Atau tempel key Mistral di sini" />
+                          <button type="button" class="mini-btn use oauth-paste-activate-btn" data-hub-provider="mistral" data-name="Mistral AI (Gratis)" data-baseurl="https://api.mistral.ai/v1" data-model="mistral-small-latest">📋 2. Tempel &amp; Aktifkan ⚡</button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Sub-Panel 3: Jembatan Multi-Akun 9Router Lokal -->
+            <div id="llm-subpanel-router" class="llm-subpanel hidden" data-subpanel="router-bridge">
+              <div class="group-header">Jalur 2: Jembatan Multi-Akun 9Router Lokal (:20128)</div>
+              <div class="card padded">
+                <div class="oauth-router-bridge-card">
+                  <div class="oauth-card-top">
+                    <div class="oauth-card-identity">
+                      <span class="oauth-card-emblem">⚡</span>
+                      <div class="oauth-card-titles">
+                        <span class="oauth-card-name">9Router Lokal — Multi-Akun OAuth &amp; CLI</span>
+                        <span class="oauth-tier-pill">Opsional · Hubungkan beberapa akun langganan di komputer Anda</span>
+                      </div>
+                    </div>
+                    <span id="hub-status-9router" class="badge">Siap Login</span>
+                  </div>
+                  <p class="dual-track-desc">Gunakan jalur ini bila Anda mengoperasikan 9Router secara mandiri untuk merutekan berbagai akun OAuth &amp; CLI sekaligus:</p>
+                  <div class="oauth-router-chips">
+                    <span class="oauth-router-chip">Google Gemini CLI</span>
+                    <span class="oauth-router-chip">Claude Pro / Code</span>
+                    <span class="oauth-router-chip">ChatGPT Plus / Codex</span>
+                    <span class="oauth-router-chip">Kiro OAuth</span>
+                    <span class="oauth-router-chip">Codebuddy-Cn</span>
+                    <span class="oauth-router-chip">GitHub Copilot</span>
+                  </div>
+                  <div class="oauth-router-actions">
+                    <button type="button" id="btn-quick-9router" class="mini-btn use">⚡ Hubungkan Instan ke 9Router Lokal</button>
+                    <button type="button" id="btn-open-9router-providers" class="mini-btn browse">🔐 Login / Tambah Akun OAuth di 9Router</button>
+                    <button type="button" id="btn-open-9router-web" class="mini-btn secondary">📊 Buka Dashboard Kuota (:20128)</button>
+                    <button type="button" id="btn-jump-quota-from-router" class="mini-btn primary">📈 Lihat Monitor Kuota Akun ›</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Sub-Panel 4: Pilih Preset & Tambah Provider Baru -->
+            <div id="llm-subpanel-add" class="llm-subpanel hidden" data-subpanel="add-provider">
+              <div class="group-header">Pilih Cepat Penyedia AI (1-Klik Preset)</div>
+              <div class="card">
+                <div id="llm-preset-grid" class="llm-preset-grid">
+                  <button type="button" class="llm-preset-btn" data-preset="gemini" data-name="Google Gemini" data-baseurl="https://generativelanguage.googleapis.com/v1beta/openai" data-model="gemini-3.5-flash-lite" data-needskey="1">
+                    <span class="llm-preset-title">✨ Google Gemini (Gratis)</span>
+                    <span class="llm-preset-sub">gemini-3.5-flash-lite</span>
+                  </button>
+                  <button type="button" class="llm-preset-btn" data-preset="groq" data-name="Groq Cloud" data-baseurl="https://api.groq.com/openai/v1" data-model="llama-3.3-70b-versatile" data-needskey="1">
+                    <span class="llm-preset-title">🚀 Groq Cloud (Gratis)</span>
+                    <span class="llm-preset-sub">llama-3.3-70b</span>
+                  </button>
+                  <button type="button" class="llm-preset-btn" data-preset="openrouter" data-name="OpenRouter" data-baseurl="https://openrouter.ai/api/v1" data-model="meta-llama/llama-3.3-70b-instruct:free" data-needskey="1">
+                    <span class="llm-preset-title">🌐 OpenRouter (Gratis)</span>
+                    <span class="llm-preset-sub">llama-3.3-70b:free</span>
+                  </button>
+                  <button type="button" class="llm-preset-btn" data-preset="9router" data-name="9Router Lokal" data-baseurl="http://127.0.0.1:20128/v1" data-model="default" data-needskey="0">
+                    <span class="llm-preset-title">⚡ 9Router Lokal</span>
+                    <span class="llm-preset-sub">Otomatis lokal</span>
+                  </button>
+                  <button type="button" class="llm-preset-btn" data-preset="deepseek" data-name="DeepSeek" data-baseurl="https://api.deepseek.com/v1" data-model="deepseek-chat" data-needskey="1">
+                    <span class="llm-preset-title">🧠 DeepSeek</span>
+                    <span class="llm-preset-sub">deepseek-chat</span>
+                  </button>
+                  <button type="button" class="llm-preset-btn" data-preset="openai" data-name="OpenAI" data-baseurl="https://api.openai.com/v1" data-model="gpt-4o-mini" data-needskey="1">
+                    <span class="llm-preset-title">🤖 OpenAI (ChatGPT)</span>
+                    <span class="llm-preset-sub">gpt-4o-mini</span>
+                  </button>
+                  <button type="button" class="llm-preset-btn" data-preset="ollama" data-name="Ollama Lokal" data-baseurl="http://127.0.0.1:11434/v1" data-model="llama3.2" data-needskey="0">
+                    <span class="llm-preset-title">🦙 Ollama (Offline)</span>
+                    <span class="llm-preset-sub">llama3.2 lokal</span>
+                  </button>
+                  <button type="button" class="llm-preset-btn" data-preset="custom" data-name="" data-baseurl="" data-model="" data-needskey="1">
+                    <span class="llm-preset-title">⚙️ Kustom / Lainnya</span>
+                    <span class="llm-preset-sub">Isi alamat server sendiri</span>
+                  </button>
+                </div>
+              </div>
+
+              <div class="group-header">Atur &amp; Aktifkan Otak AI</div>
+              <div class="card">
+                <div class="settings-row">
+                  <div class="row-label">
+                    <span class="row-title">Nama Penyedia</span>
+                  </div>
+                  <div class="row-control">
+                    <input id="llm-name" type="text" class="mac-input" placeholder="Pilih preset di atas atau ketik nama" />
+                  </div>
+                </div>
+                <div class="settings-row dev-only" id="llm-base-url-row">
+                  <div class="row-label">
+                    <span class="row-title">Base URL (OpenAI-Compatible)</span>
+                  </div>
+                  <div class="row-control">
+                    <input id="llm-base-url" type="text" class="mac-input" placeholder="http://127.0.0.1:20128/v1" />
+                  </div>
+                </div>
+                <div class="settings-row">
+                  <div class="row-label">
+                    <span class="row-title">API Key (Tempel Kunci Rahasia Anda)</span>
+                  </div>
+                  <div class="row-control">
+                    <input id="llm-api-key" type="password" class="mac-input" placeholder="Tempel API key di sini (opsional untuk lokal)..." />
+                  </div>
+                </div>
+                <div class="settings-row">
+                  <div class="row-label">
+                    <span class="row-title">Model AI</span>
+                  </div>
+                  <div class="row-control">
+                    <input id="llm-model" type="text" class="mac-input" placeholder="gemini-3.5-flash-lite / gemini-3.8-flash / gpt-4o-mini" />
+                  </div>
+                </div>
+                <div class="settings-row">
+                  <div class="row-label">
+                    <span class="row-title">Aksi</span>
+                  </div>
+                  <div class="row-control">
+                    <button type="button" id="llm-add-btn" class="mini-btn primary">Simpan &amp; Aktifkan Provider ⚡</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Sub-Panel 5: Daftar Provider AI Tersimpan -->
+            <div id="llm-subpanel-saved" class="llm-subpanel hidden" data-subpanel="saved-providers">
+              <div class="llm-subpanel-topbar">
+                <div class="group-header" style="margin: 0;">Daftar Provider AI Tersimpan</div>
+                <button type="button" id="btn-jump-add-provider" class="mini-btn primary">+ Tambah Provider Baru</button>
+              </div>
+              <div class="card">
+                <div id="llm-list" class="llm-list"></div>
+              </div>
+            </div>
           </div>
         </section>
 
@@ -1310,7 +1675,7 @@
         </div>
 
         <!-- Opsi update via terminal (One-liner CLI) -->
-        <div class="command-box-group" style="margin-bottom:16px;">
+        <div class="command-box-group dev-only" style="margin-bottom:16px;">
           <span class="command-box-label">Atau Update Otomatis lewat Terminal (1 Baris Perintah):</span>
           <div style="display:flex; gap:6px; align-items:center; margin-top:4px;">
             <code id="modal-cli-cmd" style="flex:1; background:rgba(0,0,0,0.3); border:1px solid var(--border); border-radius:6px; padding:8px 12px; font-size:11.5px; color:#a5d6ff; user-select:all; overflow-x:auto; white-space:nowrap;">curl -fsSL https://raw.githubusercontent.com/KarmaSenzu/Hermes-Desktop-Pet/main/update.sh | bash</code>
