@@ -1680,6 +1680,65 @@ Dokumen ini mencatat setiap perubahan, penambahan, dan penghapusan kode secara t
      - Pengujian unit simulasi berhasil membuktikan penghapusan total placeholder `%%DYNAMICASSESSMENT0%%` dan kemunculan kartu interaktif.
      - `npm run build` sukses 100% tanpa error.
 
+---
+
+### [2026-11-19 19:05] — Audit Entry #047: Model 9Router Tidak Muncul di Dropdown LLM Provider (Hanya Model Google)
+
+* **Tipe Perubahan:** Bug Fix / LLM Provider Model Discovery
+* **Pelapor:** User
+* **Gejala:**
+  - User menghubungkan OAuth Google (API key) **dan** 9Router (proxy lokal `:20128`). Namun saat ganti LLM, dropdown model **hanya menampilkan model Google**; model dari 9Router tidak muncul sama sekali.
+* **Akar Masalah (Root Causes):**
+  1. **`refreshModelOptions()` hanya menanyakan provider yang AKTIF.** Saat Google aktif, endpoint `/v1/models` 9Router tidak pernah dipanggil, sehingga 65 model 9Router tidak pernah terdaftar.
+  2. **`llm_providers.json` hanya menyimpan 1 model placeholder per provider 9Router** (`models: ["default"]` atau satu model), karena quick-connect hanya menyimpan `epRes.models[0]`.
+  3. **Tidak ada sinkronisasi balik.** Model yang berhasil diambil live tidak pernah ditulis kembali ke cache per-provider, jadi setiap refresh tetap kosong.
+  4. **Parsing respons `fetchEndpointModels` rapuh** (hanya menerima `data.data`), dan endpoint OpenAI-compat Google (`.../v1beta/openai/models`) mengembalikan **404** sehingga daftar model Google pun sejatinya hanya berasal dari cache.
+* **Solusi & Perubahan Berkas:**
+  1. **`provider-service.js`:**
+     - `fetchEndpointModels` dirombak: parsing lewat `extractModelIds()` yang memahami `{data:[{id}]}`, `{models:[{name}]}` (Gemini), array string, dan dedupe; mengembalikan `{ ok, models, error }` yang konsisten (tidak pernah throw).
+     - Tambah `fetchModelsForProviders()` — ambil model dari **semua** provider tersimpan secara paralel (isolasi error per-provider).
+     - Tambah fallback **native Gemini**: bila `/openai/models` gagal (404), turunkan URL `.../v1beta/models?key=...` via `deriveGeminiNativeModelsUrl()`.
+     - `upsertSavedLlmProviderOnDisk()` menerima `models[]` lengkap dan **merge** (bukan replace) saat provider sudah ada.
+  2. **`index.js`:**
+     - IPC baru `avatar:fetch-all-provider-models` (batch, paralel).
+     - `avatar:set-llm-provider` kini meneruskan `models[]` & `authType` ke penyimpanan disk.
+  3. **`ipc-policy.js` & `preload/settings.js`:**
+     - Registrasi channel `avatar:fetch-all-provider-models` (window `settings`) + ekspos `fetchAllProviderModels()`.
+  4. **`settings.js` (renderer):**
+     - `refreshModelOptions()` menanyakan **SEMUA** provider tersimpan (bukan hanya yang aktif), mengelompokkan per provider dengan dedupe `baseUrl::model`, dan **menulis balik** daftar model live ke cache per-provider → tersimpan permanen.
+     - Dropdown menyimpan `data-provider-id` **dan** `data-base-url`; tombol Terapkan memakai keduanya untuk memilih provider target yang tepat.
+     - Quick-connect 9Router menyimpan **seluruh** daftar model (bukan hanya model pertama) + toast "N model terdeteksi".
+     - Kartu provider kini punya tombol **Model** → membuka panel chip model live; klik chip langsung mengaktifkan model tersebut.
+  5. **`launcher.css`:** gaya `.llm-model-chip`, `.llm-model-chips-wrap`, dan tombol "Model" aktif.
+* **Verifikasi:**
+  - Unit test baru: `extractModelIds`, `fetchModelsForProviders`, `fetchEndpointModels` (mock HTTP server), persistensi `models[]` 9Router, `deriveGeminiNativeModelsUrl`.
+  - **`npm test` → 22 suites / 156 tests LULUS.**
+  - Uji live: `fetchModelsForProviders` mengembalikan **65 model 9Router** (`ok:true`, ~100–220 ms) dari service `:20128`.
+  - **`npm run build` → exit 0** (hanya warning non-fatal `<script live2dcubismcore>`).
+
+---
+
+### [2026-11-19 19:40] — Audit Entry #048: Perbaikan Temuan Audit Logika (K-2, T-1..T-4, S-1..S-8, R-1..R-6)
+
+* **Tipe Perubahan:** Bug Fix hasil audit menyeluruh (lihat `LAPORAN_AUDIT_LOGIKA.md`).
+* **Perbaikan:**
+  1. **K-2 (`ipc-policy.js`):** `avatar:trigger-idle-chatter` & `avatar:preview-animation` kini mengizinkan window `avatar` → tombol "Test idle reminder" & preview animasi berfungsi.
+  2. **T-1 (`hermes-client.js`):** `request()` diberi timeout (120s); `socket close`/`error` menolak semua `pending`; event `connection.lost`; `disconnect()` membersihkan pending. Di `main.js`: handler `connection.lost` → unlock input + reconnect otomatis bertahap (`scheduleHermesReconnect`).
+  3. **T-3 (`index.js`):** `avatar:start` async — menunggu `did-finish-load`, batal `ok:true` bila `did-fail-load`, baru menutup Settings setelah avatar tampil.
+  4. **T-2 (`main.js`):** `stripAvatarPromptEnvelope` menangani `[The user sent an image]`, `[Replying to]`, `[INSTRUKSI SISTEM]`; `sanitizeHistoryText` buang `<thinking_mode>`; `flattenContent` untuk content array/objek; role dinormalisasi (user/human, assistant/ai/bot/model).
+  5. **T-4 (`pomodoro-timer.js`):** `closeTimerPanel` mempertahankan sesi **dijeda** (tidak reset); ekspos `isPaused()`.
+  6. **S-1 (`settings.js`):** `checkSystemPackages` → `getServiceStatus()` (status Kokoro benar).
+  7. **S-2 (`csp-policy.js`):** tambah `http://127.0.0.1:9124` & `localhost:9124` ke `connect-src` (Uji Bridge tidak lagi diblokir CSP).
+  8. **S-3 (`index.js`):** `avatar:drag-move` clamp ke `workArea` layar terdekat.
+  9. **S-4 (`settings.js`):** provider LLM aktif bisa "Terapkan Ulang".
+  10. **S-5 (`main.js`):** `ttsEnabled` dibaca dari `settings.tts.enabled` + sinkron via `storage` + mute menulis balik.
+  11. **S-6 (`package-installer.js`):** `isStepAlreadyDone('kokoro')` verifikasi `resolveKokoroModelDir().ready`; guard re-entrancy `installPackageOneClick`.
+  12. **S-7 (`updater-service.js`):** pencocokan aset case-insensitive (`.ZIP/.DMG/.EXE`).
+  13. **S-8 (`settings.js`):** shim `statusEl` → toast bila panel aktif bukan Home.
+  14. **R-5 (`index.js`):** import `SAFE_QUERY` (browse-skills ber-kata-kunci tidak lagi ReferenceError).
+  15. **R-1/R-2/R-3/R-6:** debounce traffic-light close; guard `animBackBtn`; Escape tidak menghapus label tombol chat; tambah `#chat-summary-btn` di `index.html`.
+* **Verifikasi:** `npm run build && npm test` → **22 suites / 156 tests LULUS**, build exit 0.
+
 
 
 

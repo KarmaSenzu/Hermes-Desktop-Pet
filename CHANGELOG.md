@@ -12,6 +12,57 @@ dan versioning mengikuti [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fix — Audit Logika Menyeluruh (K/T/S/R) — 2026-11-19
+
+#### Fixed
+- **K-2** IPC policy: `avatar:trigger-idle-chatter` & `avatar:preview-animation` kini
+  juga mengizinkan window `avatar` (tombol uji idle & preview animasi berfungsi).
+- **T-1** `HermesClient`: request timeout (120s), reject semua pending saat socket
+  close/error, event `connection.lost`, dan auto-reconnect bertahap di avatar.
+- **T-3** `avatar:start` menunggu `did-finish-load` sebelum menutup Settings &
+  membatalkan `ok:true` bila `did-fail-load`.
+- **T-2** Riwayat sesi: envelope prompt (`[WAKTU…]`, `[INSTRUKSI SISTEM]`,
+  `[The user sent an image]`, `[Replying to]`) & `<thinking_mode>` dibersihkan;
+  content array/objek diratakan; role dinormalisasi.
+- **T-4** Pomodoro: menutup panel saat **dijeda** tidak lagi menghapus sesi.
+- **S-1..S-8** Kokoro status via `getServiceStatus`; CSP `connect-src` + `:9124`;
+  drag clamp ke workArea; provider aktif bisa "Terapkan Ulang"; `ttsEnabled` sinkron
+  dengan `settings.tts.enabled`; installer verifikasi Kokoro di disk + guard
+  re-entrancy; updater asset match case-insensitive; status non-Home jadi toast.
+- **R-1..R-6** Debounce close traffic-light; guard `animBackBtn`; Escape tak
+  menghapus label tombol chat; `#chat-summary-btn` ditambahkan; import `SAFE_QUERY`.
+
+#### Verified
+- `npm run build && npm test` → 22 suites / 156 tests lulus, build exit 0.
+
+---
+
+### Fix — Model 9Router Tidak Muncul di Dropdown LLM — 2026-11-19
+
+#### Fixed
+- **Model 9Router (dan provider lain) kini muncul di dropdown ganti LLM**, walau
+  provider Google sedang aktif. `refreshModelOptions()` sekarang menanyakan
+  **semua** provider tersimpan secara paralel (bukan hanya yang aktif).
+- **Daftar model disimpan permanen per-provider.** Model live yang terdeteksi
+  disinkronkan balik ke `llm_providers.json` (merge, tidak menimpa). Quick-connect
+  9Router menyimpan **seluruh** daftar model, bukan hanya model pertama.
+- **Parsing respons `/models` lebih tahan banting** (`extractModelIds`): mendukung
+  format OpenAI `{data:[{id}]}`, Gemini `{models:[{name}]}`, array string, dan dedupe.
+- **Fallback native Gemini**: bila `.../openai/models` 404, otomatis memakai
+  `.../v1beta/models?key=...` (`deriveGeminiNativeModelsUrl`).
+
+#### Added
+- IPC `avatar:fetch-all-provider-models` (batch paralel, isolasi error per-provider).
+- Tombol **Model** pada tiap kartu provider → panel chip model live; klik chip untuk
+  langsung mengaktifkan model tersebut.
+- Unit test: `extractModelIds`, `fetchModelsForProviders`, `fetchEndpointModels`
+  (mock HTTP), persistensi `models[]` 9Router, `deriveGeminiNativeModelsUrl`.
+
+#### Changed
+- `avatar:set-llm-provider` meneruskan `models[]` & `authType` ke penyimpanan disk.
+
+---
+
 ### P1 + P2 — Service Manager & Settings Panel — 2026-10-10
 
 #### Added
