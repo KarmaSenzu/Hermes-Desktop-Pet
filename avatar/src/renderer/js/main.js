@@ -58,8 +58,32 @@ voiceManager.setAudioPlayer(audioPlayer)
 const musicPlayer = new MusicPlayer()
 musicPlayer.init()
 
-// TTS on/off (bisa diatur lewat settings nanti).
-let ttsEnabled = true
+// TTS on/off — dibaca dari pengaturan bersama (localStorage) agar sinkron dengan Settings.
+let ttsEnabled = (() => {
+  try {
+    const raw = localStorage.getItem('hermes-avatar-settings')
+    if (raw) {
+      const s = JSON.parse(raw)
+      if (s?.tts && typeof s.tts.enabled === 'boolean') return s.tts.enabled
+    }
+  } catch { /* abaikan */ }
+  return true
+})()
+
+// Sinkronkan perubahan dari jendela Settings (event storage lintas-dokumen).
+window.addEventListener('storage', (e) => {
+  if (e.key !== 'hermes-avatar-settings') return
+  try {
+    const s = JSON.parse(e.newValue || '{}')
+    if (s?.tts && typeof s.tts.enabled === 'boolean') {
+      ttsEnabled = s.tts.enabled
+      const muteIconEl = document.getElementById('mute-icon')
+      const muteLabelEl = document.getElementById('mute-label')
+      if (muteIconEl) muteIconEl.textContent = ttsEnabled ? '🔊' : '🔇'
+      if (muteLabelEl) muteLabelEl.textContent = ttsEnabled ? 'Suara' : 'Bisu'
+    }
+  } catch { /* abaikan */ }
+})
 
 // --- State tracking performa (FPS dinamis aktif / idle) ---
 let isStreamingResponse = false
@@ -266,6 +290,13 @@ const sheetBackdrop = document.getElementById('sheet-backdrop')
 const chatSummaryBtn = document.getElementById('chat-summary-btn')
 const chatSizeToggleBtn = document.getElementById('chat-size-toggle-btn')
 const chatResizeHandle = document.getElementById('chat-resize-handle')
+const chatNewSessionBtn = document.getElementById('chat-new-session-btn')
+const chatHistoryToggleBtn = document.getElementById('chat-history-toggle-btn')
+const chatHistoryCloseBtn = document.getElementById('chat-history-close-btn')
+const chatHistoryDrawer = document.getElementById('chat-history-drawer')
+const chatHistorySearchInput = document.getElementById('chat-history-search')
+const chatHistoryList = document.getElementById('chat-history-list')
+let queuedResumeSessionId = null
 
 // Riwayat sesi percakapan untuk pembuatan Notulen Rapat / Executive Summary
 const sessionChatHistory = []
@@ -1523,6 +1554,13 @@ muteBtn?.addEventListener('click', () => {
   ttsEnabled = !ttsEnabled
   if (muteIcon) muteIcon.textContent = ttsEnabled ? '🔊' : '🔇'
   if (muteLabel) muteLabel.textContent = ttsEnabled ? 'Suara' : 'Bisu'
+  // Persisten: tulis balik ke pengaturan bersama (tanpa menghapus kunci lain).
+  try {
+    const raw = localStorage.getItem('hermes-avatar-settings')
+    const s = raw ? JSON.parse(raw) : {}
+    s.tts = { ...(s.tts || {}), enabled: ttsEnabled }
+    localStorage.setItem('hermes-avatar-settings', JSON.stringify(s))
+  } catch { /* abaikan */ }
   if (live2dPet?.model) {
     live2dPet.spawnHeart(live2dPet.model.x, live2dPet.model.y - 120, ttsEnabled ? '🔊' : '🔇')
   }
@@ -1723,7 +1761,8 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
     if (!chatSheet.classList.contains('hidden')) {
       chatSheet.classList.add('hidden')
-      commentToggle.textContent = '💬'
+      // Jangan set commentToggle.textContent di sini — itu menghapus span emoji/label
+      // di dalam tombol secara permanen. Emoji default memang sudah 💬.
       window.hermesAvatar?.setChatFocus?.(false)
     }
   }
@@ -1832,6 +1871,11 @@ async function initHermes() {
     await hermes.createSession('Avatar chat')
     hermesReady = true
     log('avatar', 'Terhubung ke Hermes. Siap! 👋')
+    if (queuedResumeSessionId) {
+      const targetSid = queuedResumeSessionId
+      queuedResumeSessionId = null
+      resumeHermesSessionById(targetSid)
+    }
 
     // Event masuk debug (filter session.info untuk menjaga kerahasiaan memori profil pengguna).
     hermes.onAny((params) => {
@@ -2102,10 +2146,54 @@ async function initHermes() {
           })
       }
     })
+    // Koneksi terputus (mis. hermes serve di-restart): buka kunci input &
+    // jadwalkan reconnect otomatis bertahap agar chat tidak macet permanen.
+    hermes.on('connection.lost', (info) => {
+      hermesReady = false
+      isStreamingResponse = false
+      removeToolProgress()
+      setInputLocked(false)
+      setStatus('')
+      if (info?.intentional) return
+      log('avatar', '⚠️ Koneksi ke Hermes terputus. Mencoba menghubungkan ulang…')
+      scheduleHermesReconnect()
+    })
   } catch (err) {
     hermesReady = false
     log('avatar', `⚠️ Gagal hubung Hermes: ${err.message}`)
+    scheduleHermesReconnect()
   }
+}
+
+let hermesReconnectAttempts = 0
+let hermesReconnectTimer = null
+
+function scheduleHermesReconnect() {
+  if (hermesReconnectTimer) return
+  if (hermesReconnectAttempts >= 8) {
+    log('avatar', '⚠️ Gagal menghubungkan ulang ke Hermes setelah beberapa percobaan. Buka Settings untuk restart Hermes.')
+    return
+  }
+  hermesReconnectAttempts++
+  const delay = Math.min(15000, 1500 * hermesReconnectAttempts)
+  hermesReconnectTimer = setTimeout(async () => {
+    hermesReconnectTimer = null
+    if (hermesReady) return
+    try {
+      if (hermes && typeof hermes.disconnect === 'function') {
+        try { hermes.disconnect() } catch { /* ignore */ }
+      }
+      await initHermes()
+      if (hermesReady) {
+        hermesReconnectAttempts = 0
+        log('avatar', '✅ Kembali terhubung ke Hermes.')
+      } else {
+        scheduleHermesReconnect()
+      }
+    } catch {
+      scheduleHermesReconnect()
+    }
+  }, delay)
 }
 
 initHermes()
@@ -2796,4 +2884,373 @@ Panduan Format:
     }
   })
 })
+
+// ============================================================================
+// Riwayat Sesi, Pencarian FTS5, Resume Sesi & Notifikasi Cron Proaktif
+// ============================================================================
+
+// Penanda preambel/injeksi yang pernah ditambahkan aplikasi ke teks user.
+// Bila pesan user dari riwayat diawali ini, kita buang preambelnya agar tidak
+// tampil seolah-olah diketik pengguna.
+const ENVELOPE_MARKERS = [
+  '[WAKTU & TANGGAL SISTEM SAAT INI:',
+  '[INSTRUKSI SISTEM:',
+  '[PERTANYAAN DARI CHROME/EDGE EXTENSION',
+  '[The user sent an image',
+  '[Replying to:'
+]
+
+function stripAvatarPromptEnvelope(text) {
+  let raw = String(text || '').trim()
+  if (!raw) return raw
+
+  // 1. Pratinjau lampiran gambar / pesan-balasan (bila isinya hanya penanda).
+  raw = raw.replace(/^\[The user sent an image~[^\]]*\]\s*/i, '').trim()
+  raw = raw.replace(/^\[Replying to:\s*[\s\S]*?\]\s*/i, '').trim()
+
+  // 2. Blok injeksi waktu/prompt sistem dari aplikasi (format lama).
+  if (raw.includes('[WAKTU & TANGGAL SISTEM SAAT INI:')) {
+    const marker = 'DILARANG KERAS menyertakan tag <assessment>. Cukup jawab biasa secara natural tanpa blok assessment!]'
+    const idx = raw.indexOf(marker)
+    if (idx >= 0) {
+      raw = raw.slice(idx + marker.length).trim()
+    } else {
+      const altIdx = raw.lastIndexOf(']\n')
+      if (altIdx >= 0) raw = raw.slice(altIdx + 2).trim()
+      else {
+        const lastBracket = raw.lastIndexOf(']')
+        if (lastBracket >= 0 && lastBracket < raw.length - 1) raw = raw.slice(lastBracket + 1).trim()
+      }
+    }
+  }
+
+  // 3. Bersihkan blok perintah/instruksi sistem berlebih di awal teks.
+  for (const m of ENVELOPE_MARKERS) {
+    if (raw.startsWith(m)) {
+      const end = raw.indexOf(']\n')
+      if (end >= 0) raw = raw.slice(end + 2).trim()
+    }
+  }
+  return raw.trim()
+}
+
+// Bersihkan sisa teks (tag reasoning, dsb) agar rapi di balon riwayat.
+function sanitizeHistoryText(text) {
+  return String(text || '')
+    .replace(/<thinking_mode>[\s\S]*?<\/thinking_mode>/gi, '')
+    .replace(/<\/?thinking_mode[^>]*>/gi, '')
+    .trim()
+}
+
+async function createFreshChatSession() {
+  if (!hermesReady || !hermes) {
+    log('avatar', '(offline) Hermes belum terhubung.')
+    return
+  }
+  if (busy) {
+    log('avatar', '(sibuk) Tunggu respon Hermes selesai sebelum membuat sesi baru.')
+    return
+  }
+  try {
+    await hermes.createSession('Avatar chat')
+    sessionChatHistory.length = 0
+    if (chatLog) chatLog.innerHTML = ''
+    chatHistoryDrawer?.setAttribute('hidden', '')
+    chatHistoryToggleBtn?.classList.remove('active')
+    log('avatar', '✨ Sesi percakapan baru dimulai.')
+    showSpeechBubble('Sesi obrolan baru siap! ✨', 3000)
+  } catch (err) {
+    log('avatar', `Gagal membuat sesi baru: ${err?.message || err}`)
+  }
+}
+
+async function resumeHermesSessionById(sessionId) {
+  const sid = String(sessionId || '').trim()
+  if (!sid) return
+  if (chatSheet?.classList.contains('hidden')) {
+    toggleChat()
+  }
+  if (busy) {
+    log('avatar', '(sibuk) Tunggu Hermes selesai merespon sebelum berpindah sesi.')
+    return
+  }
+
+  // Segera tutup drawer riwayat dan lepas highlight
+  chatHistoryDrawer?.setAttribute('hidden', '')
+  chatHistoryToggleBtn?.classList.remove('active')
+
+  // Indikasi visual memuat
+  if (chatLog) {
+    chatLog.innerHTML = '<div style="color: #94a3b8; font-size: 12px; padding: 12px; text-align: center;">Memuat riwayat sesi… ⏳</div>'
+  }
+
+  try {
+    // 1. Ambil pesan langsung dari state.db lokal terlebih dahulu (cepat & tahan offline)
+    let localMessages = []
+    let sessionMeta = null
+    try {
+      const localRes = await window.hermesAvatar?.searchHermesSessions?.({ sessionId: sid })
+      if (localRes?.ok) {
+        sessionMeta = localRes.session
+        if (Array.isArray(localRes.messages)) {
+          localMessages = localRes.messages
+        }
+      }
+    } catch (dbErr) {
+      console.warn('[resumeHermesSessionById] Gagal query state.db lokal:', dbErr)
+    }
+
+    // 2. Hubungkan ke backend Hermes aktif via WebSocket (session.resume)
+    let rpcMessages = []
+    if (hermesReady && hermes) {
+      try {
+        const res = await hermes.resumeSession(sid)
+        if (Array.isArray(res?.messages)) {
+          rpcMessages = res.messages
+        }
+      } catch (rpcErr) {
+        console.warn('[resumeHermesSessionById] hermes.resumeSession RPC warning:', rpcErr)
+      }
+    } else {
+      queuedResumeSessionId = sid
+    }
+
+    // 3. Tentukan daftar pesan yang akan ditampilkan:
+    // Gunakan rpcMessages bila ada isinya; bila kosong / gagal, gunakan localMessages dari state.db
+    const sourceMsgs = (rpcMessages.length > 0) ? rpcMessages : localMessages
+
+    // Reset log dan buffer sesi percakapan sebelum merender ulang
+    sessionChatHistory.length = 0
+    if (chatLog) chatLog.innerHTML = ''
+
+    let renderedCount = 0
+    const USER_ROLES = new Set(['user', 'human'])
+    const ASSISTANT_ROLES = new Set(['assistant', 'ai', 'bot', 'model'])
+
+    // Ratakan content yang mungkin berupa string, array part ({type,text}), atau objek.
+    const flattenContent = (c) => {
+      if (c == null) return ''
+      if (typeof c === 'string') return c
+      if (Array.isArray(c)) return c.map((p) => (typeof p === 'string' ? p : (p?.text || p?.content || ''))).join('')
+      if (typeof c === 'object') return String(c.text || c.content || '')
+      return String(c)
+    }
+
+    for (const m of sourceMsgs) {
+      const role = String(m?.role || m?.sender || m?.type || '').toLowerCase()
+      // Hermes RPC menggunakan `text`, SQLite state.db menggunakan `content`.
+      const rawContent = flattenContent(m?.text ?? m?.content ?? m?.body).trim()
+      if (!rawContent) continue
+
+      if (USER_ROLES.has(role)) {
+        const cleaned = stripAvatarPromptEnvelope(sanitizeHistoryText(rawContent))
+        // Lewati pesan yang isinya HANYA preambel sistem (kosong setelah dibersihkan).
+        if (cleaned) {
+          log('user', cleaned)
+          renderedCount++
+        }
+      } else if (ASSISTANT_ROLES.has(role)) {
+        const cleaned = cleanText(sanitizeHistoryText(rawContent))
+        if (cleaned) {
+          log('avatar', cleaned)
+          renderedCount++
+        }
+      }
+      // Role `tool` / `session_meta` / `system` sengaja tidak ditampilkan sebagai balon.
+    }
+
+    if (renderedCount === 0) {
+      log('avatar', `🗂️ Sesi \`${sid}\` dilanjutkan (belum ada pesan percakapan tersimpan).`)
+    }
+
+    if (chatLog) {
+      chatLog.scrollTop = chatLog.scrollHeight
+    }
+
+    const title = sessionMeta?.title || sid.slice(0, 8)
+    showSpeechBubble(`Sesi "${title}" dilanjutkan! 💬`, 3500)
+  } catch (err) {
+    console.error('[resumeHermesSessionById] Gagal melanjutkan sesi:', err)
+    if (chatLog) chatLog.innerHTML = ''
+    log('avatar', `Gagal melanjutkan sesi \`${sid}\`: ${err?.message || err}`)
+  }
+}
+
+function formatSessionTimestamp(ts) {
+  const num = Number(ts || 0)
+  if (!num) return ''
+  const ms = num < 1e12 ? num * 1000 : num
+  try {
+    return new Date(ms).toLocaleString('id-ID', {
+      day: '2-digit',
+      month: 'short',
+      hour: '2-digit',
+      minute: '2-digit'
+    })
+  } catch {
+    return ''
+  }
+}
+
+async function refreshChatHistoryList(query = '') {
+  if (!chatHistoryList) return
+  chatHistoryList.innerHTML = '<div class="chat-history-sub" style="padding:6px;">Memuat riwayat sesi…</div>'
+
+  let sessions = []
+  try {
+    const localRes = await window.hermesAvatar?.searchHermesSessions?.(query, 40)
+    if (localRes?.ok && Array.isArray(localRes.sessions)) {
+      sessions = localRes.sessions
+    }
+  } catch { /* fallback ke RPC */ }
+
+  if (sessions.length === 0 && !String(query || '').trim() && hermesReady && hermes) {
+    try {
+      const rpcRes = await hermes.listSessions(40)
+      if (Array.isArray(rpcRes?.sessions)) {
+        sessions = rpcRes.sessions.map((s) => ({
+          id: s.id,
+          title: s.title,
+          preview: s.preview,
+          source: s.source,
+          startedAt: s.started_at,
+          messageCount: s.message_count
+        }))
+      }
+    } catch { /* ignore */ }
+  }
+
+  if (sessions.length === 0) {
+    chatHistoryList.innerHTML = `<div class="chat-history-sub" style="padding:8px;">${query ? 'Tidak ada sesi yang cocok dengan pencarian.' : 'Belum ada riwayat sesi tersimpan.'}</div>`
+    return
+  }
+
+  chatHistoryList.replaceChildren()
+  for (const s of sessions) {
+    const row = document.createElement('div')
+    row.className = 'chat-history-item'
+
+    const meta = document.createElement('div')
+    meta.className = 'chat-history-meta'
+
+    const titleEl = document.createElement('div')
+    titleEl.className = 'chat-history-title'
+    titleEl.textContent = s.title || s.preview || `Sesi ${s.id}`
+
+    const subEl = document.createElement('div')
+    subEl.className = 'chat-history-sub'
+    const parts = [
+      s.source || 'tui',
+      formatSessionTimestamp(s.startedAt),
+      s.messageCount ? `${s.messageCount} pesan` : ''
+    ].filter(Boolean)
+    subEl.textContent = parts.join(' · ')
+
+    meta.appendChild(titleEl)
+    meta.appendChild(subEl)
+
+    const delBtn = document.createElement('button')
+    delBtn.type = 'button'
+    delBtn.className = 'chat-history-del'
+    delBtn.title = 'Hapus sesi'
+    delBtn.textContent = '🗑'
+    delBtn.addEventListener('click', async (ev) => {
+      ev.stopPropagation()
+      if (!hermesReady || !hermes) return
+      try {
+        await hermes.deleteSession(s.id)
+        row.remove()
+      } catch (err) {
+        log('avatar', `Tidak dapat menghapus sesi: ${err?.message || err}`)
+      }
+    })
+
+    row.addEventListener('click', (ev) => {
+      ev.stopPropagation()
+      resumeHermesSessionById(s.id)
+    })
+
+    row.appendChild(meta)
+    row.appendChild(delBtn)
+    chatHistoryList.appendChild(row)
+  }
+}
+
+chatNewSessionBtn?.addEventListener('click', (e) => {
+  e.stopPropagation()
+  createFreshChatSession()
+})
+
+chatHistoryToggleBtn?.addEventListener('click', (e) => {
+  e.stopPropagation()
+  if (!chatHistoryDrawer) return
+  const willOpen = chatHistoryDrawer.hasAttribute('hidden')
+  if (willOpen) {
+    chatHistoryDrawer.removeAttribute('hidden')
+    chatHistoryToggleBtn.classList.add('active')
+    refreshChatHistoryList(chatHistorySearchInput?.value || '')
+    setTimeout(() => chatHistorySearchInput?.focus(), 30)
+  } else {
+    chatHistoryDrawer.setAttribute('hidden', '')
+    chatHistoryToggleBtn.classList.remove('active')
+  }
+})
+
+chatHistoryCloseBtn?.addEventListener('click', (e) => {
+  e.stopPropagation()
+  chatHistoryDrawer?.setAttribute('hidden', '')
+  chatHistoryToggleBtn?.classList.remove('active')
+})
+
+let chatHistorySearchTimer = null
+chatHistorySearchInput?.addEventListener('input', (e) => {
+  const q = e.target.value || ''
+  clearTimeout(chatHistorySearchTimer)
+  chatHistorySearchTimer = setTimeout(() => {
+    refreshChatHistoryList(q)
+  }, 220)
+})
+chatHistorySearchInput?.addEventListener('keydown', (e) => e.stopPropagation())
+
+window.hermesAvatar?.onResumeSession?.((data) => {
+  if (data?.sessionId) {
+    resumeHermesSessionById(data.sessionId)
+  }
+})
+
+window.hermesAvatar?.onCronNotification?.((parsed) => {
+  if (!parsed || parsed.isSilent) return
+  const title = parsed.jobName || parsed.jobId || 'Pengingat Hermes'
+  const rawBody = String(parsed.response || '').trim()
+  if (!rawBody) return
+
+  const card = document.createElement('div')
+  card.className = 'avatar cron-alert-card'
+  const tag = document.createElement('span')
+  tag.className = 'sender-tag'
+  tag.textContent = `⏰ Jadwal Cron: ${title}`
+  const body = document.createElement('div')
+  body.className = 'chat-body markdown-body'
+  body.innerHTML = renderMarkdown(rawBody)
+  card.appendChild(tag)
+  card.appendChild(body)
+  chatLog?.appendChild(card)
+  if (chatLog) chatLog.scrollTop = chatLog.scrollHeight
+
+  sessionChatHistory.push({
+    role: 'assistant',
+    text: `[Cron: ${title}] ${rawBody}`,
+    time: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
+  })
+
+  const vs = getVoiceSettings()
+  const speechText = toSpeechText(`${title}. ${rawBody}`, { maxChars: vs.verbosity === 'full' ? 800 : 280 })
+  const bubbleText = `⏰ ${title}: ${summaryText(speechText || rawBody)}`
+  showSpeechBubble(bubbleText, 9000)
+  controller?.setExpression(parsed.isFailed ? 'concerned' : 'happy')
+  if (ttsEnabled && speechText.trim()) {
+    speak(speechText, parsed.isFailed ? 'neutral' : 'happy')
+  }
+})
+
 
