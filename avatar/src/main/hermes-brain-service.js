@@ -162,6 +162,63 @@ function getTableColumns(db, tableName) {
 // 1. RIWAYAT SESI & PENCARIAN FTS5 (`state.db`)
 // ============================================================================
 
+const PREVIEW_ENVELOPE_MARKERS = [
+  '[WAKTU & TANGGAL SISTEM SAAT INI:',
+  '[INSTRUKSI SISTEM:',
+  '[PERTANYAAN DARI CHROME/EDGE EXTENSION'
+]
+
+/**
+ * Bersihkan envelope prompt sistem (context tanggal/cuaca/extension) agar preview & title sesi tetap bersih.
+ */
+export function stripPromptEnvelopeForPreview(text) {
+  let raw = String(text || '').trim()
+  if (!raw) return ''
+
+  raw = raw.replace(/<thinking_mode>[\s\S]*?<\/thinking_mode>/gi, '').trim()
+  raw = raw.replace(/<\/?thinking_mode[^>]*>/gi, '').trim()
+  raw = raw.replace(/^\[The user sent an image~[^\]]*\]\s*/i, '').trim()
+  raw = raw.replace(/^\[Replying to:\s*[\s\S]*?\]\s*/i, '').trim()
+
+  if (raw.includes('[WAKTU & TANGGAL SISTEM SAAT INI:')) {
+    const marker = 'DILARANG KERAS menyertakan tag <assessment>. Cukup jawab biasa secara natural tanpa blok assessment!]'
+    const idx = raw.indexOf(marker)
+    if (idx >= 0) {
+      raw = raw.slice(idx + marker.length).trim()
+    } else {
+      const altIdx = raw.lastIndexOf(']\n')
+      if (altIdx >= 0) {
+        raw = raw.slice(altIdx + 2).trim()
+      } else {
+        const lastBracket = raw.lastIndexOf(']')
+        if (lastBracket >= 0 && lastBracket < raw.length - 1) {
+          raw = raw.slice(lastBracket + 1).trim()
+        }
+      }
+    }
+  }
+
+  for (const m of PREVIEW_ENVELOPE_MARKERS) {
+    if (raw.startsWith(m)) {
+      const end = raw.indexOf(']\n')
+      if (end >= 0) raw = raw.slice(end + 2).trim()
+    }
+  }
+
+  return raw.replace(/\s+/g, ' ').trim()
+}
+
+function cleanSessionTitle(title) {
+  const raw = String(title || '').trim()
+  if (!raw) return ''
+  const cleaned = stripPromptEnvelopeForPreview(raw)
+  // Jika title terpotong di tengah preambel sistem sehingga masih diawali tag preambel, kosongkan agar UI fallback ke preview.
+  if (PREVIEW_ENVELOPE_MARKERS.some((m) => cleaned.startsWith(m))) {
+    return ''
+  }
+  return cleaned
+}
+
 /**
  * Mencari daftar sesi atau memuat detail pesan satu sesi dari `state.db` Hermes.
  */
@@ -232,7 +289,7 @@ export async function searchHermesSessions({
           id: sessionRow.id,
           sessionKey: sessionRow.session_key || sessionRow.id,
           source: sessionRow.source || 'tui',
-          title: sessionRow.title || '',
+          title: cleanSessionTitle(sessionRow.title),
           model: sessionRow.model || '',
           provider: sessionRow.billing_provider || '',
           startedAt: sessionRow.started_at || 0,
@@ -258,16 +315,19 @@ export async function searchHermesSessions({
           `SELECT content FROM messages
            WHERE session_id = ? AND role IN ('user', 'assistant') ${activeFilter}
              AND content IS NOT NULL AND TRIM(content) != ''
-           ORDER BY timestamp DESC, id DESC LIMIT 1`
+           ORDER BY timestamp DESC, id DESC LIMIT 5`
         )
       : null
 
     const getPreview = (sid) => {
       if (!previewStmt) return ''
       try {
-        const r = previewStmt.get(sid)
-        const txt = String(r?.content || '').replace(/\s+/g, ' ').trim()
-        return txt.length > 140 ? `${txt.slice(0, 140)}…` : txt
+        const rows = previewStmt.all(sid)
+        for (const r of rows) {
+          const txt = stripPromptEnvelopeForPreview(r?.content)
+          if (txt) return txt.length > 140 ? `${txt.slice(0, 140)}…` : txt
+        }
+        return ''
       } catch {
         return ''
       }
@@ -289,7 +349,7 @@ export async function searchHermesSessions({
           id: r.id,
           sessionKey: r.session_key || r.id,
           source: r.source || '',
-          title: r.title || '',
+          title: cleanSessionTitle(r.title),
           preview: getPreview(r.id),
           model: r.model || '',
           provider: r.billing_provider || '',
@@ -306,13 +366,13 @@ export async function searchHermesSessions({
     const addHit = (r, snippet = '') => {
       if (!r || !r.id) return
       if (String(r.source || '').toLowerCase() === 'tool') return
-      const cleanSnippet = String(snippet || '').replace(/\s+/g, ' ').trim()
+      const cleanSnippet = stripPromptEnvelopeForPreview(snippet)
       if (!hitMap.has(r.id)) {
         hitMap.set(r.id, {
           id: r.id,
           sessionKey: r.session_key || r.id,
           source: r.source || '',
-          title: r.title || '',
+          title: cleanSessionTitle(r.title),
           preview: cleanSnippet ? (cleanSnippet.length > 140 ? `${cleanSnippet.slice(0, 140)}…` : cleanSnippet) : getPreview(r.id),
           model: r.model || '',
           provider: r.billing_provider || '',
@@ -400,7 +460,43 @@ export async function manageHermesSessionRpc({ action, sessionId, limit = 50 } =
   }
   if (act === 'delete') {
     if (!sessionId) throw new Error('sessionId wajib diisi')
-    return await gatewayReq('session.delete', { session_id: String(sessionId) })
+    const targetId = String(sessionId).trim()
+    try {
+      return await gatewayReq('session.delete', { session_id: targetId })
+    } catch (err) {
+      const msg = String(err?.message || err || '')
+      if (!/cannot delete an active session|active session/i.test(msg)) {
+        throw err
+      }
+
+      // Hermes menolak session.delete bila session_key masih terbuka di _sessions in-memory.
+      // Enumerasi session.active_list untuk memperoleh live id (8 karakter), tutup via session.close, lalu ulangi.
+      const activeRes = await gatewayReq('session.active_list', {}).catch(() => null)
+      const activeSessions = Array.isArray(activeRes?.sessions) ? activeRes.sessions : []
+      const matches = activeSessions.filter(
+        (s) => s && (String(s.session_key || '') === targetId || String(s.id || '') === targetId)
+      )
+
+      const closedLiveIds = []
+      for (const s of matches) {
+        if (!s?.id) continue
+        const liveId = String(s.id)
+        await gatewayReq('session.close', { session_id: liveId }).catch(() => {})
+        closedLiveIds.push(liveId)
+      }
+
+      if (closedLiveIds.length === 0) {
+        await new Promise((r) => setTimeout(r, 150))
+        await gatewayReq('session.close', { session_id: targetId }).catch(() => {})
+      }
+
+      const retryRes = await gatewayReq('session.delete', { session_id: targetId })
+      return {
+        ...(retryRes || {}),
+        closedActiveSession: closedLiveIds.length > 0,
+        closedLiveIds
+      }
+    }
   }
   throw new Error(`Aksi sesi tidak dikenal: ${act}`)
 }

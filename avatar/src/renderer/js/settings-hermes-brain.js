@@ -892,15 +892,31 @@ export function initHermesBrainPanel({ showToast, confirmDialog } = {}) {
     if (!selectedSessionId) return
     const ok = await uiDeps.confirmDialog('Hapus Sesi Hermes?', `Sesi "${selectedSessionId}" beserta transkripnya akan dihapus.`)
     if (!ok) return
-    const res = await window.hermesAvatar?.hermesBrainSet?.('session-delete', { sessionId: selectedSessionId })
-    if (res?.ok) {
-      uiDeps.showToast('Sesi Dihapus 🗑️', 'Sesi berhasil dihapus dari Hermes.', 'info', '🗑️')
-      selectedSessionId = null
-      loadSessionsList()
-      const msgsEl = document.getElementById('brain-session-messages')
-      if (msgsEl) msgsEl.innerHTML = '<div class="muted">Pilih sesi lain di sebelah kiri.</div>'
-    } else {
-      uiDeps.showToast('Gagal Hapus Sesi', res?.error || 'Pastikan hermes serve aktif', 'error', '❌')
+    const delBtn = document.getElementById('brain-session-delete-btn')
+    const resumeBtn = document.getElementById('brain-session-resume-btn')
+    const titleEl = document.getElementById('brain-session-detail-title')
+    const metaEl = document.getElementById('brain-session-detail-meta')
+    const msgsEl = document.getElementById('brain-session-messages')
+    if (delBtn) delBtn.disabled = true
+    try {
+      const res = await window.hermesAvatar?.hermesBrainSet?.('session-delete', { sessionId: selectedSessionId })
+      if (res?.ok) {
+        const msg = res.closedActiveSession
+          ? 'Sesi aktif berhasil ditutup dan dihapus dari Hermes.'
+          : 'Sesi berhasil dihapus dari Hermes.'
+        uiDeps.showToast('Sesi Dihapus 🗑️', msg, 'info', '🗑️')
+        selectedSessionId = null
+        if (titleEl) titleEl.textContent = 'Pilih sesi di sebelah kiri'
+        if (metaEl) metaEl.textContent = ''
+        if (resumeBtn) resumeBtn.disabled = true
+        if (delBtn) delBtn.disabled = true
+        if (msgsEl) msgsEl.innerHTML = '<div class="muted">Pilih sesi lain di sebelah kiri.</div>'
+        loadSessionsList()
+      } else {
+        uiDeps.showToast('Gagal Hapus Sesi', res?.error || 'Pastikan hermes serve aktif', 'error', '❌')
+      }
+    } finally {
+      if (delBtn) delBtn.disabled = !selectedSessionId
     }
   })
 

@@ -54,6 +54,10 @@ const settingsApi = {
   hermesBrainSet: (action, payload) => ipcRenderer.invoke('avatar:hermes-brain-set', action, payload),
   resumeSessionInAvatar: (sessionId) => ipcRenderer.invoke('avatar:hermes-resume-in-avatar', sessionId),
 
+  // Manajemen Penyimpanan Lokal
+  getStorageSummary: (params) => ipcRenderer.invoke('avatar:storage-get', params),
+  storageAction: (action, payload) => ipcRenderer.invoke('avatar:storage-action', action, payload),
+
   // Skill Management
   addSkill: (payload) => ipcRenderer.invoke('avatar:add-skill', payload),
   deleteSkill: (payload) => ipcRenderer.invoke('avatar:delete-skill', payload),

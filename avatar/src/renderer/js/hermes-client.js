@@ -25,6 +25,7 @@ export class HermesClient {
 
     // State internal.
     this.sessionId = null
+    this.storedSessionId = null
     // Timeout per-request (ms) agar Promise tidak menggantung selamanya bila
     // gateway berhenti merespons (mis. `hermes serve` restart di tengah turn).
     this.requestTimeoutMs = 120000
@@ -149,13 +150,19 @@ export class HermesClient {
 
   /**
    * Buat session → simpan & kembalikan session_id.
+   * Tutup sesi live sebelumnya (best-effort) agar tidak menumpuk di server.
    */
   async createSession(title = 'Avatar chat', cwd = null) {
+    const prevSid = this.sessionId
     const result = await this.request('session.create', {
       title,
       ...(cwd ? { cwd } : {})
     })
     this.sessionId = result.session_id
+    this.storedSessionId = result.stored_session_id || result.session_key || null
+    if (prevSid && prevSid !== this.sessionId) {
+      this.request('session.close', { session_id: prevSid }).catch(() => {})
+    }
     return result
   }
 
@@ -217,21 +224,80 @@ export class HermesClient {
   }
 
   /**
-   * Lanjutkan sesi lama (session.resume) → perbarui sessionId aktif.
+   * Tutup sesi live di server (session.close).
+   */
+  async closeSession(liveSessionId = this.sessionId) {
+    if (!liveSessionId) return null
+    const res = await this.request('session.close', { session_id: liveSessionId })
+    if (liveSessionId === this.sessionId) {
+      this.sessionId = null
+      this.storedSessionId = null
+    }
+    return res
+  }
+
+  /**
+   * Daftar sesi live yang sedang aktif di server (session.active_list).
+   */
+  async listActiveSessions() {
+    return this.request('session.active_list', { current_session_id: this.sessionId || '' })
+  }
+
+  /**
+   * Lanjutkan sesi lama (session.resume) → perbarui sessionId aktif & tutup sesi sebelumnya.
    */
   async resumeSession(sessionId) {
+    const prevSid = this.sessionId
     const result = await this.request('session.resume', { session_id: sessionId })
     if (result?.session_id) {
       this.sessionId = result.session_id
+    }
+    this.storedSessionId = result?.session_key || result?.resumed || sessionId
+    if (prevSid && prevSid !== this.sessionId) {
+      this.request('session.close', { session_id: prevSid }).catch(() => {})
     }
     return result
   }
 
   /**
-   * Hapus sesi tersimpan (session.delete).
+   * Hapus sesi tersimpan (session.delete). Bila masih aktif di server, tutup sesi live terkait lalu ulangi.
    */
   async deleteSession(sessionId) {
-    return this.request('session.delete', { session_id: sessionId })
+    const targetId = String(sessionId || '').trim()
+    try {
+      return await this.request('session.delete', { session_id: targetId })
+    } catch (err) {
+      const msg = String(err?.message || err || '')
+      if (!/cannot delete an active session|active session/i.test(msg)) {
+        throw err
+      }
+
+      const activeRes = await this.listActiveSessions().catch(() => null)
+      const activeSessions = Array.isArray(activeRes?.sessions) ? activeRes.sessions : []
+      const matches = activeSessions.filter(
+        (s) => s && (String(s.session_key || '') === targetId || String(s.id || '') === targetId)
+      )
+
+      let closedCurrent = false
+      for (const s of matches) {
+        if (!s?.id) continue
+        if (s.id === this.sessionId) closedCurrent = true
+        await this.closeSession(s.id).catch(() => {})
+      }
+
+      if (this.storedSessionId === targetId) {
+        closedCurrent = true
+        this.sessionId = null
+        this.storedSessionId = null
+      }
+
+      const retryRes = await this.request('session.delete', { session_id: targetId })
+      return {
+        ...(retryRes || {}),
+        closedActiveSession: true,
+        closedCurrent
+      }
+    }
   }
 
   _handleMessage(raw) {

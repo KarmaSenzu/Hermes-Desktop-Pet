@@ -1040,8 +1040,19 @@ document.addEventListener('drop', async (e) => {
   const rawFiles = Array.from(e.dataTransfer?.files || [])
   if (rawFiles.length === 0) return
 
+  let archiveUploads = true
+  try {
+    const parsedSettings = JSON.parse(localStorage.getItem('hermes-avatar-settings') || '{}')
+    if (parsedSettings?.storage && typeof parsedSettings.storage.archiveUploads === 'boolean') {
+      archiveUploads = parsedSettings.storage.archiveUploads
+    }
+  } catch { /* abaikan */ }
+
   const preparedFiles = await Promise.all(rawFiles.map(async (f) => {
     const filePath = window.hermesAvatar?.getPathForFile?.(f) || f.path || ''
+    if (archiveUploads && filePath) {
+      window.hermesAvatar?.archiveAttachment?.({ path: filePath, name: f.name }).catch(() => {})
+    }
     let textPreview = ''
     const isTextLike = /\.(txt|md|markdown|csv|tsv|json|yaml|yml|log|js|ts|jsx|tsx|py|html|css|xml|sql|sh|ps1|bat|env|ini|toml)$/i.test(f.name) || (f.type && f.type.startsWith('text/'))
     if (isTextLike && f.size <= 64 * 1024) {
@@ -3189,10 +3200,18 @@ async function refreshChatHistoryList(query = '') {
     delBtn.addEventListener('click', async (ev) => {
       ev.stopPropagation()
       if (!hermesReady || !hermes) return
+      delBtn.disabled = true
       try {
-        await hermes.deleteSession(s.id)
+        const res = await hermes.deleteSession(s.id)
         row.remove()
+        if ((res?.closedCurrent || !hermes.sessionId) && !busy) {
+          await hermes.createSession('Avatar chat')
+          sessionChatHistory.length = 0
+          if (chatLog) chatLog.innerHTML = ''
+          log('avatar', '🗑️ Sesi aktif dihapus — sesi percakapan baru dimulai.')
+        }
       } catch (err) {
+        delBtn.disabled = false
         log('avatar', `Tidak dapat menghapus sesi: ${err?.message || err}`)
       }
     })
@@ -3247,6 +3266,30 @@ chatHistorySearchInput?.addEventListener('keydown', (e) => e.stopPropagation())
 window.hermesAvatar?.onResumeSession?.((data) => {
   if (data?.sessionId) {
     resumeHermesSessionById(data.sessionId)
+  }
+})
+
+window.hermesAvatar?.onSessionDeleted?.(async (data) => {
+  const deletedId = String(data?.sessionId || '').trim()
+  const closedLiveIds = Array.isArray(data?.closedLiveIds) ? data.closedLiveIds : []
+  if (!deletedId) return
+
+  if (chatHistoryDrawer && !chatHistoryDrawer.hasAttribute('hidden')) {
+    refreshChatHistoryList(chatHistorySearchInput?.value || '')
+  }
+
+  const isCurrent =
+    hermes &&
+    ((hermes.storedSessionId && hermes.storedSessionId === deletedId) ||
+      (hermes.sessionId && closedLiveIds.includes(hermes.sessionId)))
+
+  if (isCurrent && hermesReady) {
+    hermes.sessionId = null
+    hermes.storedSessionId = null
+    await hermes.createSession('Avatar chat').catch(() => {})
+    sessionChatHistory.length = 0
+    if (chatLog) chatLog.innerHTML = ''
+    log('avatar', '🗑️ Sesi aktif telah dihapus dari Settings — sesi percakapan baru dimulai.')
   }
 })
 

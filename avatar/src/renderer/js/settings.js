@@ -13,6 +13,7 @@ import { renderShortcuts } from './settings-shortcuts.js'
 import { initAppsPanel, adaptPlatformCommands, detectPlatform } from './settings-apps.js'
 import { initMusicPanel } from './settings-music.js'
 import { initHermesBrainPanel, refreshHermesBrainPanel } from './settings-hermes-brain.js'
+import { initStoragePanel, refreshStoragePanel } from './settings-storage.js'
 
 const startBtn = document.getElementById('start-btn')
 const rawStatusEl = document.getElementById('status')
@@ -96,6 +97,7 @@ const SECTIONS = [
   { id: 'llm', icon: 'brain', label: 'LLM & Provider', color: 'indigo' },
   { id: 'skill', icon: 'puzzle', label: 'Skill & Ekstensi', color: 'teal' },
   { id: 'brain', icon: 'cpu', label: 'Hermes Brain & Otomasi', color: 'purple' },
+  { id: 'storage', icon: 'hard-drive', label: 'Penyimpanan', color: 'teal' },
   { id: 'action', icon: 'terminal', label: 'Perintah & App', color: 'slate' },
   { id: 'shortcut', icon: 'keyboard', label: 'Shortcut Global', color: 'amber' }
 ]
@@ -163,6 +165,8 @@ function navigateToSection(sectionId, pushHistory = true) {
     refreshProviderQuota(false)
   } else if (sectionId === 'brain') {
     refreshHermesBrainPanel()
+  } else if (sectionId === 'storage') {
+    refreshStoragePanel()
   }
 }
 
@@ -4389,6 +4393,7 @@ function init() {
   renderShortcuts(document.getElementById('shortcut-list'), statusEl)
   refreshSkills()
   initHermesBrainPanel({ showToast, confirmDialog })
+  initStoragePanel({ showToast, confirmDialog, navigateToSection })
   initAppUpdateChecker()
 }
 

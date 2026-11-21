@@ -86,6 +86,17 @@ import {
   getKanbanAndSubagents,
   manageKanbanAndSubagent
 } from './hermes-brain-service.js'
+import {
+  getStorageSummary,
+  getStorageEngineSummary,
+  listStorageCategoryItems,
+  deleteStorageItem,
+  clearStorageCategory,
+  vacuumHermesStateDb,
+  resolveSafeStorageFolder,
+  archiveScreenCapture,
+  archiveDroppedFile
+} from './storage-service.js'
 
 const secretStore = createSecretStore(safeStorage)
 
@@ -1409,8 +1420,16 @@ secureHandle('avatar:hermes-brain-set', async (_event, action, payload = {}) => 
   try {
     const gw = await ensureOptionalGatewayRpc()
     switch (String(action || '')) {
-      case 'session-delete':
-        return { ok: true, ...(await manageHermesSessionRpc({ action: 'delete', sessionId: payload?.sessionId }, gw)) }
+      case 'session-delete': {
+        const delRes = await manageHermesSessionRpc({ action: 'delete', sessionId: payload?.sessionId }, gw)
+        if (avatarWindow && !avatarWindow.isDestroyed()) {
+          avatarWindow.webContents.send('avatar:session-deleted', {
+            sessionId: String(payload?.sessionId || '').trim(),
+            closedLiveIds: Array.isArray(delRes?.closedLiveIds) ? delRes.closedLiveIds : []
+          })
+        }
+        return { ok: true, ...delRes }
+      }
       case 'cron-manage':
         return await manageHermesCronJob(payload, { gatewayReq: gw })
       case 'memory-save':
@@ -1458,6 +1477,75 @@ secureHandle('avatar:hermes-resume-in-avatar', async (_event, sessionId) => {
     }
     createAvatarWindow(defaultPath)
     return { ok: true, launched: true }
+  } catch (err) {
+    return { ok: false, error: err?.message || String(err) }
+  }
+})
+
+function getStorageOpts() {
+  return { userDataDir: app.getPath('userData') }
+}
+
+// IPC: Ringkasan & rincian penyimpanan lokal (Settings Storage Manager)
+secureHandle('avatar:storage-get', async (_event, params = {}) => {
+  try {
+    const opts = getStorageOpts()
+    if (params?.engineOnly) {
+      return await getStorageEngineSummary({
+        ...opts,
+        forceRefreshEngine: Boolean(params?.forceRefreshEngine)
+      })
+    }
+    if (params?.categoryId) {
+      return await listStorageCategoryItems(params.categoryId, opts)
+    }
+    return await getStorageSummary({
+      ...opts,
+      includeEngine: params?.includeEngine !== false,
+      forceRefreshEngine: Boolean(params?.forceRefreshEngine)
+    })
+  } catch (err) {
+    return { ok: false, error: err?.message || String(err) }
+  }
+})
+
+// IPC: Aksi kelola penyimpanan (hapus item, kosongkan kategori aman, VACUUM state.db, buka Explorer)
+secureHandle('avatar:storage-action', async (_event, action, payload = {}) => {
+  try {
+    const opts = getStorageOpts()
+    switch (String(action || '')) {
+      case 'delete-item':
+        return await deleteStorageItem(payload?.path, opts)
+      case 'clear-category':
+        return await clearStorageCategory(payload?.categoryId, opts)
+      case 'vacuum-db':
+        return await vacuumHermesStateDb(opts)
+      case 'open-folder': {
+        const res = await resolveSafeStorageFolder(payload?.categoryId, payload?.path, opts)
+        if (!res?.ok) return res
+        if (res.isFile) {
+          shell.showItemInFolder(res.path)
+        } else {
+          await mkdir(res.path, { recursive: true })
+          await shell.openPath(res.path)
+        }
+        return { ok: true }
+      }
+      default:
+        return { ok: false, error: `Aksi penyimpanan tidak dikenal: ${action}` }
+    }
+  } catch (err) {
+    return { ok: false, error: err?.message || String(err) }
+  }
+})
+
+// IPC: Arsipkan otomatis lampiran/gambar drag & drop dari Avatar ke vault Hermes
+secureHandle('avatar:archive-attachment', async (_event, payload = {}) => {
+  try {
+    return await archiveDroppedFile(
+      { sourcePath: payload?.path, fileName: payload?.name },
+      getStorageOpts()
+    )
   } catch (err) {
     return { ok: false, error: err?.message || String(err) }
   }
@@ -1748,6 +1836,9 @@ secureHandle('avatar:capture-screen', async (_event, options = {}) => {
     await mkdir(outDir, { recursive: true })
     const filePath = join(outDir, 'latest-screen-capture.jpg')
     await writeFile(filePath, jpgBuf)
+
+    // Arsipkan otomatis ke <hermesHome>/images/ (best-effort, tidak memblokir respons Screen Vision)
+    archiveScreenCapture(jpgBuf, getStorageOpts()).catch(() => {})
 
     return {
       ok: true,

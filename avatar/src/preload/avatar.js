@@ -52,6 +52,11 @@ const avatarApi = {
     ipcRenderer.on('avatar:resume-session', handler)
     return () => ipcRenderer.removeListener('avatar:resume-session', handler)
   },
+  onSessionDeleted: (callback) => {
+    const handler = (_event, data) => callback(data)
+    ipcRenderer.on('avatar:session-deleted', handler)
+    return () => ipcRenderer.removeListener('avatar:session-deleted', handler)
+  },
 
   // Peluncur aplikasi & info terinstall
   // UTANG: launchApp dipakai main.js avatar untuk membuka taskmgr/app
@@ -64,6 +69,7 @@ const avatarApi = {
 
   // Vision layar & failover provider LLM
   captureScreen: (options) => ipcRenderer.invoke('avatar:capture-screen', options),
+  archiveAttachment: (payload) => ipcRenderer.invoke('avatar:archive-attachment', payload),
   failoverLlmProvider: (candidates, currentInfo) => ipcRenderer.invoke('avatar:failover-llm-provider', candidates, currentInfo),
   getPathForFile: (file) => {
     try {

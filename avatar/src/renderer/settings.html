@@ -1963,6 +1963,62 @@
           </div>
         </section>
 
+        <!-- PENYIMPANAN (STORAGE MANAGER) -->
+        <section id="panel-storage" class="panel">
+          <div id="storage-overview-view">
+            <h1>Penyimpanan</h1>
+            <p class="subtitle">Lihat pemakaian ruang lokal sistem oleh obrolan, gambar, file lampiran, paket, dan cache Anda.</p>
+
+            <div class="card padded" style="margin-bottom: 18px;">
+              <div class="storage-cap-header">
+                <div>
+                  <div id="storage-used-headline" class="storage-headline">Memindai penyimpanan lokal…</div>
+                  <div id="storage-disk-meta" class="storage-disk-meta">Menghitung rincian direktori...</div>
+                </div>
+                <div class="storage-cap-controls">
+                  <label for="storage-soft-cap-select" class="hint" style="margin:0;">Batas Pengingat:</label>
+                  <select id="storage-soft-cap-select" class="mac-select" style="width:auto; min-width:105px;">
+                    <option value="512">512 MB</option>
+                    <option value="1024">1 GB</option>
+                    <option value="2048">2 GB</option>
+                    <option value="5120">5 GB</option>
+                    <option value="10240">10 GB</option>
+                  </select>
+                  <button type="button" id="storage-refresh-btn" class="mini-btn secondary">Segarkan ↻</button>
+                </div>
+              </div>
+
+              <div id="storage-bar" class="storage-bar-track" aria-label="Proporsi pemakaian penyimpanan"></div>
+              <div id="storage-legend" class="storage-legend"></div>
+
+              <div class="storage-options-row">
+                <label class="storage-check-label">
+                  <input type="checkbox" id="storage-archive-uploads-toggle" checked />
+                  <span>Arsipkan otomatis screenshot &amp; file yang dijatuhkan ke avatar</span>
+                </label>
+                <button type="button" id="storage-quick-clean-cache-btn" class="mini-btn secondary">🧹 Bersihkan Cache &amp; Log</button>
+              </div>
+            </div>
+
+            <div class="group-header">Kelola penyimpanan</div>
+            <p class="hint" style="margin: 0 0 8px 4px;">Klik kategori di bawah untuk melihat rincian isi folder, pratinjau gambar, atau mengosongkan ruang.</p>
+            <div id="storage-category-list" class="card storage-cat-card" style="margin-bottom: 18px;"></div>
+
+            <div class="group-header">Engine &amp; Runtime (Info Saja)</div>
+            <div id="storage-engine-card" class="card padded"></div>
+          </div>
+
+          <div id="storage-detail-view" class="hidden">
+            <div class="subpanel-nav" style="margin-bottom: 12px;">
+              <button type="button" id="storage-back-btn" class="mini-btn secondary">← Kembali ke Penyimpanan</button>
+            </div>
+            <h1 id="storage-detail-title" style="margin-bottom: 4px;">Rincian Kategori</h1>
+            <p id="storage-detail-meta" class="subtitle" style="margin-bottom: 12px; word-break: break-all;"></p>
+            <div id="storage-detail-actions" class="storage-detail-actions"></div>
+            <div id="storage-detail-items" class="card padded"></div>
+          </div>
+        </section>
+
         <!-- PERINTAH -->
         <section id="panel-action" class="panel">
           <h1>Perintah & Aplikasi</h1>

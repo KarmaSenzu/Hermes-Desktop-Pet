@@ -9,6 +9,7 @@ const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite')
 
 import {
   searchHermesSessions,
+  manageHermesSessionRpc,
   parseCronOutputMarkdown,
   createCronOutputWatcher,
   splitMemoryEntries,
@@ -323,5 +324,133 @@ describe('hermes-brain-service', () => {
     expect(res.tasks).toHaveLength(1)
     expect(res.tasks[0].id).toBe('task-1')
     expect(res.tasks[0].title).toBe('Integrasi Kanban UI')
+  })
+
+  it('manageHermesSessionRpc menutup sesi live saat session.delete menolak active session lalu mengulangi delete', async () => {
+    const calls = []
+    let deleteAttempt = 0
+    const mockGatewayReq = async (method, params) => {
+      calls.push({ method, params })
+      if (method === 'session.delete') {
+        deleteAttempt++
+        if (deleteAttempt === 1) {
+          throw new Error('cannot delete an active session')
+        }
+        return { deleted: params.session_id }
+      }
+      if (method === 'session.active_list') {
+        return {
+          sessions: [
+            { id: 'live99aa', session_key: '20261121_181114_e2cdbf', status: 'idle' },
+            { id: 'other111', session_key: '20261120_000001_aaaaaa', status: 'idle' }
+          ]
+        }
+      }
+      if (method === 'session.close') {
+        return { closed: true }
+      }
+      return {}
+    }
+
+    const res = await manageHermesSessionRpc(
+      { action: 'delete', sessionId: '20261121_181114_e2cdbf' },
+      mockGatewayReq
+    )
+
+    expect(calls.map((c) => c.method)).toEqual([
+      'session.delete',
+      'session.active_list',
+      'session.close',
+      'session.delete'
+    ])
+    expect(calls[2].params).toEqual({ session_id: 'live99aa' })
+    expect(res.deleted).toBe('20261121_181114_e2cdbf')
+    expect(res.closedActiveSession).toBe(true)
+    expect(res.closedLiveIds).toEqual(['live99aa'])
+  })
+
+  it('manageHermesSessionRpc langsung menghapus sesi tidak aktif tanpa memanggil session.active_list atau session.close', async () => {
+    const calls = []
+    const mockGatewayReq = async (method, params) => {
+      calls.push({ method, params })
+      if (method === 'session.delete') {
+        return { deleted: params.session_id }
+      }
+      return {}
+    }
+
+    const res = await manageHermesSessionRpc(
+      { action: 'delete', sessionId: '20261120_000001_old000' },
+      mockGatewayReq
+    )
+
+    expect(calls).toEqual([{ method: 'session.delete', params: { session_id: '20261120_000001_old000' } }])
+    expect(res.deleted).toBe('20261120_000001_old000')
+  })
+
+  it('searchHermesSessions membersihkan envelope sistem pada preview dan title yang terpotong', async () => {
+    const dir = await makeTempDir()
+    const dbPath = join(dir, 'state.db')
+    const db = new DatabaseSync(dbPath)
+    db.exec(`
+      CREATE TABLE sessions (
+        id TEXT PRIMARY KEY,
+        source TEXT NOT NULL,
+        session_key TEXT,
+        title TEXT,
+        model TEXT,
+        billing_provider TEXT,
+        started_at REAL NOT NULL,
+        ended_at REAL,
+        message_count INTEGER DEFAULT 0,
+        input_tokens INTEGER DEFAULT 0,
+        output_tokens INTEGER DEFAULT 0,
+        cwd TEXT
+      );
+      CREATE TABLE messages (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id TEXT NOT NULL,
+        role TEXT NOT NULL,
+        content TEXT,
+        tool_name TEXT,
+        timestamp REAL NOT NULL,
+        active INTEGER NOT NULL DEFAULT 1
+      );
+    `)
+
+    const fullEnvelopePrompt =
+      '[WAKTU & TANGGAL SISTEM SAAT INI: Sabtu, 21 November 2026, pukul 18.16 WIB.\n' +
+      'ATURAN MUTLAK: Hari ini adalah Sabtu, 21 November 2026.]\n' +
+      '[PANDUAN INTERAKTIF AI ASSESSMENT & PILIHAN TINDAKAN:\n' +
+      'DILARANG KERAS menyertakan tag <assessment>. Cukup jawab biasa secara natural tanpa blok assessment!]\n' +
+      'berikan saya ide ide bisnis dari ai'
+
+    db.prepare(`INSERT INTO sessions (id, source, title, model, started_at, message_count) VALUES (?, ?, ?, ?, ?, ?)`).run(
+      'sess-env-1',
+      'tui',
+      '[WAKTU & TANGGAL SISTEM SAAT INI: Sabtu, 21 November 2026',
+      'gemini-3.8-flash',
+      2000,
+      1
+    )
+    db.prepare(`INSERT INTO messages (session_id, role, content, timestamp, active) VALUES (?, ?, ?, ?, 1)`).run(
+      'sess-env-1',
+      'user',
+      fullEnvelopePrompt,
+      2001
+    )
+    db.close()
+
+    const listed = await searchHermesSessions({ dbPathOverride: dbPath })
+    expect(listed.ok).toBe(true)
+    expect(listed.sessions).toHaveLength(1)
+    expect(listed.sessions[0].title).toBe('')
+    expect(listed.sessions[0].preview).toBe('berikan saya ide ide bisnis dari ai')
+
+    const matched = await searchHermesSessions({ query: 'bisnis', dbPathOverride: dbPath })
+    expect(matched.ok).toBe(true)
+    expect(matched.sessions).toHaveLength(1)
+    expect(matched.sessions[0].title).toBe('')
+    expect(matched.sessions[0].preview).toBe('berikan saya ide ide bisnis dari ai')
   })
 })

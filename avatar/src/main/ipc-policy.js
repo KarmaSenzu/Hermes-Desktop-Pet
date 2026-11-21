@@ -117,6 +117,11 @@ export const IPC_POLICY = {
   'avatar:hermes-brain-set': ['settings'],
   'avatar:hermes-resume-in-avatar': ['settings'],
 
+  // Manajemen Penyimpanan Lokal & Arsip Lampiran
+  'avatar:storage-get': ['settings'],
+  'avatar:storage-action': ['settings'],
+  'avatar:archive-attachment': ['avatar'],
+
   // Fitur Info Langsung (Weather/News), Layar/Failover & TTS
   'avatar:get-live-weather': ['avatar'],
   'avatar:get-live-news': ['avatar'],

@@ -76,6 +76,10 @@ const DEFAULT_SETTINGS = {
       'Ada yang bisa kubantu dengan AI Hermes? Buka chat kapan saja ya 💬',
       'Tarik napas dalam-dalam... hembuskan perlahan 🌸'
     ]
+  },
+  storage: {
+    softCapMb: 1024,
+    archiveUploads: true
   }
 }
 
@@ -99,6 +103,10 @@ export function loadSettings() {
     merged.idleReminder = {
       ...DEFAULT_SETTINGS.idleReminder,
       ...(parsed.idleReminder || {})
+    }
+    merged.storage = {
+      ...DEFAULT_SETTINGS.storage,
+      ...(parsed.storage || {})
     }
     if (!Array.isArray(merged.idleReminder.lines) || merged.idleReminder.lines.length === 0) {
       merged.idleReminder.lines = [...DEFAULT_SETTINGS.idleReminder.lines]
