@@ -26,6 +26,9 @@ function createBaseMockDeps(overrides = {}) {
     resolvePythonBinary: vi.fn(async () => ({ cmd: 'py', version: 'Python 3.12.8', ok: true })),
     resolveHermesBinary: vi.fn(() => ({ cmd: 'C:/Users/TestUser/AppData/Local/hermes/bin/hermes.exe' })),
     resolveRouterBinary: vi.fn(() => ({ cmd: 'C:/Users/TestUser/AppData/Roaming/npm/9router.cmd', ok: true })),
+    // Deterministik: anggap model Kokoro sudah tersedia di disk (agar test tidak bergantung
+    // pada isi ~/.hermes-avatar mesin CI). Override per-test bila ingin mensimulasikan cache kosong.
+    resolveKokoroModelDir: vi.fn(() => ({ path: 'C:/Users/TestUser/.hermes-avatar/packages/kokoro', ready: true })),
     fastWhere: vi.fn(() => []),
     savePersistedPath: vi.fn(),
     fixSystemPath: vi.fn(),
@@ -305,6 +308,34 @@ describe('package-installer', () => {
       expect(runLog.some((l) => l.includes('kokoro-onnx'))).toBe(false)
       expect(resumeRun.queue.items['9router'].status).toBe('done')
       expect(getInstallQueueState(deps).overallPercent).toBe(100)
+    })
+
+    it('Continue/Resume TIDAK melewati Kokoro bila modelnya sudah tidak ada di disk (S-6)', async () => {
+      // Simulasikan: semua paket done, TAPI cache Kokoro sudah dihapus dari disk.
+      let routerInstalled = true
+      const deps = createBaseMockDeps({
+        resolveRouterBinary: vi.fn(() => (
+          routerInstalled
+            ? { cmd: 'C:\\Users\\TestUser\\AppData\\Roaming\\npm\\9router.cmd', ok: true }
+            : { cmd: null, ok: false }
+        )),
+        fastWhere: vi.fn((bin) => (bin === 'npm' ? ['C:\\Program Files\\nodejs\\npm.cmd'] : [])),
+        // Kokoro tidak ready di disk → resume harus memasang ulang, bukan skip.
+        resolveKokoroModelDir: vi.fn(() => ({ path: 'C:/Users/TestUser/.hermes-avatar/packages/kokoro', ready: false }))
+      })
+
+      const firstRun = await installPackageOneClick('all', { deps })
+      expect(firstRun.ok).toBe(true)
+      expect(firstRun.queue.items.kokoro.status).toBe('done')
+
+      deps.startKokoro.mockClear()
+      const resumeRun = await installPackageOneClick('resume', { deps })
+
+      // python & hermes tetap dilewati (terverifikasi di disk), kokoro TIDAK dilewati.
+      expect(resumeRun.results.python.skipped).toBe(true)
+      expect(resumeRun.results.hermes.skipped).toBe(true)
+      expect(resumeRun.results.kokoro?.skipped).not.toBe(true)
+      expect(deps.startKokoro).toHaveBeenCalled()
     })
 
     it('menolak pkgId yang tidak dikenal secara aman', async () => {
