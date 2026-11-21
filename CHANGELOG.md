@@ -12,6 +12,32 @@ dan versioning mengikuti [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Perf — Ringankan Sistem (Opsi A/B/C, tanpa kurangi fitur) — 2026-11-21
+
+#### Changed
+- **Opsi A — Optimasi aset Live2D:** 16 tekstur `mother/20250106.8192/*.png`
+  di-downscale ke maksimum 2048px (8192²→2048², 4096²→2048²), RGBA & alpha utuh.
+  **91,98 MB → 20,82 MB (hemat 77,4%)**; VRAM juga turun drastis. Nama file & UV
+  tidak berubah → model tetap termuat. Original dibackup di
+  `_texture_backup_original/` (gitignored & dikecualikan dari installer).
+- **Opsi B — Lazy-load modul renderer:** `live2d-avatar.js` (Pixi) dan
+  `model-loader.js`+`avatar-controller.js` (three addons) kini dimuat dinamis
+  sesuai jenis model. Bundle avatar dipecah: `index` 1,21 MB, `live2d-avatar`
+  1,20 MB, `model-loader` 0,76 MB — model Live2D tidak lagi men-parse loader 3D
+  (dan sebaliknya).
+- **Opsi C — Throttle idle lebih agresif:** `IDLE_FPS` 12→8, tambah `IDLE_DPR`
+  (resolusi render turun ke 1.0 saat idle), mode `unfocused` 4 FPS saat window
+  tidak fokus, dan `setPerfMode` kini juga menurunkan/menaikkan resolusi render.
+
+#### Added
+- `.gitignore` + `package.json build.files` mengecualikan `_texture_backup_original`.
+- Dokumen rencana migrasi Tauri (Plan B): `RENCANA_MIGRASI_TAURI.md`.
+
+#### Verified
+- `npm run build` exit 0; `npm test` 22 suites / 157 tests lulus; 16/16 tekstur valid 2048².
+
+---
+
 ### Fix — Audit Logika Menyeluruh (K/T/S/R) — 2026-11-19
 
 #### Fixed

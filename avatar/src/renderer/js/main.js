@@ -1,7 +1,4 @@
 import { DesktopPet } from './desktop-pet.js'
-import { loadModelFromBase64, loadMMDModel, loadFBXModel, loadVmdClip, loadGlbClip } from './model-loader.js'
-import { AvatarController } from './avatar-controller.js'
-import { Live2DAvatar } from './live2d-avatar.js'
 import { voiceManager } from './voice-manager.js'
 import { HermesClient } from './hermes-client.js'
 import { AudioPlayer } from './audio-player.js'
@@ -45,6 +42,27 @@ import {
  * 3. Jalankan animasi idle + mock chat.
  */
 
+// ── Lazy-loader modul berat (Opsi B: muat sesuai jenis model saja) ──────────
+// Pixi (Live2D) dan Three.js addon loaders (VRM/MMD/FBX/GLB) sebelumnya di-import
+// statis → dua-duanya di-parse & dievaluasi saat boot walau hanya satu yang dipakai.
+// Sekarang dimuat dinamis: model Live2D hanya memuat Pixi; model 3D hanya memuat loaders 3D.
+let _live2dModPromise = null
+let _modelLoaderPromise = null
+let _avatarControllerPromise = null
+
+function loadLive2DModule() {
+  if (!_live2dModPromise) _live2dModPromise = import('./live2d-avatar.js')
+  return _live2dModPromise
+}
+function loadModelLoaderModule() {
+  if (!_modelLoaderPromise) _modelLoaderPromise = import('./model-loader.js')
+  return _modelLoaderPromise
+}
+function loadAvatarControllerModule() {
+  if (!_avatarControllerPromise) _avatarControllerPromise = import('./avatar-controller.js')
+  return _avatarControllerPromise
+}
+
 const container = document.getElementById('app')
 const pet = new DesktopPet(container)
 pet.startRenderLoop()
@@ -85,10 +103,11 @@ window.addEventListener('storage', (e) => {
   } catch { /* abaikan */ }
 })
 
-// --- State tracking performa (FPS dinamis aktif / idle) ---
+// --- State tracking performa (FPS dinamis aktif / idle / unfocused) ---
 let isStreamingResponse = false
 let lastPerfActivityTime = Date.now()
 let currentPerfMode = 'active'
+let windowFocused = true
 
 function updatePerfMode(forceActive = false) {
   if (forceActive) {
@@ -98,7 +117,11 @@ function updatePerfMode(forceActive = false) {
   const isChatOpen = chatSheet && !chatSheet.classList.contains('hidden')
   const hasRecentActivity = (Date.now() - lastPerfActivityTime) < PERF.IDLE_AFTER_MS
   const isBusy = isSpeaking || isStreamingResponse || hasRecentActivity || isChatOpen
-  const nextMode = isBusy ? 'active' : 'idle'
+  let nextMode = 'active'
+  if (!isBusy) {
+    // Window tidak fokus (pengguna di app lain) → paling hemat.
+    nextMode = windowFocused ? 'idle' : 'unfocused'
+  }
   if (nextMode !== currentPerfMode) {
     currentPerfMode = nextMode
     live2dPet.setPerfMode(nextMode)
@@ -108,6 +131,8 @@ function updatePerfMode(forceActive = false) {
 window.addEventListener('mousemove', () => updatePerfMode(true), { passive: true })
 window.addEventListener('mousedown', () => updatePerfMode(true), { passive: true })
 window.addEventListener('keydown', () => updatePerfMode(true), { passive: true })
+window.addEventListener('focus', () => { windowFocused = true; updatePerfMode(true) })
+window.addEventListener('blur', () => { windowFocused = false; updatePerfMode() })
 window.hermesAvatar?.onCursorMove?.(() => updatePerfMode(true))
 setInterval(() => updatePerfMode(), 2000)
 
@@ -169,6 +194,7 @@ window.hermesAvatar.onLoadModel(async (modelPath) => {
       pet.renderer.domElement.style.display = 'none'
 
       if (!live2dPet) {
+        const { Live2DAvatar } = await loadLive2DModule()
         live2dPet = new Live2DAvatar(container)
       } else {
         live2dPet.view.style.display = 'block'
@@ -234,6 +260,9 @@ window.hermesAvatar.onLoadModel(async (modelPath) => {
 
     const ext = result.ext
 
+    // Muat loader 3D secara lazy (hanya saat model 3D dipakai).
+    const { loadModelFromBase64, loadMMDModel, loadFBXModel } = await loadModelLoaderModule()
+
     let scene, vrm
     if (URL_BASED_EXTS.has(ext)) {
       // MMD/FBX: load via URL `model://` (custom protocol serve file + texture).
@@ -258,6 +287,7 @@ window.hermesAvatar.onLoadModel(async (modelPath) => {
 
     pet.setModel(scene)
     modelScene = scene
+    const { AvatarController } = await loadAvatarControllerModule()
     controller = new AvatarController(vrm)
 
     // Set pose default sesuai pengaturan (default A-pose).
@@ -1622,6 +1652,7 @@ async function playCustomEmote(anim) {
         log('avatar', '(emote .vmd butuh model MMD .pmx)')
         return
       }
+      const { loadVmdClip } = await loadModelLoaderModule()
       const url = await window.hermesAvatar.getModelUrl(anim.path)
       const clip = await loadVmdClip(url, mmdRef.mesh)
 
@@ -1644,6 +1675,7 @@ async function playCustomEmote(anim) {
         return
       }
       const url = await window.hermesAvatar.getModelUrl(anim.path)
+      const { loadGlbClip } = await loadModelLoaderModule()
       const clips = await loadGlbClip(url)
       if (!clips.length) {
         log('avatar', '(file .glb tidak punya animasi)')

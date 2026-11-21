@@ -70,6 +70,9 @@ PANDUAN_*.md
 # ------------------------------------------------------------------------------
 assets/audio/cache/
 avatar/assets/audio/cache/
+# Backup aset (mis. tekstur Live2D asli sebelum downscale) — lokal saja, jangan di-commit/bundle
+_texture_backup_original/
+**/_texture_backup_original/
 kokoro_test.wav
 dump_*.py
 scratch/

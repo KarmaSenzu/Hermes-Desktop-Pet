@@ -51,6 +51,7 @@
     "files": [
       "out/**/*",
       "assets/**/*",
+      "!assets/**/_texture_backup_original/**",
       "build/**/*",
       "package.json"
     ],
