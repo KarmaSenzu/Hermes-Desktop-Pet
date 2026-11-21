@@ -4037,7 +4037,7 @@ async function checkAppUpdates(interactive = false) {
     }
 
     cachedUpdateInfo = res
-    const currentVer = res.currentVersion ? (res.currentVersion.startsWith('v') ? res.currentVersion : `v${res.currentVersion}`) : 'v0.1.7'
+    const currentVer = res.currentVersion ? (res.currentVersion.startsWith('v') ? res.currentVersion : `v${res.currentVersion}`) : 'v0.1.8'
     const latestVer = res.latestVersion ? (res.latestVersion.startsWith('v') ? res.latestVersion : `v${res.latestVersion}`) : currentVer
 
     if (footerVerTag) footerVerTag.textContent = currentVer
@@ -4197,8 +4197,8 @@ function showUpdateModal() {
 
   if (!modal) return
 
-  const cur = cachedUpdateInfo?.currentVersion || '0.1.7'
-  const lat = cachedUpdateInfo?.latestVersion || 'v0.1.7'
+  const cur = cachedUpdateInfo?.currentVersion || '0.1.8'
+  const lat = cachedUpdateInfo?.latestVersion || 'v0.1.8'
   const date = cachedUpdateInfo?.releaseDate || 'Rilis Terbaru'
   const changelog = cachedUpdateInfo?.changelog || 'Pembaruan stabilitas dan perbaikan bug.'
   const sizeBadge = cachedUpdateInfo?.isPatchUpdate && cachedUpdateInfo?.assetSizeMb
