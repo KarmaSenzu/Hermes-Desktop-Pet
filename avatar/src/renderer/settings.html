@@ -1580,6 +1580,389 @@
           </div>
         </section>
 
+        <!-- HERMES BRAIN & OTOMASI -->
+        <section id="panel-brain" class="panel">
+          <h1>Hermes Brain &amp; Otomasi</h1>
+          <p class="subtitle">Kelola memori jangka panjang, riwayat sesi, cron proaktif, MCP server, gateway pesan, fallback chain, Mixture of Agents, dan antrean Kanban/subagent.</p>
+
+          <div class="brain-tab-bar" role="tablist">
+            <button type="button" class="brain-tab-btn active" data-brain-tab="sessions">🗂️ Riwayat Sesi</button>
+            <button type="button" class="brain-tab-btn" data-brain-tab="memory">🧠 Kepribadian &amp; Memori</button>
+            <button type="button" class="brain-tab-btn" data-brain-tab="cron">⏰ Cron &amp; Proaktif</button>
+            <button type="button" class="brain-tab-btn" data-brain-tab="mcp">🔌 MCP Server</button>
+            <button type="button" class="brain-tab-btn" data-brain-tab="gateway">📱 Gateway Pesan</button>
+            <button type="button" class="brain-tab-btn" data-brain-tab="advanced">🛡️ Fallback, MoA &amp; Kanban</button>
+          </div>
+
+          <!-- TAB 1: RIWAYAT SESI & FTS5 -->
+          <div class="brain-tab-panel active" data-brain-panel="sessions">
+            <div class="card padded">
+              <div class="skill-toolbar" style="margin-bottom: 10px;">
+                <input id="brain-session-search" type="text" class="mac-input" placeholder="🔍 Cari pesan di seluruh sesi (FTS5 state.db)..." />
+                <button type="button" id="brain-session-refresh-btn" class="mini-btn browse">Segarkan ↻</button>
+              </div>
+              <div class="brain-split">
+                <div id="brain-session-list" class="brain-scroll-list"></div>
+                <div style="display:flex; flex-direction:column; gap:8px;">
+                  <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap;">
+                    <span id="brain-session-detail-title" style="font-size:12.5px; font-weight:600; color:var(--text);">Pilih sesi untuk melihat transkrip</span>
+                    <div style="display:flex; gap:6px;">
+                      <button type="button" id="brain-session-resume-btn" class="mini-btn primary" disabled>Lanjutkan di Avatar ▶</button>
+                      <button type="button" id="brain-session-delete-btn" class="mini-btn del" disabled>Hapus Sesi</button>
+                    </div>
+                  </div>
+                  <div id="brain-session-detail-meta" class="brain-list-card-sub"></div>
+                  <div id="brain-session-messages" class="brain-chat-preview">
+                    <div class="muted">Klik salah satu sesi di sebelah kiri untuk melihat isi percakapan.</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- TAB 2: KEPRIBADIAN (SOUL.md) & MEMORI (USER.md / MEMORY.md) -->
+          <div class="brain-tab-panel" data-brain-panel="memory">
+            <div class="group-header">Kepribadian Avatar (SOUL.md)</div>
+            <div class="card padded" style="margin-bottom: 14px;">
+              <div class="brain-chip-row" style="margin-bottom: 10px;">
+                <span class="muted" style="align-self:center;">Preset Karakter:</span>
+                <button type="button" class="mini-btn secondary brain-soul-preset" data-preset="professional">💼 Asisten Profesional</button>
+                <button type="button" class="mini-btn secondary brain-soul-preset" data-preset="friendly">🌸 Pendamping Santai</button>
+                <button type="button" class="mini-btn secondary brain-soul-preset" data-preset="tsundere">🎀 Tsundere Lucu</button>
+                <button type="button" class="mini-btn secondary brain-soul-preset" data-preset="engineer">🛠️ Engineer Kritis</button>
+              </div>
+              <textarea id="brain-soul-editor" class="brain-textarea" style="min-height:110px;" placeholder="Instruksi karakter &amp; gaya bahasa Hermes di SOUL.md..."></textarea>
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-top:8px;">
+                <span id="brain-soul-path" class="hint" style="margin:0;"></span>
+                <button type="button" id="brain-soul-save-btn" class="mini-btn primary">Simpan SOUL.md</button>
+              </div>
+            </div>
+
+            <div class="group-header">Memori Tentang Anda (USER.md) &amp; Fakta Tersimpan (MEMORY.md)</div>
+            <div class="brain-split">
+              <div class="card padded">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                  <strong style="font-size:13px;">Profil Pengguna (USER.md)</strong>
+                  <span id="brain-user-count" class="brain-badge">0 entri</span>
+                </div>
+                <div id="brain-user-entries" class="brain-scroll-list" style="max-height:200px; margin-bottom:8px;"></div>
+                <div style="display:flex; gap:6px; margin-bottom:8px;">
+                  <input id="brain-user-add-input" type="text" class="mac-input" style="flex:1;" placeholder="Tambah catatan tentang preferensi Anda..." />
+                  <button type="button" id="brain-user-add-btn" class="mini-btn secondary">+ Tambah</button>
+                </div>
+                <details class="pkg-manual-fallback">
+                  <summary>Edit Teks Mentah (Markdown §)</summary>
+                  <textarea id="brain-user-raw" class="brain-textarea" style="margin-top:8px; min-height:90px;"></textarea>
+                </details>
+                <div style="display:flex; justify-content:flex-end; margin-top:8px;">
+                  <button type="button" id="brain-user-save-btn" class="mini-btn primary">Simpan USER.md</button>
+                </div>
+              </div>
+
+              <div class="card padded">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                  <strong style="font-size:13px;">Memori Proyek &amp; Fakta (MEMORY.md)</strong>
+                  <span id="brain-memory-count" class="brain-badge">0 entri</span>
+                </div>
+                <div id="brain-memory-entries" class="brain-scroll-list" style="max-height:200px; margin-bottom:8px;"></div>
+                <div style="display:flex; gap:6px; margin-bottom:8px;">
+                  <input id="brain-memory-add-input" type="text" class="mac-input" style="flex:1;" placeholder="Tambah fakta proyek atau catatan penting..." />
+                  <button type="button" id="brain-memory-add-btn" class="mini-btn secondary">+ Tambah</button>
+                </div>
+                <details class="pkg-manual-fallback">
+                  <summary>Edit Teks Mentah (Markdown §)</summary>
+                  <textarea id="brain-memory-raw" class="brain-textarea" style="margin-top:8px; min-height:90px;"></textarea>
+                </details>
+                <div style="display:flex; justify-content:flex-end; margin-top:8px;">
+                  <button type="button" id="brain-memory-save-btn" class="mini-btn primary">Simpan MEMORY.md</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- TAB 3: CRON JOBS & SAPAAN PROAKTIF -->
+          <div class="brain-tab-panel" data-brain-panel="cron">
+            <div class="card padded" style="margin-bottom: 12px;">
+              <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:10px;">
+                <div>
+                  <strong style="font-size:13px;">Status Penjadwal Proaktif</strong>
+                  <div id="brain-cron-ticker-status" class="hint" style="margin:2px 0 0;">Memeriksa ticker…</div>
+                </div>
+                <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                  <button type="button" id="brain-cron-tick-btn" class="mini-btn secondary">⚡ Jalankan Tick Sekarang</button>
+                  <button type="button" id="brain-cron-refresh-btn" class="mini-btn browse">Segarkan ↻</button>
+                </div>
+              </div>
+              <div class="brain-chip-row" style="margin-bottom: 10px;">
+                <span class="muted" style="align-self:center;">Preset 1-Klik:</span>
+                <button type="button" class="mini-btn secondary brain-cron-preset" data-cron-preset="briefing">☀️ Briefing Pagi 08:00</button>
+                <button type="button" class="mini-btn secondary brain-cron-preset" data-cron-preset="break">💧 Pengingat Istirahat 2 Jam</button>
+              </div>
+              <div class="brain-form-grid">
+                <div class="brain-field">
+                  <label>Nama Tugas</label>
+                  <input id="brain-cron-name" type="text" class="mac-input" placeholder="cth. Briefing Pagi" />
+                </div>
+                <div class="brain-field">
+                  <label>Jadwal (interval / cron)</label>
+                  <input id="brain-cron-schedule" type="text" class="mac-input" placeholder="30m / 2h / 0 8 * * *" />
+                </div>
+                <div class="brain-field">
+                  <label>Kirim Hasil Ke (Deliver)</label>
+                  <select id="brain-cron-deliver" class="mac-select">
+                    <option value="local">Lokal &amp; Balon Avatar</option>
+                    <option value="telegram">Telegram Home Channel</option>
+                    <option value="all">Semua Channel Terkoneksi</option>
+                  </select>
+                </div>
+              </div>
+              <div style="margin-top:8px;">
+                <textarea id="brain-cron-prompt" class="brain-textarea" style="min-height:68px;" placeholder="Prompt yang akan dijalankan Hermes secara otomatis saat jadwal tiba..."></textarea>
+              </div>
+              <div style="display:flex; justify-content:flex-end; margin-top:8px;">
+                <button type="button" id="brain-cron-add-btn" class="mini-btn primary">+ Buat Jadwal Cron</button>
+              </div>
+            </div>
+
+            <div class="group-header">Daftar Jadwal Cron Terdaftar</div>
+            <div class="card padded">
+              <div id="brain-cron-list" class="brain-scroll-list" style="max-height:300px;"></div>
+            </div>
+          </div>
+
+          <!-- TAB 4: MCP SERVER MANAGER -->
+          <div class="brain-tab-panel" data-brain-panel="mcp">
+            <div class="card padded" style="margin-bottom:12px;">
+              <div class="brain-chip-row" style="margin-bottom:10px;">
+                <span class="muted" style="align-self:center;">Preset Populer:</span>
+                <button type="button" class="mini-btn secondary brain-mcp-preset" data-mcp-preset="filesystem">📁 Filesystem</button>
+                <button type="button" class="mini-btn secondary brain-mcp-preset" data-mcp-preset="fetch">🌐 Web Fetch (uvx)</button>
+                <button type="button" class="mini-btn secondary brain-mcp-preset" data-mcp-preset="github">🐙 GitHub MCP</button>
+                <button type="button" class="mini-btn secondary brain-mcp-preset" data-mcp-preset="playwright">🎭 Playwright Browser</button>
+              </div>
+              <div class="brain-form-grid">
+                <div class="brain-field">
+                  <label>ID Server MCP</label>
+                  <input id="brain-mcp-id" type="text" class="mac-input" placeholder="cth. github / filesystem" />
+                </div>
+                <div class="brain-field">
+                  <label>Transport</label>
+                  <select id="brain-mcp-transport" class="mac-select">
+                    <option value="stdio">Stdio (command + args)</option>
+                    <option value="http">HTTP (Streamable HTTP)</option>
+                    <option value="sse">SSE (Server-Sent Events)</option>
+                  </select>
+                </div>
+                <div class="brain-field">
+                  <label>Timeout (detik)</label>
+                  <input id="brain-mcp-timeout" type="text" class="mac-input" value="120" placeholder="120" />
+                </div>
+              </div>
+              <div id="brain-mcp-stdio-fields" class="brain-form-grid" style="margin-top:8px;">
+                <div class="brain-field">
+                  <label>Command</label>
+                  <input id="brain-mcp-command" type="text" class="mac-input" placeholder="npx / uvx / node / python" />
+                </div>
+                <div class="brain-field">
+                  <label>Args (pisahkan dengan spasi)</label>
+                  <input id="brain-mcp-args" type="text" class="mac-input" placeholder="-y @modelcontextprotocol/server-github" />
+                </div>
+              </div>
+              <div id="brain-mcp-url-fields" class="brain-form-grid" style="margin-top:8px;" hidden>
+                <div class="brain-field" style="grid-column: 1 / -1;">
+                  <label>Endpoint URL</label>
+                  <input id="brain-mcp-url" type="text" class="mac-input" placeholder="https://example.com/mcp" />
+                </div>
+              </div>
+              <div class="brain-field" style="margin-top:8px;">
+                <label>Environment Vars / Headers (format KEY=VALUE per baris)</label>
+                <textarea id="brain-mcp-env" class="brain-textarea" style="min-height:60px;" placeholder="GITHUB_PERSONAL_ACCESS_TOKEN=ghp_..."></textarea>
+              </div>
+              <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:8px;">
+                <button type="button" id="brain-mcp-clear-btn" class="mini-btn secondary">Reset Form</button>
+                <button type="button" id="brain-mcp-save-btn" class="mini-btn primary">Simpan &amp; Reload MCP</button>
+              </div>
+            </div>
+
+            <div class="group-header">MCP Server Terpasang (config.yaml)</div>
+            <div class="card padded">
+              <div id="brain-mcp-list" class="brain-scroll-list"></div>
+            </div>
+          </div>
+
+          <!-- TAB 5: MESSAGING GATEWAY -->
+          <div class="brain-tab-panel" data-brain-panel="gateway">
+            <div class="card padded" style="margin-bottom:12px;">
+              <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:10px;">
+                <div>
+                  <strong style="font-size:13.5px;">Status Messaging Gateway</strong>
+                  <div id="brain-gw-status-text" class="hint" style="margin:2px 0 0;">Memeriksa gateway_state.json…</div>
+                </div>
+                <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                  <button type="button" id="brain-gw-start-btn" class="mini-btn primary">▶ Start Service</button>
+                  <button type="button" id="brain-gw-bg-btn" class="mini-btn secondary">⚡ Run Background</button>
+                  <button type="button" id="brain-gw-restart-btn" class="mini-btn secondary">🔄 Restart</button>
+                  <button type="button" id="brain-gw-stop-btn" class="mini-btn del">⏹ Stop</button>
+                  <button type="button" id="brain-gw-refresh-btn" class="mini-btn browse">Segarkan ↻</button>
+                </div>
+              </div>
+              <div id="brain-gw-platforms" class="brain-chip-row"></div>
+            </div>
+
+            <div class="group-header">Kredensial Platform (.env Hermes)</div>
+            <div class="card padded">
+              <div class="brain-form-grid">
+                <div class="brain-field">
+                  <label>Telegram Bot Token</label>
+                  <input id="brain-gw-tg-token" type="password" class="mac-input" placeholder="Kosongkan untuk pertahankan token lama" />
+                </div>
+                <div class="brain-field">
+                  <label>Telegram Allowed User IDs</label>
+                  <input id="brain-gw-tg-users" type="text" class="mac-input" placeholder="6880721196" />
+                </div>
+                <div class="brain-field">
+                  <label>Telegram Home Channel ID</label>
+                  <input id="brain-gw-tg-home" type="text" class="mac-input" placeholder="6880721196" />
+                </div>
+                <div class="brain-field">
+                  <label>Discord Bot Token</label>
+                  <input id="brain-gw-dc-token" type="password" class="mac-input" placeholder="Opsional" />
+                </div>
+                <div class="brain-field">
+                  <label>Discord Home Channel</label>
+                  <input id="brain-gw-dc-home" type="text" class="mac-input" placeholder="Channel ID" />
+                </div>
+                <div class="brain-field">
+                  <label>Slack Bot Token</label>
+                  <input id="brain-gw-sl-token" type="password" class="mac-input" placeholder="xoxb-..." />
+                </div>
+                <div class="brain-field">
+                  <label>WhatsApp Enabled</label>
+                  <select id="brain-gw-wa-enabled" class="mac-select">
+                    <option value="">Default (nonaktif)</option>
+                    <option value="true">Aktif (true)</option>
+                    <option value="false">Nonaktif (false)</option>
+                  </select>
+                </div>
+                <div class="brain-field">
+                  <label>WhatsApp Home Channel</label>
+                  <input id="brain-gw-wa-home" type="text" class="mac-input" placeholder="62812xxxx@s.whatsapp.net" />
+                </div>
+                <div class="brain-field">
+                  <label>Izinkan Semua User DM</label>
+                  <select id="brain-gw-allow-all" class="mac-select">
+                    <option value="false">Hanya Allowed Users (Aman)</option>
+                    <option value="true">Izinkan Semua (false disarankan)</option>
+                  </select>
+                </div>
+              </div>
+              <div style="display:flex; justify-content:flex-end; margin-top:10px;">
+                <button type="button" id="brain-gw-save-env-btn" class="mini-btn primary">Simpan Konfigurasi .env</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- TAB 6: FALLBACK CHAIN, MIXTURE OF AGENTS & KANBAN/SUBAGENT -->
+          <div class="brain-tab-panel" data-brain-panel="advanced">
+            <div class="brain-split" style="margin-bottom: 14px;">
+              <!-- Native Fallback Chain -->
+              <div class="card padded">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                  <strong style="font-size:13px;">🛡️ Fallback Provider Chain</strong>
+                  <button type="button" id="brain-fb-save-btn" class="mini-btn primary">Simpan Chain</button>
+                </div>
+                <p class="hint" style="margin:0 0 8px;">Urutan model cadangan otomatis saat model utama limit/429/error.</p>
+                <div id="brain-fb-list" class="brain-scroll-list" style="max-height:170px; margin-bottom:8px;"></div>
+                <div class="brain-form-grid">
+                  <div class="brain-field">
+                    <label>Ambil dari Provider Tersimpan</label>
+                    <select id="brain-fb-saved-pick" class="mac-select">
+                      <option value="">-- Isi manual atau pilih tersimpan --</option>
+                    </select>
+                  </div>
+                  <div class="brain-field">
+                    <label>Provider (mis. openrouter / custom)</label>
+                    <input id="brain-fb-provider" type="text" class="mac-input" placeholder="custom" />
+                  </div>
+                  <div class="brain-field">
+                    <label>Model ID</label>
+                    <input id="brain-fb-model" type="text" class="mac-input" placeholder="gemini-3.5-flash-lite" />
+                  </div>
+                  <div class="brain-field">
+                    <label>Base URL (opsional untuk custom)</label>
+                    <input id="brain-fb-baseurl" type="text" class="mac-input" placeholder="https://..." />
+                  </div>
+                </div>
+                <div style="display:flex; justify-content:flex-end; margin-top:8px;">
+                  <button type="button" id="brain-fb-add-btn" class="mini-btn secondary">+ Tambah ke Fallback</button>
+                </div>
+              </div>
+
+              <!-- Mixture of Agents (MoA) -->
+              <div class="card padded">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                  <strong style="font-size:13px;">🧠 Mixture of Agents (MoA)</strong>
+                  <button type="button" id="brain-moa-save-btn" class="mini-btn primary">Simpan MoA</button>
+                </div>
+                <div class="brain-form-grid">
+                  <div class="brain-field">
+                    <label>Mode MoA Aktif</label>
+                    <select id="brain-moa-active" class="mac-select">
+                      <option value="">Nonaktif (gunakan model tunggal)</option>
+                      <option value="default">Aktif (Preset: default)</option>
+                    </select>
+                  </div>
+                  <div class="brain-field">
+                    <label>Fan-out Mode</label>
+                    <select id="brain-moa-fanout" class="mac-select">
+                      <option value="per_iteration">Per Iteration (terakurat)</option>
+                      <option value="user_turn">Per User Turn (lebih cepat)</option>
+                    </select>
+                  </div>
+                  <div class="brain-field">
+                    <label>Aggregator Provider</label>
+                    <input id="brain-moa-agg-provider" type="text" class="mac-input" placeholder="openrouter" />
+                  </div>
+                  <div class="brain-field">
+                    <label>Aggregator Model</label>
+                    <input id="brain-moa-agg-model" type="text" class="mac-input" placeholder="anthropic/claude-opus-4.8" />
+                  </div>
+                </div>
+                <div class="brain-field" style="margin-top:8px;">
+                  <label>Reference Advisor Models (1 baris = provider|model)</label>
+                  <textarea id="brain-moa-refs" class="brain-textarea" style="min-height:85px;" placeholder="openai-codex|gpt-5.5&#10;openrouter|deepseek/deepseek-v4-pro"></textarea>
+                </div>
+              </div>
+            </div>
+
+            <!-- Kanban & Subagent Monitor -->
+            <div class="group-header">📋 Monitor Kanban &amp; Async Subagent</div>
+            <div class="brain-split">
+              <div class="card padded">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                  <strong style="font-size:13px;">Kartu Tugas Kanban (kanban.db)</strong>
+                  <button type="button" id="brain-kanban-refresh-btn" class="mini-btn browse">Segarkan ↻</button>
+                </div>
+                <div id="brain-kanban-list" class="brain-scroll-list" style="max-height:200px; margin-bottom:8px;"></div>
+                <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                  <input id="brain-kanban-title" type="text" class="mac-input" style="flex:1; min-width:150px;" placeholder="Judul tugas kanban baru..." />
+                  <input id="brain-kanban-assignee" type="text" class="mac-input" style="width:110px;" placeholder="assignee (ops.)" />
+                  <button type="button" id="brain-kanban-create-btn" class="mini-btn primary">+ Buat Kartu</button>
+                </div>
+              </div>
+
+              <div class="card padded">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                  <strong style="font-size:13px;">Subagent Aktif &amp; Riwayat Delegasi</strong>
+                  <button type="button" id="brain-subagent-pause-btn" class="mini-btn secondary">⏸ Pause Spawn</button>
+                </div>
+                <div id="brain-subagent-meta" class="hint" style="margin:0 0 8px;"></div>
+                <div id="brain-subagent-list" class="brain-scroll-list" style="max-height:220px;"></div>
+              </div>
+            </div>
+          </div>
+        </section>
+
         <!-- PERINTAH -->
         <section id="panel-action" class="panel">
           <h1>Perintah & Aplikasi</h1>

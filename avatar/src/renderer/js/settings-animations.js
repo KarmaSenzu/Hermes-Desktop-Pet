@@ -813,9 +813,9 @@ export function renderAnimationSettings() {
   animDetailView.classList.add('hidden')
 }
 
-animBackBtn.addEventListener('click', () => {
-  animDetailView.classList.add('hidden')
-  animMenuView.classList.remove('hidden')
+animBackBtn?.addEventListener('click', () => {
+  animDetailView?.classList.add('hidden')
+  animMenuView?.classList.remove('hidden')
   renderAnimMenu()
 })
 

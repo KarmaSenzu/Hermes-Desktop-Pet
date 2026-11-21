@@ -878,7 +878,16 @@ async function isStepAlreadyDone(stepKey, d, queueItems) {
     if (stepKey === 'python') return Boolean((await d.resolvePythonBinary())?.ok)
     if (stepKey === 'hermes') return Boolean(findHermesBinaryDirect(d))
     if (stepKey === '9router') return Boolean(d.resolveRouterBinary()?.ok)
-    if (stepKey === 'kokoro') return true
+    if (stepKey === 'kokoro') {
+      // Jangan percaya status JSON buta: verifikasi model Kokoro benar-benar ada di disk.
+      // Bila cache dibersihkan / dependensi di-uninstall, Continue harus memasang ulang.
+      try {
+        const info = typeof d.resolveKokoroModelDir === 'function' ? d.resolveKokoroModelDir() : null
+        return Boolean(info?.ready)
+      } catch {
+        return false
+      }
+    }
   }
   return false
 }
@@ -890,6 +899,16 @@ export async function installPackageOneClick(pkgId, { onProgress, deps } = {}) {
   const d = getDefaultDeps(deps)
   loadQueueStateIfNeeded(d)
   const id = String(pkgId || '').trim().toLowerCase()
+
+  // Kunci re-entrancy: cegah dua instalasi berjalan bersamaan (menyebabkan checklist
+  // lompat mundur / state korup bila user klik dua kali atau jendela di-reload).
+  if (activeInstallCount > 0) {
+    return {
+      ok: false,
+      error: 'Instalasi lain sedang berjalan. Tunggu hingga selesai.',
+      queue: getInstallQueueState(d)
+    }
+  }
 
   if (id === 'all' || id === 'resume') {
     activeInstallCount++

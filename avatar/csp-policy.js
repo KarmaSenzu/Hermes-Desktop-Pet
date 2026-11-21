@@ -12,5 +12,5 @@ export const CSP_POLICY =
   "img-src 'self' data: blob: model: https:; " +              // https: untuk thumbnail & artwork audio online
   "media-src 'self' data: blob: model: https:; " +            // https: untuk stream radio & audio online arbitrer
   "font-src 'self' data:; " +
-  "connect-src 'self' ws://127.0.0.1:9119 http://127.0.0.1:9119 http://127.0.0.1:8880 http://127.0.0.1:20128 http://localhost:20128 model: data: blob:; " +
+  "connect-src 'self' ws://127.0.0.1:9119 http://127.0.0.1:9119 http://127.0.0.1:8880 http://127.0.0.1:20128 http://localhost:20128 http://127.0.0.1:9124 http://localhost:9124 model: data: blob:; " +
   "object-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'; worker-src 'self' blob:"

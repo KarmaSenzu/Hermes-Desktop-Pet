@@ -12,9 +12,31 @@ import { initAnimationsPanel, renderAnimationSettings } from './settings-animati
 import { renderShortcuts } from './settings-shortcuts.js'
 import { initAppsPanel, adaptPlatformCommands, detectPlatform } from './settings-apps.js'
 import { initMusicPanel } from './settings-music.js'
+import { initHermesBrainPanel, refreshHermesBrainPanel } from './settings-hermes-brain.js'
 
 const startBtn = document.getElementById('start-btn')
-const statusEl = document.getElementById('status')
+const rawStatusEl = document.getElementById('status')
+
+// Shim status: tulis ke #status bila panel Home aktif (terlihat); bila tidak,
+// tampilkan sebagai toast agar pesan dari panel lain (Karakter/LLM/Skill/App/dll)
+// tetap terlihat oleh pengguna. Membaca .textContent tetap mengembalikan nilai.
+const statusEl = {
+  get textContent() {
+    return rawStatusEl ? rawStatusEl.textContent : ''
+  },
+  set textContent(value) {
+    const msg = String(value == null ? '' : value)
+    if (rawStatusEl) rawStatusEl.textContent = msg
+    const homeActive = document.getElementById('panel-home')?.classList.contains('active')
+    if (!homeActive && msg.trim()) {
+      let type = 'info'
+      if (/^(✓|✅|✨)/.test(msg)) type = 'success'
+      else if (/^(✗|❌|Gagal)/i.test(msg)) type = 'error'
+      else if (/^⚠️/.test(msg)) type = 'warning'
+      try { showToast('Info', msg, type, 'ℹ️', 4000) } catch { /* abaikan */ }
+    }
+  }
+}
 const routerCheck = document.getElementById('router-check')
 const hermesStatus = document.getElementById('hermes-status')
 
@@ -73,6 +95,7 @@ const SECTIONS = [
   { id: 'voice', icon: 'mic', label: 'Suara & TTS', color: 'red' },
   { id: 'llm', icon: 'brain', label: 'LLM & Provider', color: 'indigo' },
   { id: 'skill', icon: 'puzzle', label: 'Skill & Ekstensi', color: 'teal' },
+  { id: 'brain', icon: 'cpu', label: 'Hermes Brain & Otomasi', color: 'purple' },
   { id: 'action', icon: 'terminal', label: 'Perintah & App', color: 'slate' },
   { id: 'shortcut', icon: 'keyboard', label: 'Shortcut Global', color: 'amber' }
 ]
@@ -138,13 +161,20 @@ function navigateToSection(sectionId, pushHistory = true) {
   } else if (sectionId === 'llm') {
     closeLlmSubpanel()
     refreshProviderQuota(false)
+  } else if (sectionId === 'brain') {
+    refreshHermesBrainPanel()
   }
 }
 
 // Kontrol Window ala macOS (traffic lights: close, minimize, maximize)
 function initWindowControls() {
+  let winClosePending = false
   document.getElementById('btn-win-close')?.addEventListener('click', () => {
+    // Cegah double-fire (mis. double click) yang bisa menutup/mematikan proses ganda.
+    if (winClosePending) return
+    winClosePending = true
     window.hermesAvatar?.windowClose?.()
+    setTimeout(() => { winClosePending = false }, 800)
   })
 
   document.getElementById('btn-win-minimize')?.addEventListener('click', () => {
@@ -1130,8 +1160,8 @@ function bindPackageActions() {
           let attempts = 0
           const pollTimer = setInterval(async () => {
             attempts++
-            const check = await window.hermesAvatar.checkSystemPackages?.()
-            if (check?.kokoro?.running) {
+            const check = await window.hermesAvatar.getServiceStatus?.()
+            if (check?.kokoro) {
               clearInterval(pollTimer)
               refreshServiceStatus()
               showToast('Server Kokoro Terdeteksi Aktif! 🟢', 'Port 8880 berhasil terhubung dari terminal', 'success', '🎉', 4500)
@@ -1292,8 +1322,8 @@ function bindPackageActions() {
         const res = await window.hermesAvatar.startKokoroServer()
         // Periksa status aktual secara teliti
         await refreshServiceStatus()
-        const check = await window.hermesAvatar.checkSystemPackages?.()
-        const isPortActive = !!(check?.kokoro?.running || res?.ok)
+        const check = await window.hermesAvatar.getServiceStatus?.()
+        const isPortActive = !!(check?.kokoro || res?.ok)
 
         if (res?.ok && isPortActive) {
           if (pkgKokoroLog) pkgKokoroLog.innerHTML = '✅ Server Kokoro berhasil aktif di port <code>8880</code> (<code>http://127.0.0.1:8880</code>).'
@@ -2299,14 +2329,17 @@ function renderLlmList() {
             <span class="format-title">${escapeHtml(p.name)}</span>
             ${isActive ? `<span class="badge ready" style="padding:2px 8px; font-size:11px;">Aktif Digunakan ✅</span>` : ''}
             ${p.model ? `<span class="format-pill-tag">${escapeHtml(p.model)}</span>` : ''}
+            ${(Array.isArray(p.models) && p.models.length > 1) ? `<span class="format-count-pill off" title="Jumlah model tersimpan">${p.models.length} model</span>` : ''}
           </div>
           <p class="format-desc-text">${escapeHtml(p.baseUrl || '')} · <span class="muted">${maskKey(p.apiKey)}</span></p>
+          <div class="llm-provider-models" data-models-for="${escapeHtml(p.id)}" style="display:none; margin-top:8px;"></div>
         </div>
         <div class="format-status-col" style="gap:6px;">
           ${isActive
-            ? `<button class="mini-btn success llm-activate" data-id="${escapeHtml(p.id)}" disabled style="background:rgba(34,197,94,0.18); border-color:#22c55e; color:#4ade80; cursor:default;">Aktif ✅</button>`
+            ? `<button class="mini-btn success llm-activate" data-id="${escapeHtml(p.id)}" title="Terapkan ulang konfigurasi provider ini ke Hermes" style="background:rgba(34,197,94,0.18); border-color:#22c55e; color:#4ade80;">Aktif ✅ (Terapkan Ulang)</button>`
             : `<button class="mini-btn primary llm-activate" data-id="${escapeHtml(p.id)}" title="Aktifkan sebagai model utama">Aktifkan</button>`
           }
+          <button class="mini-btn browse llm-view-models" data-id="${escapeHtml(p.id)}" title="Lihat semua model dari endpoint ini">Model</button>
           <button class="mini-btn secondary llm-test" data-id="${escapeHtml(p.id)}" title="Tes koneksi ke endpoint">Tes</button>
           <button class="mini-btn browse llm-edit" data-id="${escapeHtml(p.id)}" title="Edit konfigurasi provider">Edit</button>
           <button class="mini-btn del llm-del" data-id="${escapeHtml(p.id)}" title="Hapus provider ini">${renderIcon('trash-2', { size: 13 })}</button>
@@ -2315,8 +2348,8 @@ function renderLlmList() {
     })
     .join('')
 
-  // Bind tombol "Aktifkan" → set model + base_url + api_key ke Hermes.
-  llmList.querySelectorAll('.llm-activate:not([disabled])').forEach((btn) => {
+  // Bind tombol "Aktifkan"/"Terapkan Ulang" → set model + base_url + api_key ke Hermes.
+  llmList.querySelectorAll('.llm-activate').forEach((btn) => {
     btn.addEventListener('click', async () => {
       const id = btn.dataset.id
       const p = settings.llm.providers.find((x) => x.id === id)
@@ -2375,6 +2408,70 @@ function renderLlmList() {
     })
   })
 
+  // Bind tombol "Model" → tampilkan/sembunyikan daftar model live dari endpoint provider ini.
+  llmList.querySelectorAll('.llm-view-models').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const id = btn.dataset.id
+      const p = settings.llm.providers.find((x) => x.id === id)
+      if (!p?.baseUrl) { statusEl.textContent = '⚠️ Base URL kosong.'; return }
+      const panel = llmList.querySelector(`.llm-provider-models[data-models-for="${CSS.escape(id)}"]`)
+      if (!panel) return
+
+      // Toggle: jika sudah terbuka, tutup.
+      if (panel.style.display !== 'none' && panel.dataset.loaded === '1') {
+        panel.style.display = 'none'
+        btn.classList.remove('active')
+        return
+      }
+
+      panel.style.display = 'block'
+      btn.classList.add('active')
+      panel.innerHTML = '<p class="hint" style="margin:0;">Memuat daftar model…</p>'
+      const epRes = await window.hermesAvatar.fetchEndpointModels(p.baseUrl, p.apiKey || '')
+      if (!epRes?.ok || !Array.isArray(epRes.models) || epRes.models.length === 0) {
+        panel.innerHTML = `<p class="hint" style="margin:0; color:#f87171;">Gagal memuat model: ${escapeHtml(epRes?.error || 'kosong')}</p>`
+        return
+      }
+
+      // Sinkronkan cache model per-provider agar tersimpan permanen.
+      p.models = Array.from(new Set([p.model, ...epRes.models].filter(Boolean)))
+      saveSettings(settings)
+      syncLlmProvidersToDisk()
+
+      panel.dataset.loaded = '1'
+      const chips = epRes.models.map((m) => {
+        const isCur = m === p.model
+        return `<button type="button" class="llm-model-chip ${isCur ? 'current' : ''}" data-model="${escapeHtml(m)}" data-provider-id="${escapeHtml(p.id)}" title="Klik untuk memakai model ini">${escapeHtml(m)}</button>`
+      }).join('')
+      panel.innerHTML = `<div class="llm-model-chips-wrap"><span class="hint" style="margin-right:6px;">${epRes.models.length} model:</span>${chips}</div>`
+
+      // Klik chip → langsung set model ini ke provider tersebut.
+      panel.querySelectorAll('.llm-model-chip').forEach((chip) => {
+        chip.addEventListener('click', async () => {
+          const model = chip.dataset.model
+          const provId = chip.dataset.providerId
+          const prov = settings.llm.providers.find((x) => x.id === provId)
+          if (!prov) return
+          chip.disabled = true
+          try {
+            prov.model = model
+            prov.models = Array.from(new Set([model, ...(prov.models || [])].filter(Boolean)))
+            settings.llm.activeId = prov.id
+            saveSettings(settings)
+            syncLlmProvidersToDisk()
+            await activateLlmProvider(prov)
+            renderLlmList()
+          } catch (err) {
+            showToast('Gagal Aktifkan Model', err?.message || String(err), 'error', '❌', 6000)
+          } finally {
+            chip.disabled = false
+          }
+        })
+      })
+      statusEl.textContent = `✓ ${p.name}: ${epRes.models.length} model tersedia.`
+    })
+  })
+
   // Bind tombol tes koneksi (chat completion sungguhan).
   llmList.querySelectorAll('.llm-test').forEach((btn) => {
     btn.addEventListener('click', async () => {
@@ -2426,7 +2523,9 @@ async function activateLlmProvider(p) {
     name: p.name,
     baseUrl: p.baseUrl || 'http://127.0.0.1:20128/v1',
     apiKey: p.apiKey || '',
-    model: p.model
+    model: p.model,
+    models: Array.isArray(p.models) ? p.models : undefined,
+    authType: p.authType || ''
   })
   if (!res.ok) {
     showToast('Gagal Mengaktifkan Provider', res.error || 'Terjadi kesalahan konfigurasi', 'error', '❌', 6000)
@@ -3016,7 +3115,12 @@ function upsertLlmProvider(entry) {
     existing.name = entry.name
     if (entry.apiKey) existing.apiKey = entry.apiKey
     existing.model = entry.model || existing.model
-    existing.models = Array.from(new Set([...(existing.models || []), existing.model, entry.model].filter(Boolean)))
+    existing.models = Array.from(new Set([
+      ...(existing.models || []),
+      existing.model,
+      entry.model,
+      ...(Array.isArray(entry.models) ? entry.models : [])
+    ].filter(Boolean)))
     existing.authType = entry.authType || existing.authType
     saveSettings(settings)
     syncLlmProvidersToDisk()
@@ -3129,15 +3233,25 @@ function initDualTrackActions() {
       if (!epRes?.ok) {
         throw new Error(epRes?.error || '9Router tidak aktif di port 20128. Pastikan 9Router sudah terpasang dan berjalan.')
       }
-      const detectedModel = Array.isArray(epRes.models) && epRes.models.length > 0 ? epRes.models[0] : 'default'
+      // Simpan SELURUH daftar model 9Router (bukan hanya model pertama) agar bisa dipilih di switcher.
+      const allModels = Array.isArray(epRes.models) ? epRes.models.filter(Boolean) : []
+      const detectedModel = allModels[0] || 'default'
       const savedProv = upsertLlmProvider({
         name: '9Router Lokal',
         baseUrl,
         apiKey: '',
         model: detectedModel,
+        models: allModels,
         authType: '9router'
       })
       await activateLlmProvider(savedProv)
+      showToast(
+        '9Router Terhubung! ⚡',
+        `${allModels.length} model 9Router terdeteksi dan siap dipilih di dropdown model.`,
+        'success',
+        '✨',
+        5000
+      )
     } catch (err) {
       statusEl.textContent = `✗ 9Router gagal terhubung: ${err?.message || err}`
       showToast('9Router Belum Aktif', err?.message || String(err), 'warning', '⚠️', 6000)
@@ -3478,39 +3592,78 @@ async function refreshLlmActive() {
   }
 }
 
-// Ambil daftar model aktual dari endpoint aktif (mis. 9Router / Ollama) & provider tersimpan
+// Ambil daftar model aktual dari SEMUA provider tersimpan (mis. Google & 9Router) & provider RPC.
+// Tujuannya: model 9Router tetap muncul di dropdown walau provider Google sedang aktif.
 async function refreshModelOptions() {
   try {
-    const activeProv = (settings.llm.providers || []).find((p) => p.id === settings.llm.activeId) || (settings.llm.providers || [])[0]
+    const provs = settings.llm.providers || []
+    const activeProv = provs.find((p) => p.id === settings.llm.activeId) || provs[0]
     const custom = []
-    const seenModels = new Set()
+    const seen = new Set() // dedupe berdasarkan `${baseUrlNorm}::${model}` agar model sama di provider berbeda tetap terpisah
 
-    // 1. Ambil model langsung dari endpoint provider yang sedang aktif (mis. 9Router :20128/v1/models)
-    if (activeProv?.baseUrl) {
+    const pushOption = (model, provName, providerId, baseUrl) => {
+      if (!model) return
+      const key = `${String(baseUrl || '').trim().replace(/\/+$/, '').toLowerCase()}::${model}`
+      if (seen.has(key)) return
+      seen.add(key)
+      custom.push({
+        value: model,
+        label: `${provName} — ${model}`,
+        providerId: providerId || '',
+        baseUrl: baseUrl || ''
+      })
+    }
+
+    // 1. Ambil daftar model LIVE dari SEMUA provider tersimpan sekaligus (paralel).
+    let fetchedAny = false
+    if (typeof window.hermesAvatar?.fetchAllProviderModels === 'function' && provs.length > 0) {
+      try {
+        const multi = await window.hermesAvatar.fetchAllProviderModels(
+          provs.map((p) => ({ id: p.id, name: p.name, baseUrl: p.baseUrl, apiKey: p.apiKey || '' }))
+        )
+        const results = Array.isArray(multi?.results) ? multi.results : []
+        for (const r of results) {
+          const prov = provs.find((p) => p.id === r.id) || provs.find((p) => (p.baseUrl || '') === r.baseUrl)
+          const provName = r.name || prov?.name || 'Provider'
+          if (r.ok && Array.isArray(r.models) && r.models.length > 0) {
+            fetchedAny = true
+            // Sinkronkan cache model per-provider agar tidak hanya menyimpan 1 model placeholder.
+            if (prov) {
+              prov.models = Array.from(new Set([prov.model, ...r.models].filter(Boolean)))
+            }
+            for (const m of r.models) pushOption(m, provName, prov?.id || '', prov?.baseUrl || r.baseUrl)
+          } else if (r.error) {
+            console.warn(`[refreshModelOptions] ${provName} gagal ambil model:`, r.error)
+          }
+        }
+        if (fetchedAny) {
+          saveSettings(settings)
+          syncLlmProvidersToDisk()
+          renderLlmList()
+        }
+      } catch (err) {
+        console.warn('[refreshModelOptions] fetchAllProviderModels error:', err?.message || err)
+      }
+    }
+
+    // 1b. Fallback: bila IPC batch tidak tersedia, tetap coba endpoint provider aktif secara tunggal.
+    if (!fetchedAny && activeProv?.baseUrl) {
       try {
         const epRes = await window.hermesAvatar.fetchEndpointModels(activeProv.baseUrl, activeProv.apiKey || '')
         if (epRes && !epRes.ok && epRes.error) {
           showToast('Model Endpoint Gagal', epRes.error, 'warning', '⚠️', 5000)
         }
         if (epRes && epRes.ok && Array.isArray(epRes.models) && epRes.models.length > 0) {
-          for (const m of epRes.models) {
-            if (!seenModels.has(m)) {
-              seenModels.add(m)
-              custom.push({ value: m, label: `${activeProv.name} — ${m}`, providerId: activeProv.id || '' })
-            }
-          }
+          for (const m of epRes.models) pushOption(m, activeProv.name, activeProv.id || '', activeProv.baseUrl)
         }
       } catch (_) {}
     }
 
     // 2. Tambahkan semua model dari daftar provider tersimpan user (termasuk riwayat model per provider)
-    for (const p of (settings.llm.providers || [])) {
+    for (const p of provs) {
       const provModels = Array.from(new Set([p.model, ...(Array.isArray(p.models) ? p.models : [])].filter(Boolean)))
       for (const m of provModels) {
-        if (!seenModels.has(m)) {
-          seenModels.add(m)
-          custom.push({ value: m, label: `${p.name} — ${m}`, providerId: p.id || '' })
-        }
+        pushOption(m, p.name, p.id || '', p.baseUrl)
       }
     }
 
@@ -3525,10 +3678,7 @@ async function refreshModelOptions() {
           const isCustom = p.is_user_defined || slug === 'custom' || /^custom(:|$)/.test(slug) || /localhost|127\.0\.0\.1/.test(p.base_url || '')
           if (isCustom) {
             for (const m of (p.models || [])) {
-              if (!seenModels.has(m)) {
-                seenModels.add(m)
-                custom.push({ value: m, label: `${name} — ${m}`, providerId: '' })
-              }
+              pushOption(m, name, '', p.base_url || '')
             }
           }
         }
@@ -3538,17 +3688,22 @@ async function refreshModelOptions() {
     // Fallback bila sama sekali belum terdeteksi
     let options = custom
     if (options.length === 0) {
-      options.push({ value: '', label: 'Belum ada model terdeteksi di endpoint', providerId: '' })
+      options.push({ value: '', label: 'Belum ada model terdeteksi di endpoint', providerId: '', baseUrl: '' })
     }
 
     llmSwitchModel.innerHTML = options
-      .map((o) => `<option value="${escapeHtml(o.value)}" data-provider-id="${escapeHtml(o.providerId || '')}">${escapeHtml(o.label)}</option>`)
+      .map((o) => `<option value="${escapeHtml(o.value)}" data-provider-id="${escapeHtml(o.providerId || '')}" data-base-url="${escapeHtml(o.baseUrl || '')}">${escapeHtml(o.label)}</option>`)
       .join('')
 
-    // Sinkronkan pilihan dropdown dengan model aktif saat ini
+    // Sinkronkan pilihan dropdown dengan model aktif saat ini (pilih opsi yang providerId-nya cocok bila ada)
     const curModel = cachedLlmModelInfo?.model || activeProv?.model
-    if (curModel && seenModels.has(curModel)) {
-      llmSwitchModel.value = curModel
+    if (curModel) {
+      const activeId = settings.llm.activeId || activeProv?.id
+      const exact = options.find((o) => o.value === curModel && o.providerId && o.providerId === activeId)
+      const anyModel = options.find((o) => o.value === curModel)
+      if (exact || anyModel) {
+        llmSwitchModel.value = (exact || anyModel).value
+      }
     }
   } catch (err) {
     llmSwitchModel.innerHTML = `<option value="">Gagal memuat (${escapeHtml(err?.message || err)})</option>`
@@ -3797,12 +3952,14 @@ llmSwitchBtn.addEventListener('click', async () => {
   }
   const selectedOpt = llmSwitchModel.options?.[llmSwitchModel.selectedIndex]
   const optProvId = selectedOpt?.dataset?.providerId || ''
+  const optBaseUrl = selectedOpt?.dataset?.baseUrl || ''
   llmSwitchBtn.disabled = true
   showToast('Menerapkan Model LLM...', `Mengalihkan model aktif ke "${value}"`, 'running', '🧠')
   try {
     const provs = settings.llm.providers || []
     const activeProv = provs.find((p) => p.id === settings.llm.activeId) || provs[0]
     const targetProv = (optProvId && provs.find((p) => p.id === optProvId)) ||
+      (optBaseUrl && provs.find((p) => (p.baseUrl || '').replace(/\/+$/, '') === optBaseUrl.replace(/\/+$/, ''))) ||
       provs.find((p) => p.model === value || (Array.isArray(p.models) && p.models.includes(value))) ||
       activeProv
     const res = await window.hermesAvatar.setLlmProvider({
@@ -3830,6 +3987,7 @@ llmSwitchBtn.addEventListener('click', async () => {
       statusEl.textContent = 'Model diterapkan.'
       showToast('Model Diterapkan! ✅', `Model LLM aktif: ${value}`, 'success', '🧠')
     }
+    cachedLlmModelInfo = { ok: false, model: null, provider: null }
     await refreshLlmActive()
     await refreshModelOptions()
     await refreshServiceStatus()
@@ -4230,6 +4388,7 @@ function init() {
 
   renderShortcuts(document.getElementById('shortcut-list'), statusEl)
   refreshSkills()
+  initHermesBrainPanel({ showToast, confirmDialog })
   initAppUpdateChecker()
 }
 

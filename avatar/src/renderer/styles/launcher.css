@@ -3927,3 +3927,289 @@ body[data-ui-mode="simple"] [data-terminal-cmd]:not(.force-visible) {
   color: #7dd3fc;
   font-variant-numeric: tabular-nums;
 }
+
+/* ===== Hermes Brain & Otomasi Panel ===== */
+.brain-tab-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 14px;
+  padding: 6px;
+  border-radius: var(--radius-lg, 12px);
+  background: var(--surface-card, rgba(255, 255, 255, 0.04));
+  border: 1px solid var(--border);
+}
+
+.brain-tab-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 11px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.brain-tab-btn:hover {
+  color: var(--text);
+  background: var(--surface-hover, rgba(255, 255, 255, 0.06));
+}
+
+.brain-tab-btn.active {
+  color: #fff;
+  background: var(--accent, #0a84ff);
+  box-shadow: 0 2px 8px rgba(10, 132, 255, 0.35);
+}
+
+.brain-tab-panel {
+  display: none;
+}
+
+.brain-tab-panel.active {
+  display: block;
+}
+
+.brain-split {
+  display: grid;
+  grid-template-columns: minmax(240px, 0.95fr) minmax(300px, 1.35fr);
+  gap: 12px;
+  align-items: start;
+}
+
+@media (max-width: 780px) {
+  .brain-split {
+    grid-template-columns: 1fr;
+  }
+}
+
+.brain-scroll-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 360px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.brain-list-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 9px 11px;
+  border-radius: 9px;
+  background: var(--surface-input);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.brain-list-card:hover {
+  border-color: var(--accent);
+}
+
+.brain-list-card.selected {
+  border-color: var(--accent);
+  background: rgba(10, 132, 255, 0.12);
+}
+
+.brain-list-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.brain-list-card-title {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.brain-list-card-sub {
+  font-size: 11px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+.brain-chat-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 330px;
+  overflow-y: auto;
+  padding: 10px;
+  border-radius: 9px;
+  background: var(--surface-input);
+  border: 1px solid var(--border);
+}
+
+.brain-msg-bubble {
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.brain-msg-bubble.user {
+  background: rgba(10, 132, 255, 0.15);
+  border: 1px solid rgba(10, 132, 255, 0.3);
+  color: var(--text);
+}
+
+.brain-msg-bubble.assistant {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border-soft);
+  color: var(--text);
+}
+
+.brain-textarea {
+  width: 100%;
+  min-height: 120px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface-input);
+  color: var(--text);
+  font-family: 'SF Mono', ui-monospace, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  resize: vertical;
+  box-sizing: border-box;
+  outline: none;
+}
+
+.brain-textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+
+.brain-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.brain-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 600;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-secondary);
+}
+
+.brain-badge.ok {
+  background: rgba(48, 209, 88, 0.16);
+  color: #63df83;
+}
+
+.brain-badge.warn {
+  background: rgba(255, 159, 10, 0.18);
+  color: #fbbf24;
+}
+
+.brain-badge.err {
+  background: rgba(255, 69, 58, 0.16);
+  color: #ff8b83;
+}
+
+.brain-form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 10px;
+}
+
+.brain-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.brain-field label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.brain-field .mac-input,
+.brain-field .mac-select {
+  width: 100%;
+}
+
+.brain-entry-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--surface-input);
+  border: 1px solid var(--border-soft);
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text);
+}
+
+.brain-entry-text {
+  flex: 1;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* ── Daftar model per-provider (tombol "Model" pada kartu LLM) ── */
+.llm-model-chips-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.llm-model-chip {
+  font-family: 'SF Mono', monospace;
+  font-size: 11.5px;
+  padding: 3px 9px;
+  border-radius: 9999px;
+  background: rgba(59, 130, 246, 0.10);
+  border: 1px solid rgba(59, 130, 246, 0.28);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+  white-space: nowrap;
+}
+
+.llm-model-chip:hover {
+  background: rgba(59, 130, 246, 0.22);
+  border-color: rgba(59, 130, 246, 0.5);
+  color: var(--text);
+}
+
+.llm-model-chip.current {
+  background: rgba(34, 197, 94, 0.16);
+  border-color: #22c55e;
+  color: #4ade80;
+  font-weight: 600;
+}
+
+.llm-model-chip:disabled {
+  opacity: 0.55;
+  cursor: progress;
+}
+
+.mini-btn.browse.llm-view-models.active {
+  background: rgba(59, 130, 246, 0.22);
+  border-color: rgba(59, 130, 246, 0.5);
+  color: #93c5fd;
+}
+

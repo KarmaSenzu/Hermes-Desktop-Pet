@@ -38,8 +38,20 @@ const avatarApi = {
   loadMusicLibrary: () => ipcRenderer.invoke('avatar:music-load-library'),
   saveMusicLibrary: (data) => ipcRenderer.invoke('avatar:music-save-library', data),
 
-  // Konfigurasi koneksi Hermes WebSocket
+  // Konfigurasi koneksi Hermes WebSocket & riwayat sesi
   getHermesConfig: () => ipcRenderer.invoke('avatar:hermes-config'),
+  searchHermesSessions: (queryOrOpts, limit, sessionId) =>
+    ipcRenderer.invoke('avatar:hermes-search-sessions', queryOrOpts, limit, sessionId),
+  onCronNotification: (callback) => {
+    const handler = (_event, data) => callback(data)
+    ipcRenderer.on('avatar:cron-notification', handler)
+    return () => ipcRenderer.removeListener('avatar:cron-notification', handler)
+  },
+  onResumeSession: (callback) => {
+    const handler = (_event, data) => callback(data)
+    ipcRenderer.on('avatar:resume-session', handler)
+    return () => ipcRenderer.removeListener('avatar:resume-session', handler)
+  },
 
   // Peluncur aplikasi & info terinstall
   // UTANG: launchApp dipakai main.js avatar untuk membuka taskmgr/app

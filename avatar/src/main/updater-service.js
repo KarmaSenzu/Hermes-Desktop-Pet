@@ -324,28 +324,28 @@ export async function checkAppUpdate() {
     let downloadUrl = data.html_url
     let matchedAsset = null
     if (data.assets && Array.isArray(data.assets)) {
-      const patchAsset = data.assets.find((a) => a.name.endsWith('.zip') && /patch/i.test(a.name))
+      // Normalisasi nama aset ke huruf kecil agar `.ZIP`/`.DMG`/`.EXE` tetap cocok.
+      const nameOf = (a) => String(a?.name || '').toLowerCase()
+      const patchAsset = data.assets.find((a) => nameOf(a).endsWith('.zip') && nameOf(a).includes('patch'))
       if (process.platform === 'darwin') {
         matchedAsset =
           patchAsset ||
-          data.assets.find((a) => a.name.endsWith('.dmg')) ||
-          data.assets.find((a) => a.name.endsWith('.zip') && a.name.includes('mac'))
+          data.assets.find((a) => nameOf(a).endsWith('.dmg')) ||
+          data.assets.find((a) => nameOf(a).endsWith('.zip') && nameOf(a).includes('mac'))
       } else if (process.platform === 'win32') {
         matchedAsset =
           patchAsset ||
           data.assets.find(
-            (a) =>
-              a.name.endsWith('.zip') &&
-              (a.name.includes('win') || a.name.toLowerCase().includes('windows'))
+            (a) => nameOf(a).endsWith('.zip') && (nameOf(a).includes('win') || nameOf(a).includes('windows'))
           ) ||
           data.assets.find(
-            (a) => a.name.endsWith('.zip') && !a.name.includes('mac') && !a.name.includes('linux')
+            (a) => nameOf(a).endsWith('.zip') && !nameOf(a).includes('mac') && !nameOf(a).includes('linux')
           ) ||
-          data.assets.find((a) => a.name.endsWith('.exe'))
+          data.assets.find((a) => nameOf(a).endsWith('.exe'))
       } else {
         matchedAsset =
-          data.assets.find((a) => a.name.endsWith('.AppImage')) ||
-          data.assets.find((a) => a.name.endsWith('.deb'))
+          data.assets.find((a) => nameOf(a).endsWith('.appimage')) ||
+          data.assets.find((a) => nameOf(a).endsWith('.deb'))
       }
       if (matchedAsset?.browser_download_url) {
         downloadUrl = matchedAsset.browser_download_url
@@ -483,9 +483,10 @@ export async function downloadAndApplyUpdate(event, _downloadUrl, assetName) {
 
     sendProgress({ stage: 'installing', percent: 100, transferredMb: finalMb, totalMb: finalMb })
     const isPatch = /patch/i.test(filename)
+    const lowerFilename = String(filename || '').toLowerCase()
 
     if (process.platform === 'darwin') {
-      if (filename.endsWith('.dmg')) {
+      if (lowerFilename.endsWith('.dmg')) {
         const mountDir = join(tempDir, 'mount')
         await mkdir(mountDir, { recursive: true })
 
@@ -508,7 +509,7 @@ export async function downloadAndApplyUpdate(event, _downloadUrl, assetName) {
         }
 
         await new Promise((resolve) => execFile('hdiutil', ['detach', mountDir, '-force'], () => resolve()))
-      } else if (filename.endsWith('.zip')) {
+      } else if (lowerFilename.endsWith('.zip')) {
         if (isPatch) {
           const stagingDir = join(tempDir, 'staging')
           await mkdir(stagingDir, { recursive: true })
@@ -567,7 +568,7 @@ export async function downloadAndApplyUpdate(event, _downloadUrl, assetName) {
       const exePath = app.isPackaged ? process.execPath : join(destDir, 'Hermes Desktop Pet.exe')
       const updateScriptPath = join(tempDir, 'apply_update.bat')
 
-      if (filename.endsWith('.zip')) {
+      if (lowerFilename.endsWith('.zip')) {
         const stagingDir = join(tempDir, 'staging')
         await mkdir(stagingDir, { recursive: true })
 
@@ -614,7 +615,7 @@ export async function downloadAndApplyUpdate(event, _downloadUrl, assetName) {
             ? 'Patch ringan siap diterapkan saat restart!'
             : 'Pembaruan siap diterapkan seketika saat restart!'
         }
-      } else if (filename.endsWith('.exe')) {
+      } else if (lowerFilename.endsWith('.exe')) {
         const batContent = buildWindowsUpdateBatch({
           installerPath: targetFilePath,
           exePath,

@@ -25,10 +25,28 @@ export class HermesClient {
 
     // State internal.
     this.sessionId = null
+    // Timeout per-request (ms) agar Promise tidak menggantung selamanya bila
+    // gateway berhenti merespons (mis. `hermes serve` restart di tengah turn).
+    this.requestTimeoutMs = 120000
+    // Penanda bahwa disconnect dipicu sendiri (bukan putus tak terduga).
+    this._intentionalClose = false
   }
 
   get connected() {
     return this.socket?.readyState === WebSocket.OPEN
+  }
+
+  /**
+   * Tolak semua request yang masih menunggu. Dipanggil saat socket menutup atau
+   * saat request timeout, supaya pemanggil (chat UI) tidak terkunci selamanya.
+   */
+  _rejectAllPending(reason) {
+    const err = new Error(reason || 'Koneksi ke Hermes terputus')
+    for (const [, { reject, timer }] of this.pending) {
+      if (timer) clearTimeout(timer)
+      try { reject(err) } catch { /* ignore */ }
+    }
+    this.pending.clear()
   }
 
   connect() {
@@ -36,6 +54,7 @@ export class HermesClient {
       let settled = false
       const socket = new WebSocket(this.wsUrl)
       this.socket = socket
+      this._intentionalClose = false
 
       socket.addEventListener('open', () => {
         if (settled) return
@@ -46,12 +65,22 @@ export class HermesClient {
       socket.addEventListener('message', (msg) => this._handleMessage(msg.data))
 
       socket.addEventListener('error', (event) => {
-        if (settled) return
+        if (settled) {
+          // Error setelah terhubung: jangan gantung pending.
+          this._rejectAllPending('Koneksi ke Hermes error')
+          return
+        }
         settled = true
         reject(new Error(`WS error saat connect ke ${this.wsUrl} (cek hermes serve jalan & port benar)`))
       })
 
       socket.addEventListener('close', (event) => {
+        // Selalu tolak pending — bahkan bila connect sudah selesai (mis. server restart).
+        this._rejectAllPending(`Koneksi ke Hermes tertutup (code=${event.code})`)
+        // Emit event agar UI bisa unlock input / re-connect.
+        try {
+          this.eventHandlers.get('connection.lost')?.forEach((h) => h({ code: event.code, intentional: this._intentionalClose }))
+        } catch { /* ignore */ }
         if (settled) return
         settled = true
         reject(new Error(`WS tertutup saat connect (code=${event.code}) ke ${this.wsUrl}`))
@@ -61,9 +90,11 @@ export class HermesClient {
 
   disconnect() {
     if (this.socket) {
+      this._intentionalClose = true
       this.socket.close()
       this.socket = null
     }
+    this._rejectAllPending('Hermes gateway diputus')
   }
 
   /**
@@ -86,9 +117,9 @@ export class HermesClient {
   }
 
   /**
-   * Kirim request JSON-RPC → Promise hasil.
+   * Kirim request JSON-RPC → Promise hasil (dengan timeout agar tidak menggantung).
    */
-  request(method, params = {}) {
+  request(method, params = {}, timeoutMs = this.requestTimeoutMs) {
     return new Promise((resolve, reject) => {
       if (!this.connected) {
         reject(new Error('Hermes gateway belum terhubung'))
@@ -96,9 +127,23 @@ export class HermesClient {
       }
 
       const id = `r${++this.nextId}`
-      this.pending.set(id, { resolve, reject })
+      let timer = null
+      if (Number(timeoutMs) > 0) {
+        timer = setTimeout(() => {
+          if (!this.pending.has(id)) return
+          this.pending.delete(id)
+          reject(new Error(`Request "${method}" timeout setelah ${Math.round(timeoutMs / 1000)}s (Hermes tidak merespons)`))
+        }, timeoutMs)
+      }
+      this.pending.set(id, { resolve, reject, timer })
 
-      this.socket.send(JSON.stringify({ jsonrpc: '2.0', id, method, params }))
+      try {
+        this.socket.send(JSON.stringify({ jsonrpc: '2.0', id, method, params }))
+      } catch (err) {
+        if (timer) clearTimeout(timer)
+        this.pending.delete(id)
+        reject(err)
+      }
     })
   }
 
@@ -164,6 +209,31 @@ export class HermesClient {
     return this.request('model.options', { session_id: this.sessionId })
   }
 
+  /**
+   * Daftar sesi percakapan tersimpan (session.list).
+   */
+  async listSessions(limit = 50) {
+    return this.request('session.list', { limit })
+  }
+
+  /**
+   * Lanjutkan sesi lama (session.resume) → perbarui sessionId aktif.
+   */
+  async resumeSession(sessionId) {
+    const result = await this.request('session.resume', { session_id: sessionId })
+    if (result?.session_id) {
+      this.sessionId = result.session_id
+    }
+    return result
+  }
+
+  /**
+   * Hapus sesi tersimpan (session.delete).
+   */
+  async deleteSession(sessionId) {
+    return this.request('session.delete', { session_id: sessionId })
+  }
+
   _handleMessage(raw) {
     let frame
     try {
@@ -174,7 +244,8 @@ export class HermesClient {
 
     // Response RPC (punya id) → resolve pending.
     if (frame.id != null && this.pending.has(frame.id)) {
-      const { resolve, reject } = this.pending.get(frame.id)
+      const { resolve, reject, timer } = this.pending.get(frame.id)
+      if (timer) clearTimeout(timer)
       this.pending.delete(frame.id)
       if (frame.error) reject(new Error(frame.error.message || 'Hermes RPC failed'))
       else resolve(frame.result)

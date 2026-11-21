@@ -12,6 +12,9 @@ import {
   saveSavedLlmProviders,
   upsertSavedLlmProviderOnDisk,
   normalizeGeminiModel,
+  extractModelIds,
+  deriveGeminiNativeModelsUrl,
+  fetchModelsForProviders,
   runHermes
 } from '../src/main/provider-service.js'
 
@@ -139,5 +142,112 @@ describe('provider-service', () => {
     } finally {
       await rm(tmpDir, { recursive: true, force: true })
     }
+  })
+
+  it('extractModelIds menormalkan berbagai format respons /models', () => {
+    // Format OpenAI standar
+    expect(extractModelIds({ object: 'list', data: [{ id: 'gpt-4o' }, { id: 'gpt-4o-mini' }] }))
+      .toEqual(['gpt-4o', 'gpt-4o-mini'])
+    // Array string
+    expect(extractModelIds(['a', 'b'])).toEqual(['a', 'b'])
+    // Format Gemini ({models:[{name}]}) dengan prefix models/
+    expect(extractModelIds({ models: [{ name: 'models/gemini-3.8-flash' }, { name: 'models/gemini-3.5-flash' }] }))
+      .toEqual(['gemini-3.8-flash', 'gemini-3.5-flash'])
+    // Dedupe + abaikan entri kosong
+    expect(extractModelIds({ data: [{ id: 'x' }, { id: 'x' }, { id: '' }, {}] })).toEqual(['x'])
+    // Struktur tidak dikenal → []
+    expect(extractModelIds(null)).toEqual([])
+    expect(extractModelIds({ foo: 'bar' })).toEqual([])
+  })
+
+  it('fetchModelsForProviders mengembalikan hasil terisolasi per provider (error tidak menjatuhkan yang lain)', async () => {
+    const results = await fetchModelsForProviders({
+      providers: [
+        // URL invalid → error, bukan throw
+        { id: 'p-bad', name: 'Rusak', baseUrl: 'not-a-url' },
+        // Tanpa baseUrl → difilter keluar
+        { id: 'p-empty', name: 'Kosong', baseUrl: '' }
+      ]
+    })
+    expect(Array.isArray(results)).toBe(true)
+    expect(results).toHaveLength(1)
+    expect(results[0].id).toBe('p-bad')
+    expect(results[0].ok).toBe(false)
+    expect(results[0].models).toEqual([])
+    expect(results[0].error).toBeTruthy()
+  })
+
+  it('fetchEndpointModels menangani respons server OpenAI-compatible (mock http)', async () => {
+    const http = await import('node:http')
+    const server = http.createServer((req, res) => {
+      if (req.url === '/v1/models') {
+        res.writeHead(200, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify({ object: 'list', data: [{ id: 'kr/claude-sonnet-4.5' }, { id: 'kr/glm-5' }] }))
+      } else {
+        res.writeHead(404)
+        res.end('{}')
+      }
+    })
+    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+    const port = server.address().port
+    try {
+      const { fetchEndpointModels } = await import('../src/main/provider-service.js')
+      const res = await fetchEndpointModels({
+        baseUrl: `http://127.0.0.1:${port}/v1`,
+        apiKey: '',
+        resolveApiKeyFor: async () => ''
+      })
+      expect(res.ok).toBe(true)
+      expect(res.models).toEqual(['kr/claude-sonnet-4.5', 'kr/glm-5'])
+    } finally {
+      await new Promise((resolve) => server.close(resolve))
+    }
+  })
+
+  it('upsertSavedLlmProviderOnDisk menyimpan SELURUH daftar models 9Router (bukan hanya satu)', async () => {
+    const tmpDir = await mkdtemp(join(tmpdir(), 'hermes-9router-models-test-'))
+    try {
+      const providersFile = join(tmpDir, 'llm_providers.json')
+      const routerModels = ['kr/auto', 'kr/claude-sonnet-4.5', 'kr/glm-5', 'cbcn/deepseek-v4-pro']
+
+      const saved = await upsertSavedLlmProviderOnDisk({
+        name: '9Router Lokal',
+        baseUrl: 'http://127.0.0.1:20128/v1',
+        model: 'kr/auto',
+        models: routerModels,
+        authType: '9router'
+      }, { providersFile, setActive: true, cfgPath: join(tmpDir, 'none.yaml') })
+
+      expect(saved.providers).toHaveLength(1)
+      for (const m of routerModels) {
+        expect(saved.providers[0].models).toContain(m)
+      }
+      expect(saved.providers[0].authType).toBe('9router')
+
+      // Simpan ulang dengan model Default: daftar lama tetap dipertahankan (merge, bukan replace).
+      const again = await upsertSavedLlmProviderOnDisk({
+        name: '9Router Lokal',
+        baseUrl: 'http://127.0.0.1:20128/v1',
+        model: 'cbcn/deepseek-v4-pro',
+        authType: '9router'
+      }, { providersFile, setActive: true, cfgPath: join(tmpDir, 'none.yaml') })
+
+      expect(again.providers).toHaveLength(1)
+      expect(again.providers[0].models).toContain('kr/glm-5')
+      expect(again.providers[0].models).toContain('cbcn/deepseek-v4-pro')
+    } finally {
+      await rm(tmpDir, { recursive: true, force: true })
+    }
+  })
+
+  it('deriveGeminiNativeModelsUrl mengubah base URL OpenAI-compat ke endpoint native :listModels', () => {
+    expect(deriveGeminiNativeModelsUrl('https://generativelanguage.googleapis.com/v1beta/openai'))
+      .toBe('https://generativelanguage.googleapis.com/v1beta/models')
+    expect(deriveGeminiNativeModelsUrl('https://generativelanguage.googleapis.com/v1/openai'))
+      .toBe('https://generativelanguage.googleapis.com/v1/models')
+    // Tanpa /openai pun tetap menghasilkan endpoint models yang benar
+    expect(deriveGeminiNativeModelsUrl('https://generativelanguage.googleapis.com/v1beta'))
+      .toBe('https://generativelanguage.googleapis.com/v1beta/models')
+    expect(deriveGeminiNativeModelsUrl('bukan-url')).toBe('')
   })
 })

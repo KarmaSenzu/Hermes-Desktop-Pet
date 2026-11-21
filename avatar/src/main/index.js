@@ -45,6 +45,7 @@ import { createSecureIpc } from './secure-ipc.js'
 import { resolveTerminalAction } from './actions.js'
 import { createAppRegistry, computeAppId } from './app-registry.js'
 import { RPC_ALLOWED_METHODS } from './ipc-policy.js'
+import { SAFE_QUERY } from './cli-args.js'
 import { readPngSize, estimateTextureMB } from './png-size.js'
 import { checkAppUpdate, downloadAndApplyUpdate, relaunchApp, cleanupStaleOtaTempDirs } from './updater-service.js'
 import { getLiveWeather, getLiveNews } from './feed-service.js'
@@ -52,6 +53,7 @@ import { synthesizeTts } from './tts-service.js'
 import {
   testProviderConnection,
   fetchEndpointModels,
+  fetchModelsForProviders,
   updateHermesProviderConfig,
   updateHermesVoiceConfig,
   loadSavedLlmProviders,
@@ -63,6 +65,27 @@ import {
 } from './provider-service.js'
 import { startOpenRouterOAuthFlow, checkProviderQuota } from './oauth-service.js'
 import { installPackageOneClick, getInstallQueueState, isPackageInstallRunning } from './package-installer.js'
+import {
+  searchHermesSessions,
+  manageHermesSessionRpc,
+  listHermesCronJobs,
+  manageHermesCronJob,
+  createCronOutputWatcher,
+  loadHermesMemoryFiles,
+  saveHermesMemoryFile,
+  loadHermesMcpServers,
+  saveHermesMcpServer,
+  deleteHermesMcpServer,
+  toggleHermesMcpServer,
+  getMessagingGatewayState,
+  saveMessagingGatewayEnv,
+  controlMessagingGateway,
+  loadFallbackAndMoaConfig,
+  saveFallbackChain,
+  saveMoaConfig,
+  getKanbanAndSubagents,
+  manageKanbanAndSubagent
+} from './hermes-brain-service.js'
 
 const secretStore = createSecretStore(safeStorage)
 
@@ -400,6 +423,17 @@ function createAvatarWindow(modelPath) {
       }, 1200)
     }
 
+    // Forward pending session resume dari jendela Settings jika ada
+    if (pendingResumeSession) {
+      const resumeToDeliver = pendingResumeSession
+      pendingResumeSession = null
+      setTimeout(() => {
+        if (avatarWindow && !avatarWindow.isDestroyed()) {
+          avatarWindow.webContents.send('avatar:resume-session', resumeToDeliver)
+        }
+      }, 1200)
+    }
+
     // Global desktop cursor tracking ala YourMother Win32 Hook
     if (!cursorPollTimer) {
       let lastX = -1
@@ -431,8 +465,10 @@ function createAvatarWindow(modelPath) {
   })
 }
 
-// --- Buffer antrian Web Companion Prompt saat avatar belum siap ---
+// --- Buffer antrian Web Companion Prompt & Resume Session saat avatar belum siap ---
 let pendingWebPrompt = null
+let pendingResumeSession = null
+let cronOutputWatcher = null
 
 function handleIncomingWebPrompt(payload) {
   if (!payload) return
@@ -551,7 +587,7 @@ export function getFixedRoots() {
 }
 
 // IPC: launcher → main → buka avatar window dengan model terpilih.
-secureHandle('avatar:start', (_event, modelPath) => {
+secureHandle('avatar:start', async (_event, modelPath) => {
   const defaultRelPath = 'assets/live2d/mother/20250106.model3.json'
   const resolvedPath = resolveModelPath(modelPath || defaultRelPath)
 
@@ -565,7 +601,48 @@ secureHandle('avatar:start', (_event, modelPath) => {
     avatarWindow.webContents.send('avatar:load-model', resolvedPath)
     return { ok: true, reused: true }
   }
-  createAvatarWindow(resolvedPath)
+
+  // Buat window avatar lalu TUNGGU sampai halaman benar-benar selesai dimuat.
+  // Jangan menutup jendela Settings sebelum render sukses, dan jangan laporkan
+  // ok:true bila halaman gagal dimuat (mencegah overlay kosong tanpa jalan balik).
+  const loaded = await new Promise((resolve) => {
+    let settled = false
+    const finish = (result) => {
+      if (settled) return
+      settled = true
+      resolve(result)
+    }
+    try {
+      createAvatarWindow(resolvedPath)
+    } catch (err) {
+      finish({ ok: false, error: err?.message || String(err) })
+      return
+    }
+    const wc = avatarWindow?.webContents
+    if (!wc) {
+      finish({ ok: false, error: 'Gagal membuat jendela avatar' })
+      return
+    }
+    wc.once('did-finish-load', () => finish({ ok: true }))
+    wc.once('did-fail-load', (_e, errorCode, errorDescription, validatedURL, isMainFrame) => {
+      // Abaikan kegagalan sub-frame; hanya pedulikan frame utama.
+      if (isMainFrame === false) return
+      finish({ ok: false, error: `Gagal memuat halaman avatar (${errorCode}): ${errorDescription || ''}` })
+    })
+    // Batas waktu pengaman agar tidak menunggu selamanya.
+    setTimeout(() => finish({ ok: true, timeout: true }), 15000)
+  })
+
+  if (!loaded.ok) {
+    // Bersihkan jendela avatar yang gagal, biarkan Settings tetap ada.
+    if (avatarWindow && !avatarWindow.isDestroyed()) {
+      try { avatarWindow.destroy() } catch { /* ignore */ }
+    }
+    avatarWindow = null
+    return { ok: false, error: loaded.error || 'Avatar gagal dimuat' }
+  }
+
+  // Baru setelah avatar tampil, tutup jendela Settings/launcher.
   if (launcherWindow && !launcherWindow.isDestroyed()) {
     launcherWindow.destroy()
     launcherWindow = null
@@ -618,7 +695,25 @@ secureHandle('avatar:dvd-bounce', () => {
 secureOn('avatar:drag-move', (_event, dx, dy) => {
   if (!avatarWindow || avatarWindow.isDestroyed()) return
   const b = avatarWindow.getBounds()
-  avatarWindow.setPosition(b.x + Math.round(dx), b.y + Math.round(dy))
+  let nx = b.x + Math.round(dx)
+  let ny = b.y + Math.round(dy)
+
+  // Clamp ke area kerja layar terdekat agar avatar tidak bisa tergeser keluar
+  // layar secara permanen (window frameless + skipTaskbar, tanpa tray).
+  const display = screen.getDisplayNearestPoint({ x: nx + Math.round(b.width / 2), y: ny + Math.round(b.height / 2) })
+  const wa = display?.workArea
+  if (wa && wa.width > 0 && wa.height > 0) {
+    // Pastikan setidaknya sebagian window tetap terlihat (margin 80px).
+    const margin = 80
+    const minX = wa.x - b.width + margin
+    const maxX = wa.x + wa.width - margin
+    const minY = wa.y - b.height + margin
+    const maxY = wa.y + wa.height - margin
+    nx = Math.min(maxX, Math.max(minX, nx))
+    ny = Math.min(maxY, Math.max(minY, ny))
+  }
+
+  avatarWindow.setPosition(nx, ny)
 })
 
 // IPC: toggle click-through (klik tembus ke desktop saat di area kosong).
@@ -1229,6 +1324,7 @@ secureHandle('avatar:relaunch-app', () => {
   relaunchApp(() => {
     stopMotion()
     unregisterGlobalShortcuts()
+    cronOutputWatcher?.stop()
     disconnectGateway()
     stopBridgeServer()
     stopAllServices()
@@ -1248,6 +1344,120 @@ secureHandle('avatar:rpc', async (_event, method, params) => {
     }
     const result = await gatewayRequest(method, params || {})
     return { ok: true, result }
+  } catch (err) {
+    return { ok: false, error: err?.message || String(err) }
+  }
+})
+
+async function ensureOptionalGatewayRpc() {
+  if (isGatewayConnected()) return gatewayRequest
+  try {
+    await connectGateway(SESSION_TOKEN)
+    if (isGatewayConnected()) return gatewayRequest
+  } catch { /* fallback offline */ }
+  return null
+}
+
+// IPC: Cari & baca riwayat sesi dari state.db Hermes (FTS5) - mendukung argumen objek atau posisi
+secureHandle('avatar:hermes-search-sessions', async (_event, queryOrOpts = '', limit = 50, sessionId = null) => {
+  try {
+    let opts = {}
+    if (typeof queryOrOpts === 'object' && queryOrOpts !== null) {
+      opts = { ...queryOrOpts }
+    } else {
+      opts = { query: queryOrOpts, limit, sessionId }
+    }
+    return await searchHermesSessions(opts)
+  } catch (err) {
+    return { ok: false, error: err?.message || String(err), sessions: [], messages: [] }
+  }
+})
+
+// IPC: Ambil data Hermes Brain & Otomasi terstruktur untuk Settings
+secureHandle('avatar:hermes-brain-get', async (_event, section, params = {}) => {
+  try {
+    const gw = isGatewayConnected() ? gatewayRequest : null
+    switch (String(section || '')) {
+      case 'sessions':
+        return await searchHermesSessions({
+          query: params?.query || '',
+          limit: params?.limit || 60,
+          sessionId: params?.sessionId || null
+        })
+      case 'cron':
+        return await listHermesCronJobs({ gatewayReq: gw })
+      case 'memory':
+        return await loadHermesMemoryFiles()
+      case 'mcp':
+        return await loadHermesMcpServers()
+      case 'gateway':
+        return await getMessagingGatewayState()
+      case 'fallback-moa':
+        return await loadFallbackAndMoaConfig({ secretStore })
+      case 'kanban':
+        return await getKanbanAndSubagents({ gatewayReq: gw })
+      default:
+        return { ok: false, error: `Section tidak dikenal: ${section}` }
+    }
+  } catch (err) {
+    return { ok: false, error: err?.message || String(err) }
+  }
+})
+
+// IPC: Terapkan perubahan Hermes Brain & Otomasi (Sessions, Cron, Memory, MCP, Gateway, Fallback, MoA, Kanban)
+secureHandle('avatar:hermes-brain-set', async (_event, action, payload = {}) => {
+  try {
+    const gw = await ensureOptionalGatewayRpc()
+    switch (String(action || '')) {
+      case 'session-delete':
+        return { ok: true, ...(await manageHermesSessionRpc({ action: 'delete', sessionId: payload?.sessionId }, gw)) }
+      case 'cron-manage':
+        return await manageHermesCronJob(payload, { gatewayReq: gw })
+      case 'memory-save':
+        return await saveHermesMemoryFile(payload)
+      case 'mcp-save':
+        return await saveHermesMcpServer(payload, { gatewayReq: gw })
+      case 'mcp-delete':
+        return await deleteHermesMcpServer(payload, { gatewayReq: gw })
+      case 'mcp-toggle':
+        return await toggleHermesMcpServer(payload, { gatewayReq: gw })
+      case 'gateway-save-env':
+        return await saveMessagingGatewayEnv(payload)
+      case 'gateway-control':
+        return await controlMessagingGateway(payload)
+      case 'fallback-save':
+        return await saveFallbackChain(payload, { secretStore })
+      case 'moa-save':
+        return await saveMoaConfig(payload)
+      case 'kanban-manage':
+        return await manageKanbanAndSubagent(payload, { gatewayReq: gw })
+      default:
+        return { ok: false, error: `Aksi tidak dikenal: ${action}` }
+    }
+  } catch (err) {
+    return { ok: false, error: err?.message || String(err) }
+  }
+})
+
+// IPC: Buka/lanjutkan sesi Hermes tertentu langsung di jendela chat Avatar
+secureHandle('avatar:hermes-resume-in-avatar', async (_event, sessionId) => {
+  try {
+    const cleanId = String(sessionId || '').trim()
+    if (!cleanId) return { ok: false, error: 'sessionId wajib diisi' }
+    if (avatarWindow && !avatarWindow.isDestroyed()) {
+      avatarWindow.show()
+      avatarWindow.setAlwaysOnTop(true, 'screen-saver')
+      avatarWindow.focus()
+      avatarWindow.webContents.send('avatar:resume-session', { sessionId: cleanId })
+      return { ok: true, launched: false }
+    }
+    pendingResumeSession = { sessionId: cleanId }
+    const defaultPath = resolveModelPath('assets/live2d/mother/20250106.model3.json')
+    if (!existsSync(defaultPath)) {
+      return { ok: false, error: 'Buka avatar terlebih dahulu untuk melanjutkan sesi.' }
+    }
+    createAvatarWindow(defaultPath)
+    return { ok: true, launched: true }
   } catch (err) {
     return { ok: false, error: err?.message || String(err) }
   }
@@ -1329,7 +1539,7 @@ secureHandle('avatar:llm-save-providers', async (_event, payload) => {
 // IPC: set full LLM provider ke Hermes (config.yaml + .env + llm_providers.json + RPC gateway)
 secureHandle('avatar:set-llm-provider', async (_event, payload) => {
   try {
-    const { name, baseUrl, apiKey, model } = payload || {}
+    const { name, baseUrl, apiKey, model, models, authType } = payload || {}
     const modelName = normalizeGeminiModel(baseUrl, String(model || '').trim())
     if (!modelName) return { ok: false, error: 'Model identifier wajib diisi' }
     if (!parseHttpUrl(baseUrl)) {
@@ -1358,15 +1568,14 @@ secureHandle('avatar:set-llm-provider', async (_event, payload) => {
       baseUrl,
       apiKey: sealedForDisk,
       model: modelName,
-      authType: isLocalRouterUrl(baseUrl) ? '9router' : (sealedForDisk ? 'apikey' : '')
+      models: Array.isArray(models) ? models : undefined,
+      authType: authType || (isLocalRouterUrl(baseUrl) ? '9router' : (sealedForDisk ? 'apikey' : ''))
     }, { secretStore, setActive: true }).catch(() => {})
 
-    // Set via RPC jika terhubung
+    // Set via RPC jika terhubung (best effort live model switch)
     if (isGatewayConnected()) {
       try {
-        await gatewayRequest('config.set', { key: 'model.default', value: modelName })
-        await gatewayRequest('config.set', { key: 'model.provider', value: 'custom' })
-        await gatewayRequest('config.set', { key: 'model.base_url', value: baseUrl })
+        await gatewayRequest('config.set', { key: 'model', value: `${modelName} --global` })
       } catch (_) { }
     }
 
@@ -1382,6 +1591,12 @@ secureHandle('avatar:set-llm-provider', async (_event, payload) => {
         baseUrl
       }
     }
+
+    // Sambungkan kembali shared gateway ke Hermes daemon yang baru direstart
+    try {
+      disconnectGateway()
+      await connectGateway(SESSION_TOKEN)
+    } catch (_) { }
 
     return { ok: true, restarted: true, model: modelName, name, baseUrl }
   } catch (err) {
@@ -1402,6 +1617,17 @@ secureHandle('avatar:restart-hermes', async () => {
 // IPC: ambil model aktual langsung dari endpoint OpenAI-compatible (9Router, Ollama, dll)
 secureHandle('avatar:fetch-endpoint-models', async (_event, baseUrl, apiKey) => {
   return await fetchEndpointModels({ baseUrl, apiKey, resolveApiKeyFor })
+})
+
+// IPC: ambil daftar model dari SEMUA provider tersimpan sekaligus (paralel).
+// Berguna agar model 9Router tetap muncul walau provider lain (mis. Google) sedang aktif.
+secureHandle('avatar:fetch-all-provider-models', async (_event, providers) => {
+  try {
+    const results = await fetchModelsForProviders({ providers, resolveApiKeyFor })
+    return { ok: true, results }
+  } catch (err) {
+    return { ok: false, results: [], error: err?.message || String(err) }
+  }
 })
 
 // IPC: Login OAuth PKCE resmi 1-klik (OpenRouter)
@@ -1637,30 +1863,46 @@ secureHandle('avatar:set-model', async (_event, model) => {
 // IPC: ambil info model LLM aktif (dari Gateway bila online, atau config.yaml langsung)
 secureHandle('avatar:get-current-model', async () => {
   try {
+    let currentModel = null
+    let currentProvider = null
+
     if (isGatewayConnected()) {
       try {
         const res = await gatewayRequest('config.get', { key: 'provider' })
         if (res && res.model && res.model !== '—' && res.model !== 'none') {
-          return { ok: true, model: res.model, provider: res.provider || 'default' }
+          currentModel = res.model
+          currentProvider = res.provider || null
         }
       } catch (_) { }
     }
-    // Fallback: baca config.yaml langsung
+
+    // Baca config.yaml untuk fallback model atau memperjelas provider (bila unknown/custom)
     const cfgPath = resolveHermesConfigPath()
     if (existsSync(cfgPath)) {
-      const cfg = await readFile(cfgPath, 'utf8')
-      const matchModel = cfg.match(/^\s+default:\s*([^\r\n#]+)/m) || cfg.match(/^model:\s*([^\r\n#]+)/m)
-      const matchProvider = cfg.match(/^\s+provider:\s*([^\r\n#]+)/m)
-      if (matchModel && matchModel[1]) {
-        const model = matchModel[1].trim()
-        if (model && model !== '—' && model !== 'none' && model !== 'Tidak ada model') {
-          return {
-            ok: true,
-            model,
-            provider: matchProvider && matchProvider[1] ? matchProvider[1].trim() : 'custom'
+      try {
+        const cfg = await readFile(cfgPath, 'utf8')
+        const doc = YAML.parse(cfg)
+        if (!currentModel && doc?.model?.default) {
+          currentModel = String(doc.model.default).trim()
+        }
+        if (!currentProvider || currentProvider === 'unknown' || currentProvider === 'custom' || currentProvider === 'default') {
+          if (doc?.providers && typeof doc.providers === 'object') {
+            for (const p of Object.values(doc.providers)) {
+              if (p && (p.default_model === currentModel || p.model === currentModel)) {
+                currentProvider = p.name || currentProvider
+                break
+              }
+            }
+          }
+          if (!currentProvider && doc?.model?.provider) {
+            currentProvider = String(doc.model.provider).trim()
           }
         }
-      }
+      } catch (_) {}
+    }
+
+    if (currentModel && currentModel !== '—' && currentModel !== 'none' && currentModel !== 'Tidak ada model') {
+      return { ok: true, model: currentModel, provider: currentProvider || 'default' }
     }
     return { ok: false, model: null, error: 'Belum ada model LLM yang dipilih' }
   } catch (err) {
@@ -2230,6 +2472,16 @@ app.whenReady().then(() => {
       console.error('[service-manager] error:', err?.message || err)
     })
 
+  // Aktifkan watcher output Cron untuk notifikasi proaktif ke Avatar
+  cronOutputWatcher = createCronOutputWatcher({
+    onNewOutput: (parsed) => {
+      if (avatarWindow && !avatarWindow.isDestroyed()) {
+        avatarWindow.webContents.send('avatar:cron-notification', parsed)
+      }
+    }
+  })
+  cronOutputWatcher.start()
+
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createLauncherWindow()
   })
@@ -2238,6 +2490,7 @@ app.whenReady().then(() => {
 app.on('window-all-closed', () => {
   stopMotion()
   unregisterGlobalShortcuts()
+  cronOutputWatcher?.stop()
   disconnectGateway()
   stopBridgeServer()
   stopAllServices()

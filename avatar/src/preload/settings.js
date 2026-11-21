@@ -47,6 +47,13 @@ const settingsApi = {
   // Hermes Gateway JSON-RPC (terbatas pada method yang diizinkan)
   rpc: (method, params) => ipcRenderer.invoke('avatar:rpc', method, params),
 
+  // Hermes Brain & Otomasi (Sessions, Cron, Memory, MCP, Gateway, Fallback/MoA, Kanban)
+  searchHermesSessions: (queryOrOpts, limit, sessionId) =>
+    ipcRenderer.invoke('avatar:hermes-search-sessions', queryOrOpts, limit, sessionId),
+  hermesBrainGet: (section, params) => ipcRenderer.invoke('avatar:hermes-brain-get', section, params),
+  hermesBrainSet: (action, payload) => ipcRenderer.invoke('avatar:hermes-brain-set', action, payload),
+  resumeSessionInAvatar: (sessionId) => ipcRenderer.invoke('avatar:hermes-resume-in-avatar', sessionId),
+
   // Skill Management
   addSkill: (payload) => ipcRenderer.invoke('avatar:add-skill', payload),
   deleteSkill: (payload) => ipcRenderer.invoke('avatar:delete-skill', payload),
@@ -58,6 +65,7 @@ const settingsApi = {
   testConnection: (url, model, apiKey) => ipcRenderer.invoke('avatar:test-connection', url, model, apiKey),
   setLlmProvider: (payload) => ipcRenderer.invoke('avatar:set-llm-provider', payload),
   fetchEndpointModels: (baseUrl, apiKey) => ipcRenderer.invoke('avatar:fetch-endpoint-models', baseUrl, apiKey),
+  fetchAllProviderModels: (providers) => ipcRenderer.invoke('avatar:fetch-all-provider-models', providers),
   startOAuthLogin: (providerId) => ipcRenderer.invoke('avatar:start-oauth-login', providerId),
   checkProviderQuota: (baseUrl, apiKey) => ipcRenderer.invoke('avatar:check-provider-quota', baseUrl, apiKey),
   getCurrentModel: () => ipcRenderer.invoke('avatar:get-current-model'),

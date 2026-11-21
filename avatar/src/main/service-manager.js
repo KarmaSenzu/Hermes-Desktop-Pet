@@ -210,6 +210,54 @@ async function waitForPort(port, timeoutMs = 15000) {
   return false
 }
 
+async function waitForPortToClose(port, timeoutMs = 6000) {
+  const start = Date.now()
+  while (Date.now() - start < timeoutMs) {
+    if (!(await isPortOpen(port))) return true
+    await sleep(250)
+  }
+  return false
+}
+
+async function findPidByPort(port) {
+  return new Promise((resolve) => {
+    if (process.platform === 'win32') {
+      execFile('netstat', ['-ano', '-p', 'tcp'], (err, stdout) => {
+        if (err || !stdout) return resolve(null)
+        const lines = stdout.split('\n')
+        for (const line of lines) {
+          if (line.includes(`:${port}`) && line.includes('LISTENING')) {
+            const parts = line.trim().split(/\s+/)
+            const pid = parseInt(parts[parts.length - 1], 10)
+            if (pid && pid > 0) return resolve(pid)
+          }
+        }
+        resolve(null)
+      })
+    } else {
+      execFile('lsof', ['-ti', `tcp:${port}`], (err, stdout) => {
+        if (err || !stdout) return resolve(null)
+        const pid = parseInt(String(stdout).trim(), 10)
+        resolve(pid && pid > 0 ? pid : null)
+      })
+    }
+  })
+}
+
+async function killProcessByPid(pid) {
+  if (!pid || pid <= 0) return
+  return new Promise((resolve) => {
+    if (process.platform === 'win32') {
+      execFile('taskkill', ['/PID', String(pid), '/T', '/F'], () => resolve())
+    } else {
+      try {
+        process.kill(pid, 'SIGTERM')
+      } catch (_) {}
+      resolve()
+    }
+  })
+}
+
 function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms))
 }
@@ -273,49 +321,29 @@ async function startHermes() {
 
 /**
  * Restart Hermes server secara mulus (berguna saat ada perubahan konfigurasi LLM / endpoint).
+ * Mendukung restart child yang terdaftar maupun orphan daemon yang menduduki port 9119.
  */
 async function restartHermes() {
   const existing = children.find((c) => c.name === 'hermes')
-  if (!existing || !existing.child || typeof existing.child.pid !== 'number') {
-    return {
-      ok: false,
-      already: true,
-      error: 'Hermes dijalankan di luar aplikasi. Restart manual diperlukan agar konfigurasi baru terbaca.'
+  let pidToKill = null
+
+  if (existing && existing.child && typeof existing.child.pid === 'number') {
+    pidToKill = existing.child.pid
+    const idx = children.indexOf(existing)
+    if (idx >= 0) children.splice(idx, 1)
+  } else {
+    // Cek apakah ada proses Hermes (mis. orphan dari sesi sebelumnya) yang menduduki port 9119
+    const portOpen = await isPortOpen(HERMES_PORT)
+    if (portOpen) {
+      pidToKill = await findPidByPort(HERMES_PORT)
     }
   }
 
-  const child = existing.child
-  const pid = child.pid
-
-  const idx = children.indexOf(existing)
-  if (idx >= 0) children.splice(idx, 1)
-
-  await new Promise((resolve) => {
-    let timer = null
-    const onExit = () => {
-      if (timer) clearTimeout(timer)
-      resolve()
-    }
-    timer = setTimeout(() => {
-      child.removeListener('exit', onExit)
-      resolve()
-    }, 5000)
-
-    if (child.exitCode !== null || child.killed) {
-      clearTimeout(timer)
-      return resolve()
-    }
-
-    child.once('exit', onExit)
-
-    if (process.platform === 'win32') {
-      execFile('taskkill', ['/PID', String(pid), '/T', '/F'], () => {})
-    } else {
-      try {
-        child.kill('SIGTERM')
-      } catch (_) {}
-    }
-  })
+  if (pidToKill) {
+    console.log(`[ServiceManager] Menghentikan proses Hermes (PID ${pidToKill}) untuk restart...`)
+    await killProcessByPid(pidToKill)
+    await waitForPortToClose(HERMES_PORT, 6000)
+  }
 
   return await startHermes()
 }

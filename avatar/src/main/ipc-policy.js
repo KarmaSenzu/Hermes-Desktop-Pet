@@ -53,7 +53,8 @@ export const IPC_POLICY = {
   'avatar:read-model': ['avatar', 'settings'],
   'avatar:model-url': ['avatar'],
   'avatar:pick-animation': ['settings'],
-  'avatar:preview-animation': ['settings'],
+  // Kanan push: Settings memicu, Avatar yang menampilkan → izinkan keduanya.
+  'avatar:preview-animation': ['settings', 'avatar'],
   'avatar:set-model': [],
   'avatar:get-current-model': ['settings'],
 
@@ -80,7 +81,7 @@ export const IPC_POLICY = {
   'avatar:get-install-state': ['settings'],
   'avatar:open-package-folder': ['settings'],
   'avatar:clean-package': ['settings'],
-  'avatar:trigger-idle-chatter': ['settings'],
+  'avatar:trigger-idle-chatter': ['settings', 'avatar'],
   'avatar:restart-hermes': [],
 
   // Pembaruan Aplikasi (OTA Update)
@@ -103,11 +104,18 @@ export const IPC_POLICY = {
   'avatar:test-connection': ['settings'],
   'avatar:set-llm-provider': ['settings'],
   'avatar:fetch-endpoint-models': ['settings'],
+  'avatar:fetch-all-provider-models': ['settings'],
   'avatar:start-oauth-login': ['settings'],
   'avatar:check-provider-quota': ['settings'],
   'avatar:set-tts-config': ['settings'],
   'avatar:set-stt-config': ['settings'],
   'avatar:encrypt-secret': ['settings'],
+
+  // Hermes Brain & Otomasi (Sessions, Cron, Memory, MCP, Gateway, Fallback/MoA, Kanban)
+  'avatar:hermes-search-sessions': ['avatar', 'settings'],
+  'avatar:hermes-brain-get': ['settings'],
+  'avatar:hermes-brain-set': ['settings'],
+  'avatar:hermes-resume-in-avatar': ['settings'],
 
   // Fitur Info Langsung (Weather/News), Layar/Failover & TTS
   'avatar:get-live-weather': ['avatar'],

@@ -8,6 +8,31 @@ export function formatTimer(seconds) {
   return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
 }
 
+/**
+ * Menghitung apakah sisa waktu sudah mencapai tepat salah satu milestone 20% (20%, 40%, 60%, 80%).
+ * Mengembalikan info milestone agar avatar bisa menampilkan bubble pengingat berkala.
+ */
+export function getTimerMilestoneStep(totalSeconds, remainingSeconds) {
+  const total = Math.floor(Number(totalSeconds) || 0)
+  const rem = Math.floor(Number(remainingSeconds) || 0)
+  if (total < 5 || rem <= 0 || rem >= total) return null
+
+  const elapsed = total - rem
+  for (let step = 1; step <= 4; step++) {
+    const targetElapsed = Math.round((total * step) / 5)
+    if (elapsed === targetElapsed) {
+      return {
+        step,
+        elapsedPercent: step * 20,
+        remainingPercent: 100 - step * 20,
+        elapsedSeconds: elapsed,
+        remainingSeconds: rem
+      }
+    }
+  }
+  return null
+}
+
 export function initPomodoroTimer(options = {}) {
   const {
     getLive2dPet = () => null,
@@ -41,6 +66,7 @@ export function initPomodoroTimer(options = {}) {
   let timerRemainingSeconds = 25 * 60
   let timerInterval = null
   let isTimerRunning = false
+  const triggeredMilestones = new Set()
   let timerTask = typeof localStorage !== 'undefined' ? localStorage.getItem('hermes-timer-task') || '' : ''
 
   if (timerTaskInput && timerTask) {
@@ -69,12 +95,34 @@ export function initPomodoroTimer(options = {}) {
     timerPanel.hidden = true
     closeCustomTimeBox()
 
-    if (stopTimer || !isTimerRunning) {
+    // Sesi dianggap "belum dimulai" hanya jika sisa == total (atau sudah habis).
+    const isPausedSession = !isTimerRunning && timerRemainingSeconds > 0 && timerRemainingSeconds < timerTotalSeconds
+
+    if (isTimerRunning && !stopTimer) {
+      // Masih berjalan → tetap jalan di latar belakang.
+      showSpeechBubble(
+        `⏱️ Timer tetap berjalan di latar belakang (Sisa ${formatTimer(timerRemainingSeconds)}). Aku akan mengingatkan tiap 20% waktu berjalan!`,
+        4500
+      )
+    } else if (isPausedSession && !stopTimer) {
+      // Dijeda → pertahankan sisa waktu & milestone, jangan reset.
+      if (timerStartBtn) {
+        timerStartBtn.textContent = '▶ Lanjutkan'
+        timerStartBtn.classList.remove('running')
+      }
+      if (timerStatusText) timerStatusText.textContent = 'Sesi fokus dijeda'
+      showSpeechBubble(
+        `⏸️ Sesi fokus dijeda (Sisa ${formatTimer(timerRemainingSeconds)}). Buka Timer lagi untuk melanjutkan.`,
+        4000
+      )
+    } else {
+      // Tidak ada sesi aktif (belum mulai / sudah selesai / stopTimer eksplisit) → reset penuh.
       if (timerInterval) {
         clearInterval(timerInterval)
         timerInterval = null
       }
       isTimerRunning = false
+      triggeredMilestones.clear()
       if (timerStartBtn) {
         timerStartBtn.textContent = '▶ Mulai'
         timerStartBtn.classList.remove('running')
@@ -112,6 +160,7 @@ export function initPomodoroTimer(options = {}) {
     const total = Math.max(5, m * 60 + s)
     timerTotalSeconds = total
     timerRemainingSeconds = total
+    triggeredMilestones.clear()
     updateTimerDisplay()
     closeCustomTimeBox()
 
@@ -165,6 +214,7 @@ export function initPomodoroTimer(options = {}) {
     }
 
     if (timerRemainingSeconds === timerTotalSeconds) {
+      triggeredMilestones.clear()
       const startMsg = timerTask
         ? `Sesi ${timerTask} dimulai! Semangat ya, aku temani di sini 🌸`
         : 'Sesi fokus dimulai! Semangat ya, aku temani di sini 🌸'
@@ -176,10 +226,24 @@ export function initPomodoroTimer(options = {}) {
       timerRemainingSeconds--
       updateTimerDisplay()
 
+      const milestone = getTimerMilestoneStep(timerTotalSeconds, timerRemainingSeconds)
+      if (milestone && !triggeredMilestones.has(milestone.step)) {
+        triggeredMilestones.add(milestone.step)
+        const taskLabel = timerTask ? ` (${timerTask})` : ''
+        showSpeechBubble(
+          `⏱️ Timer Fokus${taskLabel}: sudah ${milestone.elapsedPercent}% berjalan — sisa waktu ${formatTimer(timerRemainingSeconds)} (${milestone.remainingPercent}%)! 💪`,
+          5500
+        )
+        if (pet?.model) {
+          pet.spawnHeart(pet.model.x, pet.model.y - 120, '⏱️')
+        }
+      }
+
       if (timerRemainingSeconds <= 0) {
         clearInterval(timerInterval)
         timerInterval = null
         isTimerRunning = false
+        triggeredMilestones.clear()
         if (timerStartBtn) {
           timerStartBtn.textContent = '▶ Mulai Sesi Baru'
           timerStartBtn.classList.remove('running')
@@ -210,6 +274,7 @@ export function initPomodoroTimer(options = {}) {
       timerInterval = null
     }
     isTimerRunning = false
+    triggeredMilestones.clear()
     timerRemainingSeconds = timerTotalSeconds
     updateTimerDisplay()
     closeCustomTimeBox()
@@ -245,13 +310,13 @@ export function initPomodoroTimer(options = {}) {
           getLive2dPet()?.setTimerFocusMode?.(true)
         }
       } else {
-        closeTimerPanel({ stopTimer: true })
+        closeTimerPanel({ stopTimer: false })
       }
     })
   }
 
   timerCloseBtn?.addEventListener('click', () => {
-    closeTimerPanel({ stopTimer: true })
+    closeTimerPanel({ stopTimer: false })
   })
 
   timerOutfitToggle?.addEventListener('change', () => {
@@ -299,6 +364,7 @@ export function initPomodoroTimer(options = {}) {
       const mins = parseInt(btn.dataset.minutes, 10) || 25
       timerTotalSeconds = mins * 60
       timerRemainingSeconds = timerTotalSeconds
+      triggeredMilestones.clear()
       updateTimerDisplay()
       if (timerStatusText) timerStatusText.textContent = `Sesi fokus ${mins} menit`
 
@@ -319,6 +385,7 @@ export function initPomodoroTimer(options = {}) {
       timerInterval = null
     }
     isTimerRunning = false
+    triggeredMilestones.clear()
     closeCustomTimeBox()
 
     const safeMins = Math.max(1, Math.min(240, Math.round(Number(minutes) || 25)))
@@ -361,6 +428,7 @@ export function initPomodoroTimer(options = {}) {
   return {
     getPanel: () => timerPanel,
     isRunning: () => isTimerRunning,
+    isPaused: () => !isTimerRunning && timerRemainingSeconds > 0 && timerRemainingSeconds < timerTotalSeconds,
     getTask: () => timerTask,
     getOutfitToggle: () => timerOutfitToggle,
     formatTimer,

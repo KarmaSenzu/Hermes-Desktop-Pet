@@ -15,9 +15,33 @@ function cspPlugin() {
   }
 }
 
+function wsOptionalPeerDepsPlugin() {
+  const optionalPeers = new Set(['bufferutil', 'utf-8-validate'])
+  return {
+    name: 'vite-plugin-ws-optional-peers',
+    enforce: 'pre',
+    resolveId(id) {
+      if (optionalPeers.has(id)) {
+        return '\0ws-optional-noop'
+      }
+      return null
+    },
+    load(id) {
+      if (id === '\0ws-optional-noop') {
+        return 'export default null'
+      }
+      return null
+    }
+  }
+}
+
 export default defineConfig({
   main: {
-    plugins: [externalizeDepsPlugin({ exclude: ['ws', 'yaml', 'msedge-tts'] })],
+    plugins: [wsOptionalPeerDepsPlugin(), externalizeDepsPlugin({ exclude: ['ws', 'yaml', 'msedge-tts'] })],
+    define: {
+      'process.env.WS_NO_BUFFER_UTIL': '"1"',
+      'process.env.WS_NO_UTF_8_VALIDATE': '"1"'
+    },
     build: {
       rollupOptions: {
         input: {

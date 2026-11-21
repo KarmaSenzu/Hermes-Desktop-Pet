@@ -5,6 +5,8 @@
 import http from 'node:http'
 import { existsSync, readFileSync } from 'node:fs'
 import { randomBytes, createHash } from 'node:crypto'
+import { dirname, join } from 'node:path'
+import { homedir } from 'node:os'
 import YAML from 'yaml'
 import { parseHttpUrl, isLocalRouterUrl } from './url-guard.js'
 import { resolveHermesConfigPath, resolveRouterAccountsQuota } from './path-resolver.js'
@@ -260,6 +262,17 @@ function readHermesConfigEndpoint() {
     if (!configuredKey && configuredProvider && parsed.providers?.[configuredProvider]?.api_key) {
       configuredKey = String(parsed.providers[configuredProvider].api_key).trim()
     }
+    if (!configuredKey && targetUrl) {
+      const norm = targetUrl.replace(/\/+$/, '').toLowerCase()
+      const provList = parsed.providers && typeof parsed.providers === 'object' ? Object.values(parsed.providers) : []
+      const customList = Array.isArray(parsed.custom_providers) ? parsed.custom_providers : []
+      const matchedProv = [...provList, ...customList].find(
+        (p) => p && typeof p === 'object' && String(p.base_url || '').trim().replace(/\/+$/, '').toLowerCase() === norm && p.api_key && p.api_key !== 'no-key-required'
+      )
+      if (matchedProv) {
+        configuredKey = String(matchedProv.api_key).trim()
+      }
+    }
     return {
       baseUrl: targetUrl,
       apiKey: configuredKey,
@@ -318,6 +331,81 @@ function findPrimaryQuotaAccount(accounts, configuredModel, configuredProvider) 
   })
 
   return matched || activeWithQuotas.find((a) => a.isActive !== false) || activeWithQuotas[0]
+}
+
+/**
+ * Membaca pemakaian request & token aktual dari state.db lokal Hermes (tabel session_model_usage)
+ * agar kuota provider yang tidak mengirim header rate-limit (seperti Google AI Studio) tetap terpantau.
+ */
+export async function readHermesLocalUsage(targetUrl) {
+  const empty = { dailyCalls: 0, dailyTokens: 0, totalCalls: 0, totalTokens: 0, byModel: [] }
+  try {
+    const cfgPath = resolveHermesConfigPath()
+    const home = homedir()
+    const candidates = [
+      cfgPath ? join(dirname(cfgPath), 'state.db') : null,
+      process.env.LOCALAPPDATA ? join(process.env.LOCALAPPDATA, 'hermes', 'state.db') : null,
+      join(home, 'AppData', 'Local', 'hermes', 'state.db'),
+      join(home, '.hermes', 'state.db')
+    ].filter(Boolean)
+
+    const dbPath = candidates.find((p) => existsSync(p))
+    if (!dbPath) return empty
+
+    const normTarget = String(targetUrl || '').trim().replace(/\/+$/, '').toLowerCase()
+    const isGeminiTarget = normTarget.includes('generativelanguage.googleapis.com')
+    const cutoff24h = (Date.now() / 1000) - 86400
+
+    const { DatabaseSync } = await import('node:sqlite')
+    const db = new DatabaseSync(dbPath, { readOnly: true })
+    try {
+      const rows = db.prepare(
+        'SELECT model, billing_base_url, api_call_count, input_tokens, output_tokens, last_seen FROM session_model_usage'
+      ).all()
+
+      let dailyCalls = 0
+      let dailyTokens = 0
+      let totalCalls = 0
+      let totalTokens = 0
+      const modelMap = new Map()
+
+      for (const r of rows) {
+        const rowUrl = String(r.billing_base_url || '').trim().replace(/\/+$/, '').toLowerCase()
+        const matches = (normTarget && rowUrl === normTarget) ||
+          (isGeminiTarget && rowUrl.includes('generativelanguage.googleapis.com'))
+        if (!matches) continue
+
+        const calls = Number(r.api_call_count) || 0
+        const tokens = (Number(r.input_tokens) || 0) + (Number(r.output_tokens) || 0)
+        const lastSeen = Number(r.last_seen) || 0
+
+        totalCalls += calls
+        totalTokens += tokens
+        if (lastSeen >= cutoff24h) {
+          dailyCalls += calls
+          dailyTokens += tokens
+        }
+
+        const modName = String(r.model || '').trim() || 'unknown'
+        const prev = modelMap.get(modName) || { model: modName, calls: 0, tokens: 0, dailyCalls: 0, dailyTokens: 0, lastSeen: 0 }
+        prev.calls += calls
+        prev.tokens += tokens
+        if (lastSeen >= cutoff24h) {
+          prev.dailyCalls += calls
+          prev.dailyTokens += tokens
+        }
+        if (lastSeen > prev.lastSeen) prev.lastSeen = lastSeen
+        modelMap.set(modName, prev)
+      }
+
+      const byModel = Array.from(modelMap.values()).sort((a, b) => b.lastSeen - a.lastSeen)
+      return { dailyCalls, dailyTokens, totalCalls, totalTokens, byModel }
+    } finally {
+      try { db.close() } catch { /* ignore */ }
+    }
+  } catch {
+    return empty
+  }
 }
 
 /**
@@ -553,35 +641,108 @@ export async function checkProviderQuota({
 
       const isGemini = host === 'generativelanguage.googleapis.com'
       const isGroq = host === 'api.groq.com'
+      const hasRatePct = rateLimits.reqRemaining !== null && rateLimits.reqLimit > 0
+      const stdPct = hasRatePct
+        ? Math.max(0, Math.min(100, Math.round((rateLimits.reqRemaining / rateLimits.reqLimit) * 100)))
+        : 100
+
       let tierLabel = 'Provider API Standar'
       let isFreeTier = false
       let dailyLimitHint = null
       let summary = `Terhubung ke endpoint (${modelsCount} model terdeteksi)`
       let stdLabel = configuredProvider || host
+      let accountQuotas = [
+        {
+          label: hasRatePct ? 'Rate Limit Window' : 'API Status',
+          used: hasRatePct ? (rateLimits.reqLimit - rateLimits.reqRemaining) : 0,
+          limit: hasRatePct ? rateLimits.reqLimit : modelsCount,
+          remainingPct: stdPct,
+          resetText: rateLimits.reset || 'ready'
+        }
+      ]
 
       if (isGemini) {
+        const localUsage = await readHermesLocalUsage(targetUrl)
+        const dailyCalls = Number(localUsage.dailyCalls) || 0
+        const dailyTokens = Number(localUsage.dailyTokens) || 0
+        const totalCalls = Number(localUsage.totalCalls) || 0
+        const totalTokens = Number(localUsage.totalTokens) || 0
+
         isFreeTier = true
         dailyLimitHint = 1500
-        tierLabel = 'Google Gemini (Free Tier tersedia)'
+        tierLabel = 'Google AI Studio (API Key)'
         stdLabel = 'Google Gemini'
-        summary = `Google Gemini aktif (${modelsCount} model · Paket Gratis ~1.500 req/hari berlaku catatan ToS Google)`
+
+        if (hasRatePct) {
+          summary = `Google Gemini aktif (${modelsCount} model) — sisa limit: ${rateLimits.reqRemaining}/${rateLimits.reqLimit} req`
+          accountQuotas = [
+            {
+              label: 'Rate Limit Window',
+              used: rateLimits.reqLimit - rateLimits.reqRemaining,
+              limit: rateLimits.reqLimit,
+              remainingPct: stdPct,
+              resetText: rateLimits.reset || 'active'
+            }
+          ]
+        } else {
+          const freePct = Math.max(0, Math.min(100, Math.round(((1500 - dailyCalls) / 1500) * 100)))
+          const tier1Pct = Math.max(0, Math.min(100, Math.round(((10000 - dailyCalls) / 10000) * 100)))
+          summary = `Google Gemini aktif (${modelsCount} model · 24j: ${dailyCalls} req / ${dailyTokens.toLocaleString('en-US')} tok · Total: ${totalCalls} req)`
+
+          accountQuotas = [
+            {
+              label: 'Pemakaian 24j (Ref Free 1.500 RPD)',
+              used: dailyCalls,
+              limit: 1500,
+              usedFormatted: dailyCalls.toLocaleString('en-US'),
+              limitFormatted: '1,500',
+              remainingPct: freePct,
+              resetText: `${dailyTokens.toLocaleString('en-US')} tok (reset 14:00 WIB)`
+            },
+            {
+              label: 'Pemakaian 24j (Tier 1 Paid 10K RPD)',
+              used: dailyCalls,
+              limit: 10000,
+              usedFormatted: dailyCalls.toLocaleString('en-US'),
+              limitFormatted: '10,000',
+              remainingPct: tier1Pct,
+              resetText: `Total ${totalCalls} req · ${totalTokens.toLocaleString('en-US')} tok`
+            },
+            ...localUsage.byModel.slice(0, 4).map((m) => ({
+              label: `Model: ${m.model}`,
+              used: m.calls,
+              limit: 1500,
+              usedFormatted: `${m.calls} req`,
+              limitFormatted: `${m.tokens.toLocaleString('en-US')} tok`,
+              remainingPct: Math.max(0, Math.min(100, Math.round(((1500 - m.calls) / 1500) * 100))),
+              resetText: m.dailyCalls > 0 ? `${m.dailyCalls} req (24j)` : 'riwayat sesi'
+            }))
+          ]
+
+          const gGroup = modelGroups.find((g) => g.id === 'gemini')
+          if (gGroup) {
+            if (gGroup.rows[0]) {
+              gGroup.rows[0].remainingPct = freePct
+              gGroup.rows[0].subtext = `Tercatat ${totalCalls} request (${totalTokens.toLocaleString('en-US')} token) di state.db Hermes.`
+            }
+            if (gGroup.rows[1]) {
+              gGroup.rows[1].remainingPct = freePct
+              gGroup.rows[1].subtext = `24 jam terakhir: ${dailyCalls} request (${dailyTokens.toLocaleString('en-US')} token) — Google AI Studio tidak mengirim header sisa kuota.`
+            }
+          }
+        }
       } else if (isGroq) {
         isFreeTier = true
         tierLabel = 'Groq Cloud (Free Tier / Rate Limit)'
         stdLabel = 'Groq Cloud'
-        if (rateLimits.reqRemaining !== null && rateLimits.reqLimit !== null) {
+        if (hasRatePct) {
           summary = `Groq aktif — sisa limit: ${rateLimits.reqRemaining}/${rateLimits.reqLimit} req`
         } else {
           summary = `Groq Cloud aktif (${modelsCount} model tersedia)`
         }
-      } else if (rateLimits.reqRemaining !== null && rateLimits.reqLimit !== null) {
+      } else if (hasRatePct) {
         summary = `Aktif (${modelsCount} model) — sisa limit: ${rateLimits.reqRemaining}/${rateLimits.reqLimit} req`
       }
-
-      const hasRatePct = rateLimits.reqRemaining !== null && rateLimits.reqLimit > 0
-      const stdPct = hasRatePct
-        ? Math.max(0, Math.min(100, Math.round((rateLimits.reqRemaining / rateLimits.reqLimit) * 100)))
-        : 100
 
       accounts.unshift({
         id: `standard-${host}`,
@@ -592,17 +753,10 @@ export async function checkProviderQuota({
         authType: 'apikey',
         isActive: true,
         testStatus: 'active',
+        totalQuotas: accountQuotas.length,
         isExpiredOrInvalid: false,
         errorMessage: null,
-        quotas: [
-          {
-            label: hasRatePct ? 'Rate Limit Window' : (dailyLimitHint ? 'Daily Free Tier' : 'API Status'),
-            used: hasRatePct ? (rateLimits.reqLimit - rateLimits.reqRemaining) : 0,
-            limit: hasRatePct ? rateLimits.reqLimit : (dailyLimitHint || modelsCount),
-            remainingPct: stdPct,
-            resetText: rateLimits.reset || (dailyLimitHint ? 'daily reset' : 'ready')
-          }
-        ]
+        quotas: accountQuotas
       })
 
       if (isGemini && hasRatePct) {

@@ -342,11 +342,27 @@
           <span class="chat-title">Hermes AI Companion</span>
         </div>
         <div class="chat-header-actions">
+          <button type="button" id="chat-new-session-btn" class="chat-tool-btn" title="Buat Sesi Percakapan Baru">
+            <span>＋</span>
+          </button>
+          <button type="button" id="chat-history-toggle-btn" class="chat-tool-btn" title="Riwayat Sesi & Pencarian (state.db)">
+            <span>🗂️</span>
+          </button>
+          <button type="button" id="chat-summary-btn" class="chat-tool-btn" title="Buat Notulen Eksekutif dari Percakapan">
+            <span>📋</span>
+          </button>
           <button type="button" id="chat-size-toggle-btn" class="chat-tool-btn" title="Ganti Mode Ukuran (Ringkas / Normal / Luas)">
             <span>⛶</span>
           </button>
           <button type="button" id="chat-close-btn" class="chat-close" title="Tutup">✕</button>
         </div>
+      </div>
+      <div id="chat-history-drawer" class="chat-history-drawer" hidden>
+        <div class="chat-history-toolbar">
+          <input id="chat-history-search" type="text" class="chat-history-search" placeholder="🔍 Cari riwayat obrolan..." autocomplete="off" />
+          <button type="button" id="chat-history-close-btn" class="panel-close-mini" title="Tutup Riwayat">✕</button>
+        </div>
+        <div id="chat-history-list" class="chat-history-list"></div>
       </div>
       <div id="chat-log" class="chat-log"></div>
       <form id="chat-form" class="chat-form">

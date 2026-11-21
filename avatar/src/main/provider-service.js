@@ -600,19 +600,107 @@ export async function upsertSavedLlmProviderOnDisk(entry, { secretStore, provide
   })
 }
 
-export async function fetchEndpointModels({ baseUrl, apiKey, resolveApiKeyFor }) {
+/**
+ * Menormalkan daftar model mentah dari endpoint `/models` apa pun menjadi array ID unik.
+ * Mendukung format OpenAI (`{data:[{id}]}`), array string, Gemini (`{models:[{name}]}`),
+ * serta objek tunggal. Mengembalikan `[]` untuk struktur yang tidak dikenal.
+ */
+export function extractModelIds(data) {
+  let rawList = []
+  if (Array.isArray(data)) {
+    rawList = data
+  } else if (data && typeof data === 'object') {
+    if (Array.isArray(data.data)) rawList = data.data
+    else if (Array.isArray(data.models)) rawList = data.models
+    else if (Array.isArray(data.results)) rawList = data.results
+  }
+  const seen = new Set()
+  const out = []
+  for (const m of rawList) {
+    let id = ''
+    if (typeof m === 'string') id = m
+    else if (m && typeof m === 'object') id = m.id || m.name || m.model || ''
+    id = String(id || '').trim().replace(/^models\//i, '')
+    if (!id || seen.has(id)) continue
+    seen.add(id)
+    out.push(id)
+  }
+  return out
+}
+
+function isGeminiEndpoint(url) {
+  return String(url || '').toLowerCase().includes('generativelanguage.googleapis.com')
+}
+
+/** Derivasikan URL native `:listModels` Gemini dari base URL OpenAI-compat. */
+export function deriveGeminiNativeModelsUrl(baseUrl) {
+  try {
+    const u = new URL(String(baseUrl || '').trim())
+    // Buang segmen /openai (OpenAI-compat) agar menjadi /v1beta/models atau /v1/models.
+    let path = u.pathname.replace(/\/+$/, '')
+    path = path.replace(/\/openai$/i, '')
+    let version = 'v1beta'
+    const m = path.match(/\/v1(?:beta\d*)?/i)
+    if (m) version = m[0].replace(/^\//, '')
+    return `${u.origin}/${version}/models`
+  } catch {
+    return ''
+  }
+}
+
+async function fetchJsonWithTimeout(url, headers, timeoutMs) {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    const resp = await fetch(url, { headers, signal: controller.signal })
+    if (!resp.ok) return { ok: false, status: resp.status, error: `HTTP ${resp.status} ${resp.statusText}` }
+    let data
+    try {
+      data = await resp.json()
+    } catch {
+      return { ok: false, error: 'Respons endpoint bukan JSON yang valid' }
+    }
+    return { ok: true, data }
+  } catch (err) {
+    const msg = err?.name === 'AbortError' ? 'Timeout mengambil daftar model' : (err?.message || String(err))
+    return { ok: false, error: msg }
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
+/** Terapkan filter & urutan prioritas khusus Gemini tanpa merusak daftar provider lain. */
+function refineGeminiModels(models) {
+  const priority = ['gemini-3.5-flash-lite', 'gemini-flash-lite-latest', 'gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-3.5-flash']
+  return models
+    .filter((m) => (
+      !DEPRECATED_GEMINI_RE.test(m) &&
+      !/(embedding|aqa|lyria|tts|transcribe|live|image|robotics|nano-banana|deep-research|antigravity)/i.test(m)
+    ))
+    .sort((a, b) => {
+      const ia = priority.indexOf(a)
+      const ib = priority.indexOf(b)
+      if (ia !== -1 && ib !== -1) return ia - ib
+      if (ia !== -1) return -1
+      if (ib !== -1) return 1
+      return a.localeCompare(b)
+    })
+}
+
+export async function fetchEndpointModels({ baseUrl, apiKey, resolveApiKeyFor, timeoutMs = 3200 }) {
   try {
     const targetUrl = String(baseUrl || '').trim()
-    if (!targetUrl) return { ok: false, error: 'Base URL kosong' }
+    if (!targetUrl) return { ok: false, models: [], error: 'Base URL kosong' }
     if (!parseHttpUrl(targetUrl)) {
-      return { ok: false, error: 'URL endpoint tidak valid. Harus menggunakan protokol http atau https.' }
+      return { ok: false, models: [], error: 'URL endpoint tidak valid. Harus menggunakan protokol http atau https.' }
     }
 
     let effectiveKey = ''
     try {
       effectiveKey = typeof resolveApiKeyFor === 'function' ? await resolveApiKeyFor(apiKey, targetUrl) : apiKey
     } catch (err) {
-      return { ok: false, error: err?.message || 'Format kunci tidak valid' }
+      // Kunci tersimpan tidak valid/legacy untuk endpoint ini → tetap coba tanpa key (mis. 9Router tak butuh key untuk /models).
+      effectiveKey = ''
     }
 
     const url = targetUrl.replace(/\/+$/, '') + '/models'
@@ -621,39 +709,69 @@ export async function fetchEndpointModels({ baseUrl, apiKey, resolveApiKeyFor })
       headers['Authorization'] = `Bearer ${effectiveKey}`
     }
 
-    const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), 3200)
-    const resp = await fetch(url, { headers, signal: controller.signal })
-    clearTimeout(timeout)
+    let resp = await fetchJsonWithTimeout(url, headers, timeoutMs)
+
+    // Gemini: endpoint OpenAI-compat sering tidak punya /models → fallback ke native :listModels.
+    if (!resp.ok && isGeminiEndpoint(targetUrl) && effectiveKey && effectiveKey !== 'no-key-required') {
+      const nativeUrl = deriveGeminiNativeModelsUrl(targetUrl)
+      if (nativeUrl) {
+        const nativeResp = await fetchJsonWithTimeout(
+          `${nativeUrl}?key=${encodeURIComponent(effectiveKey)}`,
+          { Accept: 'application/json' },
+          timeoutMs
+        )
+        if (nativeResp.ok) resp = nativeResp
+      }
+    }
 
     if (!resp.ok) {
-      return { ok: false, error: `HTTP ${resp.status} ${resp.statusText}` }
+      return { ok: false, models: [], error: resp.error || 'Gagal mengambil daftar model' }
     }
-    const data = await resp.json()
-    const rawList = Array.isArray(data) ? data : (data?.data || [])
-    let models = rawList
-      .map((m) => (typeof m === 'string' ? m : (m.id || m.name)))
-      .filter(Boolean)
 
-    if (targetUrl.toLowerCase().includes('generativelanguage.googleapis.com')) {
-      const priority = ['gemini-3.5-flash-lite', 'gemini-flash-lite-latest', 'gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-3.5-flash']
-      models = models
-        .map((m) => m.replace(/^models\//i, ''))
-        .filter((m) => (
-          !DEPRECATED_GEMINI_RE.test(m) &&
-          !/(embedding|aqa|lyria|tts|transcribe|live|image|robotics|nano-banana|deep-research|antigravity)/i.test(m)
-        ))
-        .sort((a, b) => {
-          const ia = priority.indexOf(a)
-          const ib = priority.indexOf(b)
-          if (ia !== -1 && ib !== -1) return ia - ib
-          if (ia !== -1) return -1
-          if (ib !== -1) return 1
-          return a.localeCompare(b)
-        })
+    let models = extractModelIds(resp.data)
+    if (isGeminiEndpoint(targetUrl)) {
+      models = refineGeminiModels(models)
     }
     return { ok: true, models }
   } catch (err) {
-    return { ok: false, error: err?.message || String(err) }
+    const msg = err?.name === 'AbortError' ? 'Timeout mengambil daftar model' : (err?.message || String(err))
+    return { ok: false, models: [], error: msg }
   }
+}
+
+/**
+ * Mengambil daftar model dari beberapa provider sekaligus secara paralel.
+ * Dipakai UI agar model dari SEMUA provider tersimpan (mis. 9Router) tetap muncul
+ * meski provider lain (mis. Google) sedang aktif.
+ * @returns {Promise<Array<{id:string,name:string,baseUrl:string,ok:boolean,models:string[],error?:string}>>}
+ */
+export async function fetchModelsForProviders({ providers = [], resolveApiKeyFor } = {}) {
+  const list = (Array.isArray(providers) ? providers : []).filter((p) => p && String(p.baseUrl || '').trim())
+  const results = await Promise.all(list.map(async (p) => {
+    try {
+      const res = await fetchEndpointModels({
+        baseUrl: p.baseUrl,
+        apiKey: p.apiKey || '',
+        resolveApiKeyFor
+      })
+      return {
+        id: String(p.id || ''),
+        name: String(p.name || 'Provider AI'),
+        baseUrl: String(p.baseUrl || ''),
+        ok: Boolean(res.ok),
+        models: Array.isArray(res.models) ? res.models : [],
+        error: res.error
+      }
+    } catch (err) {
+      return {
+        id: String(p.id || ''),
+        name: String(p.name || 'Provider AI'),
+        baseUrl: String(p.baseUrl || ''),
+        ok: false,
+        models: [],
+        error: err?.message || String(err)
+      }
+    }
+  }))
+  return results
 }
