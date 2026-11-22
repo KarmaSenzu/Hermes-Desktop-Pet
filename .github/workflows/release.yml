@@ -137,19 +137,18 @@ jobs:
               .replace(/### Checksums \(SHA-256\)[\s\S]*?(?:```\n?|$)/g, "")
               .trim();
 
-            const guide = `### Panduan Pilih File Unduhan Sesuai Perangkat
-
-| Sistem Operasi | Kegunaan | File yang Diunduh |
-| :--- | :--- | :--- |
-| **Windows 10 / 11 (64-bit)** | Installer Setup (Disarankan) | \`WINDOWS-Installer-Hermes-Desktop-Pet-v${ver}-x64.exe\` |
-| **Windows 10 / 11 (64-bit)** | Versi Portabel (Ekstrak & Jalankan) | \`WINDOWS-Portable-Hermes-Desktop-Pet-v${ver}-x64.zip\` |
-| **macOS Apple Silicon (M1/M2/M3/M4)** | Installer DMG (Disarankan) | \`MACOS-M-Series-Hermes-Desktop-Pet-v${ver}-arm64.dmg\` |
-| **macOS Apple Silicon (M1/M2/M3/M4)** | Arsip Aplikasi (.app) | \`MACOS-M-Series-Hermes-Desktop-Pet-v${ver}-arm64.zip\` |
-| **Linux (x86_64)** | AppImage Universal (Klik 2x / chmod +x) | \`LINUX-Hermes-Desktop-Pet-v${ver}-x86_64.AppImage\` |
-| **Linux (x86_64)** | Arsip Portabel (.tar.gz) | \`LINUX-Hermes-Desktop-Pet-v${ver}-x86_64.tar.gz\` |
-| **Pembaruan Ringan (OTA)** | Patch internal otomatis aplikasi | \`OTA-Patch-Hermes-Desktop-Pet-v${ver}.zip\` |
-
----`;
+            const rows = [
+              "| Sistem Operasi | Kegunaan | File yang Diunduh |",
+              "| :--- | :--- | :--- |",
+              `| **Windows 10 / 11 (64-bit)** | Installer Setup (Disarankan) | \\\`WINDOWS-Installer-Hermes-Desktop-Pet-v${ver}-x64.exe\\\` |`,
+              `| **Windows 10 / 11 (64-bit)** | Versi Portabel (Ekstrak & Jalankan) | \\\`WINDOWS-Portable-Hermes-Desktop-Pet-v${ver}-x64.zip\\\` |`,
+              `| **macOS Apple Silicon (M1/M2/M3/M4)** | Installer DMG (Disarankan) | \\\`MACOS-M-Series-Hermes-Desktop-Pet-v${ver}-arm64.dmg\\\` |`,
+              `| **macOS Apple Silicon (M1/M2/M3/M4)** | Arsip Aplikasi (.app) | \\\`MACOS-M-Series-Hermes-Desktop-Pet-v${ver}-arm64.zip\\\` |`,
+              `| **Linux (x86_64)** | AppImage Universal (Klik 2x / chmod +x) | \\\`LINUX-Hermes-Desktop-Pet-v${ver}-x86_64.AppImage\\\` |`,
+              `| **Linux (x86_64)** | Arsip Portabel (.tar.gz) | \\\`LINUX-Hermes-Desktop-Pet-v${ver}-x86_64.tar.gz\\\` |`,
+              `| **Pembaruan Ringan (OTA)** | Patch internal otomatis aplikasi | \\\`OTA-Patch-Hermes-Desktop-Pet-v${ver}.zip\\\` |`
+            ].join("\n");
+            const guide = `### Panduan Pilih File Unduhan Sesuai Perangkat\n\n${rows}\n\n---`;
 
             let checksumSection = "";
             const checkDir = "/tmp/checksums";
