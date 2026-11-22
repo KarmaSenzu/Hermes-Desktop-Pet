@@ -29,9 +29,7 @@ export const TERMINAL_ACTIONS = {
   'install-kokoro': {
     label: 'Install Dependensi Kokoro TTS',
     cmd: process.platform === 'win32' ? 'py' : 'python3',
-    args: process.platform === 'win32'
-      ? ['-m', 'pip', 'install', 'kokoro-onnx', 'soundfile']
-      : ['-m', 'pip', 'install', 'kokoro-onnx', 'soundfile', '--break-system-packages']
+    args: ['-m', 'pip', 'install', 'kokoro-onnx', 'soundfile', '--break-system-packages']
   },
   'start-kokoro': {
     label: 'Jalankan Server Kokoro (Debugging)',

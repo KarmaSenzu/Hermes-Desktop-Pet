@@ -1539,17 +1539,14 @@ secureHandle('avatar:install-kokoro-deps', async () => {
       cachedKokoroPip.installed = true
       return { ok: true, output: out }
     } catch (err) {
-      // Fallback untuk macOS Homebrew Python PEP 668 externally managed environment
-      if (err.message?.includes('externally-managed-environment') || process.platform !== 'win32') {
-        try {
-          const out = await runPip(['--break-system-packages'])
-          cachedKokoroPip.installed = true
-          return { ok: true, output: out }
-        } catch (err2) {
-          throw err2
-        }
+      // Fallback untuk PEP 668 externally managed environment (macOS Homebrew, Linux, atau Windows Python 3.12+)
+      try {
+        const out = await runPip(['--break-system-packages'])
+        cachedKokoroPip.installed = true
+        return { ok: true, output: out }
+      } catch (err2) {
+        throw err2
       }
-      throw err
     }
   } catch (err) {
     cachedKokoroPip.installed = null

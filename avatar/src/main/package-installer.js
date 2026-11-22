@@ -223,16 +223,31 @@ function defaultRunCommand(cmd, args = [], options = {}) {
     let stdout = ''
     let stderr = ''
     let settled = false
-    const needsShell = shell || (process.platform === 'win32' && /\.(cmd|bat)$/i.test(cmd))
+    const isCmdBat = process.platform === 'win32' && /\.(cmd|bat)$/i.test(cmd)
+    const needsShell = shell || isCmdBat
 
     let child
     try {
-      child = spawn(cmd, args, {
-        windowsHide: true,
-        shell: needsShell,
-        stdio: ['ignore', 'pipe', 'pipe'],
-        env: process.env
-      })
+      if (process.platform === 'win32' && needsShell) {
+        // Pada Windows, memanggil file .cmd / .bat yang berada di direktori ber-spasi (seperti "C:\Program Files\nodejs\npm.cmd")
+        // dengan { shell: true } memicu bug cmd.exe: "'C:\Program' is not recognized as an internal or external command".
+        // Solusi aman & andal: jalankan cmd.exe /d /s /c dengan seluruh baris perintah dibungkus tanda kutip ganda terluar
+        // dan windowsVerbatimArguments: true.
+        const fullCmd = `"${cmd}" ${args.map((a) => (/[ \t\n\v"]/.test(a) ? `"${a.replace(/"/g, '\\"')}"` : a)).join(' ')}`
+        child = spawn(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', `"${fullCmd}"`], {
+          windowsHide: true,
+          windowsVerbatimArguments: true,
+          stdio: ['ignore', 'pipe', 'pipe'],
+          env: process.env
+        })
+      } else {
+        child = spawn(cmd, args, {
+          windowsHide: true,
+          shell: needsShell,
+          stdio: ['ignore', 'pipe', 'pipe'],
+          env: process.env
+        })
+      }
     } catch (err) {
       return resolve({ code: -1, stdout: '', stderr: err?.message || String(err), error: err })
     }
@@ -844,7 +859,8 @@ export async function installKokoro({ onProgress, deps: depsOverride } = {}) {
     emit
   })
 
-  if (pipRes.code !== 0 && d.platform !== 'win32') {
+  if (pipRes.code !== 0) {
+    emit(65, 'Mencoba ulang pemasangan paket dengan flag --break-system-packages...')
     pipRes = await runWithDynamicProgress(d, {
       pkgId: 'kokoro',
       cmd: pyCmd,
