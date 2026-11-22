@@ -14,6 +14,7 @@ import { initAppsPanel, adaptPlatformCommands, detectPlatform } from './settings
 import { initMusicPanel } from './settings-music.js'
 import { initHermesBrainPanel, refreshHermesBrainPanel } from './settings-hermes-brain.js'
 import { initStoragePanel, refreshStoragePanel } from './settings-storage.js'
+import { CHARACTER_THUMBS } from './character-thumbs.js'
 
 const startBtn = document.getElementById('start-btn')
 const rawStatusEl = document.getElementById('status')
@@ -1846,8 +1847,10 @@ function renderActiveChar() {
     activeCharEl.innerHTML = '<span class="muted" style="font-size:12px;">Pilih di menu Karakter</span>'
     return
   }
-  const thumb = active.image
-    ? `<img src="${active.image}" alt="" style="width:24px; height:24px; border-radius:50%; object-fit:cover;" />`
+  const key = (active.id || '').replace('-live2d', '')
+  const imgSrc = active.image || CHARACTER_THUMBS[key] || ''
+  const thumb = imgSrc
+    ? `<img src="${imgSrc}" alt="" style="width:24px; height:24px; border-radius:50%; object-fit:cover;" />`
     : renderIcon('user-round', { size: 14 })
   activeCharEl.innerHTML = `
     <div class="active-char-pill" style="display:inline-flex; align-items:center; gap:8px; padding:4px 10px; border-radius:14px; background:rgba(16,185,129,0.12); border:1px solid rgba(16,185,129,0.28);">
@@ -2016,7 +2019,10 @@ function openFormatDetail(ext) {
       const c = settings.characters.find((x) => x.id === editingCharId)
       if (c) {
         if (name) c.name = name
-        if (pendingImage) c.image = pendingImage
+        if (pendingImage) {
+          c.image = pendingImage
+          c.isCustomImage = true
+        }
         saveSettings(settings)
         statusEl.textContent = 'Karakter diperbarui.'
         showToast('Karakter Diperbarui', `Perubahan avatar ${name} disimpan`, 'success', '💾')
@@ -2090,8 +2096,10 @@ function renderGallery(chars) {
   if (chars.length === 0) return '<p class="hint">Belum ada karakter.</p>'
   return `<div class="char-grid">` + chars.map((c) => {
     const active = c.active ? 'active' : ''
-    const thumb = c.image
-      ? `<img class="char-thumb" src="${c.image}" alt="" />`
+    const key = (c.id || '').replace('-live2d', '')
+    const imgSrc = c.image || CHARACTER_THUMBS[key] || ''
+    const thumb = imgSrc
+      ? `<img class="char-thumb" src="${imgSrc}" alt="" />`
       : `<div class="char-thumb placeholder">${renderIcon('user-round', { size: 24 })}</div>`
     return `<div class="char-card ${active}" data-id="${c.id}">
       ${thumb}

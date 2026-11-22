@@ -161,15 +161,25 @@ export function loadSettings() {
         }
       }
     }
-    // Isi foto profil bawaan jika belum ada gambar
+    // Pastikan foto profil bawaan selalu terupdate dengan thumbnail resmi terbaru
+    // kecuali jika pengguna secara eksplisit mengunggah foto kustom (isCustomImage).
+    let needsSyncSave = false
     merged.characters.forEach((c) => {
-      if (!c.image) {
-        const key = c.id.replace('-live2d', '')
-        if (CHARACTER_THUMBS[key]) {
+      const key = c.id.replace('-live2d', '')
+      if (CHARACTER_THUMBS[key] && !c.isCustomImage) {
+        if (c.image !== CHARACTER_THUMBS[key]) {
           c.image = CHARACTER_THUMBS[key]
+          needsSyncSave = true
         }
       }
     })
+    if (needsSyncSave) {
+      try {
+        localStorage.setItem(KEY, JSON.stringify(merged))
+      } catch {
+        /* ignore localStorage quota/disabled errors */
+      }
+    }
     if (!merged.characters.some((c) => c.active)) {
       merged.characters[0].active = true
     }
