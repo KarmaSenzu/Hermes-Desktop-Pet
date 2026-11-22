@@ -1,0 +1,25 @@
+{
+  "Version": 3,
+  "FileReferences": {
+    "Moc": "camellya.moc3",
+    "Textures": [
+      "camellya.4096/texture_00.png",
+      "camellya.4096/texture_01.png",
+      "camellya.4096/texture_02.png"
+    ],
+    "Physics": "camellya.physics3.json",
+    "DisplayInfo": "camellya.cdi3.json"
+  },
+  "Groups": [
+    {
+      "Target": "Parameter",
+      "Name": "EyeBlink",
+      "Ids": []
+    },
+    {
+      "Target": "Parameter",
+      "Name": "LipSync",
+      "Ids": []
+    }
+  ]
+}

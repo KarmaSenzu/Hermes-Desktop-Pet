@@ -64,7 +64,12 @@ export const IPC_POLICY = {
   'avatar:music-load-library': ['avatar', 'settings'],
   'avatar:music-save-library': ['avatar', 'settings'],
   'avatar:music-library-info': ['settings'],
-  'avatar:music-open-folder': ['settings'],
+  'avatar:music-open-folder': ['avatar', 'settings'],
+  'avatar:music-search': ['avatar', 'settings'],
+  'avatar:music-resolve-stream': ['avatar', 'settings'],
+  'avatar:music-bg-control': ['avatar'],
+  'avatar:music-download-track': ['avatar', 'settings'],
+  'avatar:music-check-cached': ['avatar', 'settings'],
 
   // Konfigurasi & Service Hermes/Kokoro
   'avatar:hermes-config': ['avatar'],
@@ -97,6 +102,7 @@ export const IPC_POLICY = {
   'avatar:delete-skill': ['settings'],
   'avatar:install-skill': ['settings'],
   'avatar:browse-skills': [],
+  'avatar:skill-assistant': ['avatar', 'settings'],
 
   // Provider LLM, Kunci Rahasia & Suara
   'avatar:llm-load-providers': ['settings'],

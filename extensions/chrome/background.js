@@ -85,14 +85,29 @@ chrome.commands.onCommand.addListener((command) => {
   }
 })
 
-// Helper ambil token bridge dari chrome.storage.local
+// Helper ambil token bridge dari chrome.storage.local (dengan auto-fallback ke bridge-token.json terpasang)
 async function getBridgeToken() {
   try {
     const data = await chrome.storage.local.get('bridgeToken')
-    return (data?.bridgeToken || '').trim()
+    const stored = (data?.bridgeToken || '').trim()
+    if (stored) return stored
   } catch {
-    return ''
+    // Abaikan, lanjutkan fallback ke bridge-token.json
   }
+  try {
+    const res = await fetch(chrome.runtime.getURL('bridge-token.json'))
+    if (res.ok) {
+      const parsed = await res.json().catch(() => null)
+      const fileToken = String(parsed?.bridgeToken || '').trim()
+      if (fileToken) {
+        await chrome.storage.local.set({ bridgeToken: fileToken }).catch(() => {})
+        return fileToken
+      }
+    }
+  } catch {
+    // bridge-token.json opsional (mis. saat dimuat langsung dari repo dev)
+  }
+  return ''
 }
 
 // Terima pesan dari popup atau content script

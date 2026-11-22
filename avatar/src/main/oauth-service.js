@@ -588,9 +588,24 @@ export async function checkProviderQuota({
     }
 
     const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), 5000)
+    const timer = setTimeout(() => controller.abort(), 6500)
     try {
-      const resp = await fetchImpl(modelsEndpoint, { headers, signal: controller.signal })
+      let resp = await fetchImpl(modelsEndpoint, { headers, signal: controller.signal })
+
+      // Gemini: endpoint OpenAI-compat sering tidak menyediakan /models -> fallback ke native :listModels
+      if (!resp.ok && host === 'generativelanguage.googleapis.com' && effectiveKey && effectiveKey !== 'no-key-required') {
+        const verMatch = parsed.pathname.match(/\/(v1beta|v1)(?:\/|$)/i)
+        const version = verMatch ? verMatch[1] : 'v1beta'
+        const nativeUrl = `${parsed.origin}/${version}/models?key=${encodeURIComponent(effectiveKey)}`
+        const nativeResp = await fetchImpl(nativeUrl, {
+          headers: { Accept: 'application/json' },
+          signal: controller.signal
+        }).catch(() => null)
+        if (nativeResp && nativeResp.ok) {
+          resp = nativeResp
+        }
+      }
+
       if (!resp.ok) {
         return {
           ok: false,
@@ -602,7 +617,9 @@ export async function checkProviderQuota({
       }
 
       const data = await resp.json().catch(() => ({}))
-      const rawList = Array.isArray(data) ? data : (Array.isArray(data?.data) ? data.data : [])
+      const rawList = Array.isArray(data)
+        ? data
+        : (Array.isArray(data?.data) ? data.data : (Array.isArray(data?.models) ? data.models : []))
       const modelsCount = rawList.length
       const rateLimits = parseRateLimitHeaders(resp.headers)
 

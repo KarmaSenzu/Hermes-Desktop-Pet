@@ -183,11 +183,19 @@ export function initAppsPanel({
   })
 
   appScanBtn?.addEventListener('click', async () => {
+    const isMac = (window.hermesAvatar?.platform === 'darwin') ||
+      navigator.userAgent.includes('Macintosh') ||
+      (navigator.platform && navigator.platform.toUpperCase().indexOf('MAC') >= 0)
+    const isWin = window.hermesAvatar?.platform === 'win32'
+    const osLabel = isMac ? 'macOS' : (isWin ? 'Windows' : 'Linux')
+    const scanLocationDesc = isMac
+      ? 'Mendeteksi aplikasi (.app) di /Applications & ~/Applications'
+      : (isWin ? 'Mendeteksi executable di Start Menu & Desktop' : 'Mendeteksi aplikasi (.desktop) di /usr/share/applications & ~/.local')
     try {
       appScanBtn.disabled = true
-      appScanBtn.textContent = 'Memindai Windows…'
-      if (statusEl) statusEl.textContent = 'Memindai semua shortcut aplikasi Windows...'
-      showToast('Memindai Aplikasi Windows…', 'Mendeteksi executable di Start Menu & Desktop', 'running', '🔍')
+      appScanBtn.textContent = `Memindai ${osLabel}…`
+      if (statusEl) statusEl.textContent = `Memindai semua shortcut aplikasi ${osLabel}...`
+      showToast(`Memindai Aplikasi ${osLabel}…`, scanLocationDesc, 'running', '🔍')
       const res = await window.hermesAvatar.scanInstalledApps()
       if (res?.ok && Array.isArray(res.apps)) {
         settings.actionApps = settings.actionApps || []
@@ -233,7 +241,7 @@ export function initAppsPanel({
       showToast('Error Pemindaian', err?.message || err, 'error', '❌')
     } finally {
       appScanBtn.disabled = false
-      appScanBtn.innerHTML = `<span class="btn-svg-icon">${renderIcon('search', { size: 13 })}</span> Pindai Otomatis (Scan Windows)`
+      appScanBtn.innerHTML = `<span class="btn-svg-icon">${renderIcon('search', { size: 13 })}</span> Pindai Otomatis (${osLabel})`
     }
   })
 
@@ -267,6 +275,21 @@ export function adaptPlatformCommands() {
     navigator.userAgent.includes('Macintosh') ||
     (navigator.platform && navigator.platform.toUpperCase().indexOf('MAC') >= 0)
   const isWin = window.hermesAvatar?.platform === 'win32'
+  const osLabel = isMac ? 'macOS' : (isWin ? 'Windows' : 'Linux')
+
+  const scanBtn = document.getElementById('app-scan-btn')
+  if (scanBtn) {
+    scanBtn.textContent = `Pindai Otomatis (${osLabel})`
+    scanBtn.title = `Pindai semua aplikasi terpasang di ${osLabel} secara otomatis`
+  }
+  const scanDesc = document.getElementById('app-scan-desc')
+  if (scanDesc) {
+    scanDesc.textContent = isMac
+      ? 'Deteksi otomatis aplikasi (.app) di /Applications & ~/Applications'
+      : (isWin
+        ? 'Deteksi otomatis seluruh shortcut dari Start Menu Windows'
+        : 'Deteksi otomatis aplikasi (.desktop) di /usr/share/applications & ~/.local')
+  }
 
   if (isMac || !isWin) {
     document.querySelectorAll('code').forEach((el) => {

@@ -47,7 +47,7 @@
         <!-- Menu Navigasi -->
         <nav class="nav" id="nav"></nav>
         <div class="sidebar-footer" id="sidebar-footer" title="Klik untuk memeriksa pembaruan aplikasi" style="cursor:pointer; display:flex; align-items:center; justify-content:space-between;">
-          <span>Hermes 3D <span id="footer-version-tag">v0.1.9</span></span>
+          <span>Hermes 3D <span id="footer-version-tag">v1.1.1</span></span>
           <span id="footer-update-badge" class="badge ready" style="display:none; font-size:9.5px; padding:1px 6px;">Update</span>
         </div>
       </aside>
@@ -88,7 +88,7 @@
             <div class="alert-content">
               <div class="alert-head-row">
                 <strong id="update-banner-title" style="color:#60a5fa;">Pembaruan Aplikasi Tersedia</strong>
-                <span id="update-banner-tag" class="badge ready" style="font-size:10.5px; padding:2px 8px;">v0.1.9</span>
+                <span id="update-banner-tag" class="badge ready" style="font-size:10.5px; padding:2px 8px;">v1.1.1</span>
               </div>
               <p id="update-banner-desc">Versi baru telah rilis di GitHub dengan pembaruan stabilitas dan fitur.</p>
               <div id="banner-progress-wrap" class="hidden" style="margin-top:8px; width:100%;">
@@ -727,7 +727,7 @@
                     <li><strong>Rangkuman Otomatis:</strong> Jawaban muncul seketika di panel chat avatar, lengkap dengan pembacaan suara & animasi bibir!</li>
                   </ul>
                 </div>
-                <div id="pkg-bridge-log" class="package-log muted" style="margin-top: 8px;"></div>
+                <div id="pkg-bridge-manage-log" class="package-log muted" style="margin-top: 8px;"></div>
               </div>
             </div>
           </div>
@@ -2083,10 +2083,10 @@
                 <div class="format-title-line">
                   <span class="format-title">Pindai Aplikasi Otomatis</span>
                 </div>
-                <p class="format-desc-text">Deteksi otomatis seluruh shortcut dari Start Menu Windows</p>
+                <p class="format-desc-text" id="app-scan-desc">Deteksi otomatis seluruh aplikasi terpasang (Windows / macOS / Linux)</p>
               </div>
               <div class="row-control">
-                <button type="button" id="app-scan-btn" class="mini-btn secondary" title="Pindai semua aplikasi di Start Menu Windows secara otomatis">Pindai Windows</button>
+                <button type="button" id="app-scan-btn" class="mini-btn secondary" title="Pindai semua aplikasi terpasang secara otomatis">Pindai Aplikasi</button>
               </div>
             </div>
             <div class="settings-row app-add-row">
@@ -2192,12 +2192,12 @@
         <div class="update-version-comparison" style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; background:rgba(255,255,255,0.04); border:1px solid var(--border); border-radius:8px; padding:10px 14px; margin-bottom:14px;">
           <div>
             <span style="font-size:11px; color:var(--text-secondary); display:block;">Versi Terpasang:</span>
-            <strong id="modal-current-ver" style="font-size:14px; color:var(--text);">v0.1.9</strong>
+            <strong id="modal-current-ver" style="font-size:14px; color:var(--text);">v1.1.1</strong>
           </div>
           <span style="font-size:16px; color:var(--text-secondary);">→</span>
           <div>
             <span style="font-size:11px; color:var(--text-secondary); display:block;">Versi Terbaru:</span>
-            <strong id="modal-latest-ver" style="font-size:14px; color:#3b82f6;">v0.1.9</strong>
+            <strong id="modal-latest-ver" style="font-size:14px; color:#3b82f6;">v1.1.1</strong>
           </div>
           <span id="modal-release-date" class="badge" style="font-size:11px;">Rilis Terbaru</span>
         </div>

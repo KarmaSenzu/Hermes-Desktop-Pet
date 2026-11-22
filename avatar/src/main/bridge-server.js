@@ -35,7 +35,7 @@ function verifyToken(clientToken, expectedToken) {
  * @param {Function} onPrompt - Callback ketika pesan/prompt diterima dari extension
  * @param {string} token - Token autentikasi bridge (minimal 32 karakter)
  */
-export function startBridgeServer(onPrompt, token) {
+export function startBridgeServer(onPrompt, token, port = BRIDGE_PORT) {
   if (!token || typeof token !== 'string' || token.length < 32) {
     throw new Error('Bridge token must be at least 32 characters')
   }
@@ -47,6 +47,11 @@ export function startBridgeServer(onPrompt, token) {
     return server
   }
 
+  const getExpectedPort = () => {
+    const addr = server?.address?.()
+    return (addr && typeof addr === 'object' && addr.port) ? addr.port : port
+  }
+
   server = http.createServer((req, res) => {
     // 1. Request OPTIONS -> balas 403 (semua CORS dihapus)
     if (req.method === 'OPTIONS') {
@@ -56,14 +61,39 @@ export function startBridgeServer(onPrompt, token) {
     }
 
     // 2. Validasi Header Host (anti DNS-rebinding)
+    const expectedPort = getExpectedPort()
     const host = (req.headers.host || '').toLowerCase()
-    if (host !== '127.0.0.1:9124' && host !== 'localhost:9124') {
+    if (host !== `127.0.0.1:${expectedPort}` && host !== `localhost:${expectedPort}`) {
       res.writeHead(403, { 'Content-Type': 'application/json' })
       res.end(JSON.stringify({ ok: false, error: 'Forbidden host' }))
       return
     }
 
-    // 3. Validasi Header Origin jika ada
+    const parsedUrl = new URL(req.url, `http://${req.headers.host || `127.0.0.1:${expectedPort}`}`)
+    const clientToken = req.headers['x-hermes-bridge-token']
+
+    // 3. Health check endpoint (GET /api/ping) — izinkan pengecekan localhost oleh Settings UI / curl / extension
+    if (req.method === 'GET' && parsedUrl.pathname === '/api/ping') {
+      const pingHeaders = {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*'
+      }
+      if (clientToken !== undefined && !verifyToken(clientToken, bridgeToken)) {
+        res.writeHead(401, pingHeaders)
+        res.end(JSON.stringify({ ok: false, error: 'Unauthorized' }))
+        return
+      }
+      res.writeHead(200, pingHeaders)
+      res.end(JSON.stringify({
+        ok: true,
+        app: 'Hermes Companion Bridge',
+        version: '1.1.1',
+        port: expectedPort
+      }))
+      return
+    }
+
+    // 4. Validasi Header Origin jika ada (ketat untuk POST /api/ask)
     const origin = req.headers.origin
     if (origin !== undefined && !ALLOWED_ORIGIN_RE.test(origin)) {
       res.writeHead(403, { 'Content-Type': 'application/json' })
@@ -71,20 +101,10 @@ export function startBridgeServer(onPrompt, token) {
       return
     }
 
-    // 4. Validasi Header Token (x-hermes-bridge-token)
-    const clientToken = req.headers['x-hermes-bridge-token']
+    // 5. Validasi Header Token (x-hermes-bridge-token)
     if (!verifyToken(clientToken, bridgeToken)) {
       res.writeHead(401, { 'Content-Type': 'application/json' })
       res.end(JSON.stringify({ ok: false, error: 'Unauthorized' }))
-      return
-    }
-
-    const parsedUrl = new URL(req.url, `http://${req.headers.host || '127.0.0.1:9124'}`)
-
-    // 5. Health check endpoint (GET /api/ping)
-    if (req.method === 'GET' && parsedUrl.pathname === '/api/ping') {
-      res.writeHead(200, { 'Content-Type': 'application/json' })
-      res.end(JSON.stringify({ ok: true }))
       return
     }
 
@@ -180,8 +200,9 @@ export function startBridgeServer(onPrompt, token) {
     }
   })
 
-  server.listen(BRIDGE_PORT, BRIDGE_HOST, () => {
-    console.log(`[Bridge Server] Hermes Companion Bridge siap di http://${BRIDGE_HOST}:${BRIDGE_PORT}`)
+  server.listen(port, BRIDGE_HOST, () => {
+    const actualPort = getExpectedPort()
+    console.log(`[Bridge Server] Hermes Companion Bridge siap di http://${BRIDGE_HOST}:${actualPort}`)
   })
 
   return server
@@ -193,6 +214,7 @@ export function startBridgeServer(onPrompt, token) {
 export function stopBridgeServer() {
   if (server) {
     try {
+      server.closeAllConnections?.()
       server.close()
     } catch {}
     server = null

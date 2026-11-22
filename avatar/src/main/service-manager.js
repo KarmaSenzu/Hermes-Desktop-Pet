@@ -15,7 +15,7 @@
 import { spawn, execFile, execSync } from 'child_process'
 import { randomBytes } from 'node:crypto'
 import net from 'net'
-import { readFileSync, writeFileSync, mkdirSync, existsSync, cpSync } from 'fs'
+import { readFileSync, writeFileSync, mkdirSync, existsSync, cpSync, readdirSync } from 'fs'
 import { join, dirname } from 'path'
 import { homedir } from 'os'
 import { fileURLToPath } from 'url'
@@ -73,9 +73,32 @@ function readWindowsRegistryPath() {
   return collected
 }
 
+function discoverUnixVersionManagerBins(home) {
+  const found = []
+  const versionedRoots = [
+    { base: join(home, '.nvm', 'versions', 'node'), suffix: ['bin'] },
+    { base: join(home, 'Library', 'Application Support', 'fnm', 'node-versions'), suffix: ['installation', 'bin'] },
+    { base: join(home, '.local', 'share', 'fnm', 'node-versions'), suffix: ['installation', 'bin'] },
+    { base: join(home, '.fnm', 'node-versions'), suffix: ['installation', 'bin'] }
+  ]
+
+  for (const { base, suffix } of versionedRoots) {
+    try {
+      if (!existsSync(base)) continue
+      const versions = readdirSync(base).sort().reverse()
+      for (const ver of versions) {
+        const binDir = join(base, ver, ...suffix)
+        if (existsSync(binDir)) found.push(binDir)
+      }
+    } catch { /* abaikan direktori yang tidak bisa dibaca */ }
+  }
+
+  return found
+}
+
 /**
  * Pastikan process.env.PATH memiliki direktori umum binary (terutama di macOS GUI app
- * yang biasanya tidak mewarisi PATH terminal Homebrew/pyenv, serta Windows Python/Hermes/NPM).
+ * yang biasanya tidak mewarisi PATH terminal Homebrew/NVM/pyenv, serta Windows Python/Hermes/NPM).
  */
 function fixSystemPath(options = {}) {
   const delimiter = process.platform === 'win32' ? ';' : ':'
@@ -83,19 +106,26 @@ function fixSystemPath(options = {}) {
   const currentParts = currentPath.split(delimiter).filter(Boolean)
   const home = homedir()
 
-  // Di macOS, coba ambil PATH dari interactive login shell (zsh) bila diluncurkan via Finder/Dock
-  if (process.platform === 'darwin' && (!process.env.PATH || !process.env.PATH.includes('/opt/homebrew'))) {
-    try {
-      const shellPath = execSync('/bin/zsh -ilc "echo -n \\$PATH"', { timeout: 1500, encoding: 'utf8' })
-      if (shellPath && shellPath.includes('/')) {
-        for (const p of shellPath.split(':')) {
-          if (p && existsSync(p) && !currentParts.includes(p)) {
-            currentParts.unshift(p)
+  // Di macOS, ambil PATH asli dari interactive login shell (zsh/bash) memakai delimiter agar tahan banner plugin
+  if (process.platform === 'darwin') {
+    for (const sh of ['/bin/zsh', '/bin/bash']) {
+      try {
+        const out = execSync(
+          `${sh} -ilc 'printf "__HERMES_PATH_START__%s__HERMES_PATH_END__" "$PATH"'`,
+          { timeout: 4000, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }
+        )
+        const match = out && out.match(/__HERMES_PATH_START__([\s\S]*?)__HERMES_PATH_END__/)
+        if (match && match[1]) {
+          for (const p of match[1].split(':').reverse()) {
+            if (p && existsSync(p) && !currentParts.includes(p)) {
+              currentParts.unshift(p)
+            }
           }
+          break
         }
+      } catch {
+        // Coba shell berikutnya atau fallback ke static + version manager scan
       }
-    } catch {
-      // Abaikan bila shell zsh timeout
     }
   }
 
@@ -133,6 +163,14 @@ function fixSystemPath(options = {}) {
         join(home, '.local', 'bin'),
         join(home, '.hermes', 'venv', 'bin'),
         join(home, '.hermes-agent', 'venv', 'bin'),
+        join(home, '.volta', 'bin'),
+        join(home, '.bun', 'bin'),
+        join(home, '.asdf', 'shims'),
+        join(home, '.pyenv', 'shims'),
+        join(home, 'miniconda3', 'bin'),
+        join(home, 'anaconda3', 'bin'),
+        ...discoverUnixVersionManagerBins(home),
+        join(home, '.npm-global', 'bin'),
         join(home, '.cargo', 'bin'),
         join(home, 'Library', 'Python', '3.12', 'bin'),
         join(home, 'Library', 'Python', '3.11', 'bin'),
@@ -278,6 +316,7 @@ async function startHermes() {
   if (await isPortOpen(HERMES_PORT)) {
     return { already: true, ok: true }
   }
+  fixSystemPath()
   const cmd = resolveHermesCmd()
   if (!cmd) {
     console.warn('[ServiceManager] Hermes CLI tidak ditemukan di sistem.')
@@ -438,6 +477,7 @@ async function startRouter() {
   if (await isPortOpen(ROUTER_PORT)) {
     return { already: true, ok: true }
   }
+  fixSystemPath()
   const routerInfo = resolveRouterBinary()
   if (!routerInfo.ok || !routerInfo.cmd) {
     return { already: false, ok: false, error: 'Binary atau script 9Router belum terpasang di sistem' }
@@ -456,7 +496,7 @@ async function startRouter() {
       spawnError = err
     })
     children.push({ name: '9router', child })
-    const ok = await waitForPort(ROUTER_PORT, 6000)
+    const ok = await waitForPort(ROUTER_PORT, 9000)
     if (!ok && spawnError) {
       return { already: false, ok: false, error: spawnError.message }
     }

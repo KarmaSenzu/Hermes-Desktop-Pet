@@ -500,6 +500,9 @@ export async function installPython({ onProgress, deps: depsOverride } = {}) {
   const d = getDefaultDeps(depsOverride)
   const emit = makeEmitter('python', onProgress, d)
 
+  d.fixSystemPath?.({ refreshRegistry: true })
+  d.invalidatePathCache?.()
+
   emit(5, 'Memeriksa ketersediaan Python 3.10+...')
   const existing = await d.resolvePythonBinary()
   if (existing?.ok) {
@@ -601,6 +604,9 @@ export async function installPython({ onProgress, deps: depsOverride } = {}) {
 export async function installHermes({ onProgress, deps: depsOverride } = {}) {
   const d = getDefaultDeps(depsOverride)
   const emit = makeEmitter('hermes', onProgress, d)
+
+  d.fixSystemPath?.({ refreshRegistry: true })
+  d.invalidatePathCache?.()
 
   emit(5, 'Memeriksa Hermes Agent CLI...')
   const existingCmd = findHermesBinaryDirect(d)
@@ -720,6 +726,9 @@ export async function installRouter({ onProgress, deps: depsOverride } = {}) {
   const d = getDefaultDeps(depsOverride)
   const emit = makeEmitter('9router', onProgress, d)
 
+  d.fixSystemPath?.({ refreshRegistry: true })
+  d.invalidatePathCache?.()
+
   emit(5, 'Memeriksa ketersediaan 9Router...')
   const existing = d.resolveRouterBinary()
   if (existing?.ok && existing?.cmd) {
@@ -753,7 +762,7 @@ export async function installRouter({ onProgress, deps: depsOverride } = {}) {
   }
 
   emit(50, 'Memasang 9Router secara senyap (npm install -g 9router)...')
-  const npmRes = await runWithDynamicProgress(d, {
+  let npmRes = await runWithDynamicProgress(d, {
     pkgId: '9router',
     cmd: npmCmd,
     args: ['install', '-g', '9router', '--prefer-online', '--no-audit', '--no-fund', '--progress=false'],
@@ -762,6 +771,20 @@ export async function installRouter({ onProgress, deps: depsOverride } = {}) {
     baseMsg: 'Mengunduh & memasang 9router...',
     emit
   })
+
+  if (npmRes.code !== 0 && d.platform !== 'win32') {
+    const localPrefix = join(d.homedir(), '.local')
+    emit(64, 'Mencoba ulang pemasangan 9Router di ~/.local (tanpa sudo)...')
+    npmRes = await runWithDynamicProgress(d, {
+      pkgId: '9router',
+      cmd: npmCmd,
+      args: ['install', '-g', '9router', '--prefix', localPrefix, '--prefer-online', '--no-audit', '--no-fund', '--progress=false'],
+      timeoutMs: 240000,
+      startPct: 66,
+      baseMsg: 'Memasang 9router ke ~/.local/bin...',
+      emit
+    })
+  }
 
   d.fixSystemPath({ refreshRegistry: true })
   d.invalidatePathCache()
@@ -785,6 +808,9 @@ export async function installRouter({ onProgress, deps: depsOverride } = {}) {
 export async function installKokoro({ onProgress, deps: depsOverride } = {}) {
   const d = getDefaultDeps(depsOverride)
   const emit = makeEmitter('kokoro', onProgress, d)
+
+  d.fixSystemPath?.({ refreshRegistry: true })
+  d.invalidatePathCache?.()
 
   emit(5, 'Memeriksa runtime Python untuk Kokoro-TTS...')
   let py = await d.resolvePythonBinary()
@@ -846,6 +872,9 @@ export async function installKokoro({ onProgress, deps: depsOverride } = {}) {
     ].filter(Boolean)
     const kokoroScript = scriptCandidates.find((p) => d.existsSync(p))
     if (kokoroScript) {
+      if (modelDirInfo?.dir) {
+        process.env.KOKORO_MODEL_DIR = modelDirInfo.dir
+      }
       emit(78, 'Mengunduh model suara Kokoro ONNX (~310 MB, sekali saja)...')
       await runWithDynamicProgress(d, {
         pkgId: 'kokoro',

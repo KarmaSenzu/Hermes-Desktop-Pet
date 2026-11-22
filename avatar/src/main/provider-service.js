@@ -489,7 +489,7 @@ export async function loadSavedLlmProviders({ secretStore, providersFile, cfgPat
 
   let importedFromYaml = false
   const targetCfgPath = cfgPath !== undefined ? cfgPath : resolveHermesConfigPath()
-  if (!hasJsonFile && targetCfgPath && existsSync(targetCfgPath)) {
+  if ((!hasJsonFile || providers.length === 0) && targetCfgPath && existsSync(targetCfgPath)) {
     try {
       const rawCfg = await repairHermesConfigYaml(await readFile(targetCfgPath, 'utf8'), targetCfgPath)
       const js = YAML.parseDocument(rawCfg || '').toJS() || {}
@@ -502,6 +502,20 @@ export async function loadSavedLlmProviders({ secretStore, providersFile, cfgPat
       if (js.providers && typeof js.providers === 'object') {
         for (const p of Object.values(js.providers)) {
           if (p && typeof p === 'object') yamlEntries.push(p)
+        }
+      }
+      if (js.model && typeof js.model === 'object' && js.model.base_url) {
+        const modelBaseNorm = normBaseUrl(js.model.base_url)
+        const alreadyInYaml = yamlEntries.some(
+          (e) => normBaseUrl(e.base_url || e.baseUrl) === modelBaseNorm
+        )
+        if (!alreadyInYaml) {
+          yamlEntries.push({
+            name: isLocalRouterUrl(js.model.base_url) ? '9Router Lokal' : (js.model.provider || 'Provider Aktif'),
+            base_url: js.model.base_url,
+            default_model: js.model.default,
+            api_key: js.model.api_key || ''
+          })
         }
       }
 
@@ -721,7 +735,7 @@ function refineGeminiModels(models) {
     })
 }
 
-export async function fetchEndpointModels({ baseUrl, apiKey, resolveApiKeyFor, timeoutMs = 3200 }) {
+export async function fetchEndpointModels({ baseUrl, apiKey, resolveApiKeyFor, timeoutMs = 10000 }) {
   try {
     const targetUrl = String(baseUrl || '').trim()
     if (!targetUrl) return { ok: false, models: [], error: 'Base URL kosong' }

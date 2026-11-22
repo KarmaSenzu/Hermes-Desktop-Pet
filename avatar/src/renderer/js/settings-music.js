@@ -62,24 +62,42 @@ export function initMusicPanel({
         }
       }
 
-      const isYt = /(?:youtube\.com\/(?:watch\?.*v=|embed\/|v\/|shorts\/)|youtu\.be\/|music\.youtube\.com\/watch\?.*v=)([a-zA-Z0-9_-]{11})/i.test(url)
-      const ytMatch = url.match(/(?:youtube\.com\/(?:watch\?.*v=|embed\/|v\/|shorts\/)|youtu\.be\/|music\.youtube\.com\/watch\?.*v=)([a-zA-Z0-9_-]{11})/i)
+      const isYt = /(?:youtube\.com\/(?:watch\?.*v=|embed\/|v\/|shorts\/|live\/)|youtu\.be\/|music\.youtube\.com\/watch\?.*v=)([a-zA-Z0-9_-]{11})/i.test(url)
+      const ytMatch = url.match(/(?:youtube\.com\/(?:watch\?.*v=|embed\/|v\/|shorts\/|live\/)|youtu\.be\/|music\.youtube\.com\/watch\?.*v=)([a-zA-Z0-9_-]{11})/i)
       const videoId = ytMatch ? ytMatch[1] : null
+      const canonicalUrl = videoId ? `https://www.youtube.com/watch?v=${videoId}` : url
 
+      let resolvedMeta = null
+      if (navigator.onLine !== false && typeof window.hermesAvatar?.resolveMusicStream === 'function') {
+        resolvedMeta = await window.hermesAvatar.resolveMusicStream({ url: canonicalUrl, videoId }).catch(() => null)
+      }
+
+      const hasRichTitle = Boolean(resolvedMeta?.title && resolvedMeta.title !== 'YouTube Audio' && !resolvedMeta.offline)
       const newTrack = {
         id: `online-${Date.now()}`,
-        title: isYt ? 'YouTube Audio' : 'Web Stream Radio',
-        artist: isYt ? 'YouTube Creator' : 'Online Stream',
+        title: hasRichTitle ? resolvedMeta.title : (isYt ? `YouTube (${videoId})` : 'Web Stream Radio'),
+        artist: (resolvedMeta?.artist && resolvedMeta.artist !== 'YouTube' && !resolvedMeta.offline)
+          ? resolvedMeta.artist
+          : (isYt ? (resolvedMeta?.offline ? 'Menunggu Jaringan...' : 'YouTube') : 'Online Stream'),
         category: 'online',
-        badge: isYt ? 'YouTube' : 'Live',
-        duration: 0,
+        badge: isYt ? 'YouTube ▶' : 'Live',
+        duration: Number(resolvedMeta?.duration || 0),
         type: isYt ? 'youtube' : 'stream',
-        videoId,
-        url
+        videoId: resolvedMeta?.videoId || videoId,
+        pendingMetadata: isYt && !hasRichTitle,
+        thumbnail: resolvedMeta?.thumbnail || (videoId ? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg` : null),
+        url: canonicalUrl
       }
 
       if (!Array.isArray(lib.onlineTracks)) lib.onlineTracks = []
-      lib.onlineTracks.push(newTrack)
+      const existing = lib.onlineTracks.find((t) =>
+        (videoId && t.videoId === videoId) || String(t.url || '').trim() === canonicalUrl
+      )
+      if (!existing) {
+        lib.onlineTracks.push(newTrack)
+      } else {
+        Object.assign(existing, { ...newTrack, id: existing.id })
+      }
 
       if (window.hermesAvatar?.saveMusicLibrary) {
         await window.hermesAvatar.saveMusicLibrary(lib)

@@ -13,6 +13,8 @@
  * Nanti secret (API key) dipindah ke safeStorage Electron (P2 final).
  */
 
+import { CHARACTER_THUMBS } from './character-thumbs.js'
+
 const KEY = 'hermes-avatar-settings'
 
 const DEFAULT_SETTINGS = {
@@ -43,7 +45,64 @@ const DEFAULT_SETTINGS = {
       name: 'Mother (Live2D)',
       path: 'assets/live2d/mother/20250106.model3.json',
       format: 'model3.json',
+      image: CHARACTER_THUMBS.mother || '',
       active: true
+    },
+    {
+      id: 'jingliu-live2d',
+      name: 'Jingliu (Live2D)',
+      path: 'assets/live2d/jingliu/jingliu.model3.json',
+      format: 'model3.json',
+      image: CHARACTER_THUMBS.jingliu || '',
+      active: false
+    },
+    {
+      id: 'huohuo-live2d',
+      name: 'HuoHuo (Live2D)',
+      path: 'assets/live2d/huohuo/huohuo.model3.json',
+      format: 'model3.json',
+      image: CHARACTER_THUMBS.huohuo || '',
+      active: false
+    },
+    {
+      id: 'sparkle-live2d',
+      name: 'Sparkle (Live2D)',
+      path: 'assets/live2d/sparkle/Sparkle.model3.json',
+      format: 'model3.json',
+      image: CHARACTER_THUMBS.sparkle || '',
+      active: false
+    },
+    {
+      id: 'ellen-live2d',
+      name: 'Ellen Joe (Live2D)',
+      path: 'assets/live2d/ellen/ellen.model3.json',
+      format: 'model3.json',
+      image: CHARACTER_THUMBS.ellen || '',
+      active: false
+    },
+    {
+      id: 'jane-live2d',
+      name: 'Jane Doe (Live2D)',
+      path: 'assets/live2d/jane/jane.model3.json',
+      format: 'model3.json',
+      image: CHARACTER_THUMBS.jane || '',
+      active: false
+    },
+    {
+      id: 'camellya-live2d',
+      name: 'Camellya (Live2D)',
+      path: 'assets/live2d/camellya/camellya.model3.json',
+      format: 'model3.json',
+      image: CHARACTER_THUMBS.camellya || '',
+      active: false
+    },
+    {
+      id: 'allium-live2d',
+      name: 'Allium (Live2D)',
+      path: 'assets/live2d/allium/allium.model3.json',
+      format: 'model3.json',
+      image: CHARACTER_THUMBS.allium || '',
+      active: false
     }
   ],
   routerChecked: false, // checklist pengingat 9Router (manual oleh user)
@@ -92,7 +151,25 @@ export function loadSettings() {
     merged.uiMode = merged.uiMode === 'advanced' ? 'advanced' : 'simple'
     if (!merged.characters || merged.characters.length === 0) {
       merged.characters = structuredClone(DEFAULT_SETTINGS.characters)
+    } else {
+      // Bersihkan model gina dan amier yang sebelumnya dicoba
+      merged.characters = merged.characters.filter((c) => c.id !== 'gina-live2d' && c.id !== 'amier-live2d')
+      const existingIds = new Set(merged.characters.map((c) => c.id))
+      for (const defChar of DEFAULT_SETTINGS.characters) {
+        if (!existingIds.has(defChar.id)) {
+          merged.characters.push(structuredClone(defChar))
+        }
+      }
     }
+    // Isi foto profil bawaan jika belum ada gambar
+    merged.characters.forEach((c) => {
+      if (!c.image) {
+        const key = c.id.replace('-live2d', '')
+        if (CHARACTER_THUMBS[key]) {
+          c.image = CHARACTER_THUMBS[key]
+        }
+      }
+    })
     if (!merged.characters.some((c) => c.active)) {
       merged.characters[0].active = true
     }

@@ -347,6 +347,12 @@ const pkgCompanionOneclickBtn = document.getElementById('pkg-companion-oneclick-
 const pkgOpenExtensionFolderBtn = document.getElementById('pkg-open-extension-folder-btn')
 const pkgTestBridgeBtn = document.getElementById('pkg-test-bridge-btn')
 const pkgBridgeLog = document.getElementById('pkg-bridge-log')
+const pkgBridgeManageLog = document.getElementById('pkg-bridge-manage-log')
+
+function setBridgeLogHtml(html) {
+  if (pkgBridgeLog) pkgBridgeLog.innerHTML = html
+  if (pkgBridgeManageLog) pkgBridgeManageLog.innerHTML = html
+}
 
 // Smart Path Discovery Elements
 const pkgDrivesInfo = document.getElementById('pkg-drives-info')
@@ -1758,9 +1764,7 @@ function bindPackageActions() {
           '🌐',
           8000
         )
-        if (pkgBridgeLog) {
-          pkgBridgeLog.innerHTML = `✅ Folder ekstensi dibuka &amp; path disalin ke clipboard: <code>${escapeHtml(res.path)}</code><br>👉 Buka <code>chrome://extensions</code> → aktifkan <strong>Developer mode</strong> → klik <strong>Load unpacked</strong> → tempel (<kbd>Ctrl+V</kbd>) lalu klik Select.`
-        }
+        setBridgeLogHtml(`✅ Folder ekstensi dibuka &amp; path disalin ke clipboard: <code>${escapeHtml(res.path)}</code><br>👉 Buka <code>chrome://extensions</code> → aktifkan <strong>Developer mode</strong> → klik <strong>Load unpacked</strong> → tempel (<kbd>Ctrl+V</kbd>) lalu klik Select.`)
       } else {
         showToast('Gagal Menyiapkan Ekstensi', res?.error || 'Folder tidak ditemukan', 'error', '❌')
       }
@@ -1777,9 +1781,7 @@ function bindPackageActions() {
         const res = await window.hermesAvatar.openPackageFolder('chrome-extension')
         if (res.ok) {
           showToast('Membuka Folder Ekstensi', res.path, 'info', '📂')
-          if (pkgBridgeLog) {
-            pkgBridgeLog.innerHTML = `📂 Folder ekstensi dibuka: <code>${escapeHtml(res.path)}</code><br>👉 Di Chrome/Edge, klik <strong>"Load unpacked"</strong> lalu pilih folder <strong>chrome</strong> ini.`
-          }
+          setBridgeLogHtml(`📂 Folder ekstensi dibuka: <code>${escapeHtml(res.path)}</code><br>👉 Di Chrome/Edge, klik <strong>"Load unpacked"</strong> lalu pilih folder <strong>chrome</strong> ini.`)
         } else {
           showToast('Gagal Buka Folder', res.error, 'error', '❌')
         }
@@ -1797,9 +1799,7 @@ function bindPackageActions() {
         if (res.ok && res.path) {
           await navigator.clipboard.writeText(res.path)
           showToast('Path Ekstensi Disalin', res.path, 'success', '📋')
-          if (pkgBridgeLog) {
-            pkgBridgeLog.innerHTML = `📋 Path folder ekstensi disalin ke clipboard: <code>${escapeHtml(res.path)}</code><br>💡 Di jendela pemilih file Chrome (macOS), tekan <strong>Cmd + Shift + G</strong> lalu paste!`
-          }
+          setBridgeLogHtml(`📋 Path folder ekstensi disalin ke clipboard: <code>${escapeHtml(res.path)}</code><br>💡 Di jendela pemilih file Chrome (macOS), tekan <strong>Cmd + Shift + G</strong> lalu paste!`)
         }
       } catch (err) {
         showToast('Gagal Salin Path', err.message, 'error', '❌')
@@ -1816,17 +1816,14 @@ function bindPackageActions() {
         if (res.ok) {
           const data = await res.json()
           showToast('Bridge Terhubung Sempurna', 'Port 9124 siap melayani ekstensi browser', 'success', '🌐')
-          if (pkgBridgeLog) {
-            pkgBridgeLog.innerHTML = `✅ <strong>Bridge HTTP Online:</strong> ${escapeHtml(data.app)} (v${escapeHtml(data.version)}) pada port <code>9124</code>.`
-          }
+          setBridgeLogHtml(`✅ <strong>Bridge HTTP Online:</strong> ${escapeHtml(data.app || 'Hermes Companion Bridge')} (v${escapeHtml(data.version || '0.1.9')}) pada port <code>${escapeHtml(String(data.port || 9124))}</code>.`)
         } else {
           showToast('Bridge Merespons Kode: ' + res.status, 'Periksa log server', 'error', '⚠️')
+          setBridgeLogHtml(`⚠️ Bridge HTTP merespons kode <code>${escapeHtml(String(res.status))}</code>.`)
         }
       } catch (err) {
         showToast('Bridge Belum Merespons', 'Pastikan aplikasi berjalan', 'error', '❌')
-        if (pkgBridgeLog) {
-          pkgBridgeLog.innerHTML = `Gagal menghubungi bridge: <code>${escapeHtml(err.message)}</code>`
-        }
+        setBridgeLogHtml(`Gagal menghubungi bridge: <code>${escapeHtml(err.message)}</code>`)
       } finally {
         pkgTestBridgeBtn.disabled = false
       }
@@ -3240,19 +3237,11 @@ function openLlmSubpanel(subId) {
   }
 }
 
-function closeLlmSubpanel() {
-  const menuView = document.getElementById('llm-menu-view')
-  const detailView = document.getElementById('llm-detail-view')
-  if (!menuView || !detailView) return
+let llmSubpanelNavBound = false
 
-  detailView.classList.add('hidden')
-  detailView.querySelectorAll('.llm-subpanel').forEach((panelEl) => {
-    panelEl.classList.add('hidden')
-  })
-  menuView.classList.remove('hidden')
-
-  const contentEl = document.querySelector('.content')
-  if (contentEl) contentEl.scrollTop = 0
+function initLlmSubpanelNav() {
+  if (llmSubpanelNavBound) return
+  llmSubpanelNavBound = true
 
   document.querySelectorAll('#llm-sub-menu .format-item[data-llm-sub]').forEach((item) => {
     const triggerOpen = () => {
@@ -3280,7 +3269,23 @@ function closeLlmSubpanel() {
     resetProviderForm()
     openLlmSubpanel('add-provider')
   })
+}
 
+function closeLlmSubpanel() {
+  const menuView = document.getElementById('llm-menu-view')
+  const detailView = document.getElementById('llm-detail-view')
+  if (!menuView || !detailView) return
+
+  detailView.classList.add('hidden')
+  detailView.querySelectorAll('.llm-subpanel').forEach((panelEl) => {
+    panelEl.classList.add('hidden')
+  })
+  menuView.classList.remove('hidden')
+
+  const contentEl = document.querySelector('.content')
+  if (contentEl) contentEl.scrollTop = 0
+
+  initLlmSubpanelNav()
   updateOAuthHubStatusBadges()
 }
 
@@ -4061,20 +4066,64 @@ const skillSearch = document.getElementById('skill-search')
 let allSkills = [] // cache: [{name, category}]
 
 async function loadSkills() {
-  const res = await window.hermesAvatar.rpc('skills.manage', { action: 'list' })
-  if (!res.ok) throw new Error(res.error)
-  const skills = res.result?.skills
+  let rpcSkills = null
+  let rpcErr = null
+  try {
+    const res = await window.hermesAvatar.rpc('skills.manage', { action: 'list' })
+    if (res?.ok && res.result?.skills != null) {
+      rpcSkills = res.result.skills
+    } else if (res?.error) {
+      rpcErr = res.error
+    }
+  } catch (err) {
+    rpcErr = err?.message || String(err)
+  }
 
-  // skills bisa: Dict { category: [names] } ATAU Array.
-  const flat = []
-  if (Array.isArray(skills)) {
-    for (const s of skills) flat.push({ name: typeof s === 'string' ? s : s.name, category: typeof s === 'string' ? '' : (s.category || 'general') })
-  } else if (skills && typeof skills === 'object') {
-    for (const [cat, names] of Object.entries(skills)) {
-      for (const n of names) flat.push({ name: n, category: cat })
+  let diskSkills = []
+  let diskOk = false
+  try {
+    if (typeof window.hermesAvatar?.skillAssistant === 'function') {
+      const diskRes = await window.hermesAvatar.skillAssistant({ action: 'list' })
+      if (diskRes?.ok && Array.isArray(diskRes.skills)) {
+        diskSkills = diskRes.skills
+        diskOk = true
+      }
+    }
+  } catch {
+    // Abaikan kegagalan fallback disk
+  }
+
+  const merged = []
+  const seen = new Set()
+  const addItem = (name, category) => {
+    const cleanName = String(name || '').trim()
+    if (!cleanName) return
+    const key = cleanName.toLowerCase()
+    if (seen.has(key)) return
+    seen.add(key)
+    merged.push({ name: cleanName, category: String(category || 'general').trim() || 'general' })
+  }
+
+  if (Array.isArray(rpcSkills)) {
+    for (const s of rpcSkills) {
+      addItem(typeof s === 'string' ? s : s?.name, typeof s === 'string' ? 'general' : s?.category)
+    }
+  } else if (rpcSkills && typeof rpcSkills === 'object') {
+    for (const [cat, names] of Object.entries(rpcSkills)) {
+      if (Array.isArray(names)) {
+        for (const n of names) addItem(n, cat)
+      }
     }
   }
-  return flat
+
+  for (const s of diskSkills) {
+    addItem(s?.name, s?.category)
+  }
+
+  if (!rpcSkills && !diskOk && rpcErr) {
+    throw new Error(rpcErr)
+  }
+  return merged
 }
 
 function groupByCategory(list) {
@@ -4692,6 +4741,7 @@ function init() {
   loadDetectedPathsOnce(false)
   bindPackageActions()
   loadVoiceUI()
+  initLlmSubpanelNav()
   initPersistentLlmProviders()
   renderLlmList()
   renderFormatList()

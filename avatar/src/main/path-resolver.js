@@ -122,7 +122,7 @@ export function fastWhere(binName, extensions = null) {
               if (st.size === 0 && line.toLowerCase().includes('windowsapps')) {
                 continue
               }
-            } catch {}
+            } catch { }
             results.push(line)
           }
         }
@@ -301,7 +301,7 @@ export async function resolvePythonBinary() {
             candidatePythons.push(join(uvRoot, entry, 'python.exe'))
           }
         }
-      } catch {}
+      } catch { }
     }
 
     // Multi-drive root installs (C:\Python*, D:\Python*, Conda, Scoop, Choco)
@@ -526,11 +526,31 @@ export function resolveRouterBinary() {
       )
     }
   } else {
+    const unixManagerBins = []
+    const versionedRoots = [
+      { base: join(home, '.nvm', 'versions', 'node'), suffix: ['bin'] },
+      { base: join(home, 'Library', 'Application Support', 'fnm', 'node-versions'), suffix: ['installation', 'bin'] },
+      { base: join(home, '.local', 'share', 'fnm', 'node-versions'), suffix: ['installation', 'bin'] },
+      { base: join(home, '.fnm', 'node-versions'), suffix: ['installation', 'bin'] }
+    ]
+    for (const { base, suffix } of versionedRoots) {
+      try {
+        if (!existsSync(base)) continue
+        for (const ver of readdirSync(base).sort().reverse()) {
+          unixManagerBins.push(join(base, ver, ...suffix, '9router'))
+        }
+      } catch { /* abaikan direktori tidak terbaca */ }
+    }
+
     candidateRouters.push(
       '/usr/local/bin/9router',
       '/opt/homebrew/bin/9router',
       join(home, '.local', 'bin', '9router'),
-      join(home, '.npm-global', 'bin', '9router')
+      join(home, '.npm-global', 'bin', '9router'),
+      join(home, '.volta', 'bin', '9router'),
+      join(home, '.bun', 'bin', '9router'),
+      join(home, '.asdf', 'shims', '9router'),
+      ...unixManagerBins
     )
   }
 
@@ -619,7 +639,7 @@ export async function resolveRouterApiKey() {
     } catch (err) {
       console.warn('[PathResolver] Gagal query 9router db via node:sqlite:', err?.message || err)
     } finally {
-      try { db?.close?.() } catch {}
+      try { db?.close?.() } catch { }
     }
   }
 
@@ -826,7 +846,7 @@ async function readLocalRouterUsageBuckets() {
     } catch {
       // Abaikan jika SQLite gagal dibaca
     } finally {
-      try { db?.close?.() } catch {}
+      try { db?.close?.() } catch { }
     }
   }
 
@@ -1054,7 +1074,7 @@ export async function resolveRouterAccountsQuota({
 
       const accounts = connRows.map((row) => {
         let d = {}
-        try { d = JSON.parse(row.data || '{}') } catch {}
+        try { d = JSON.parse(row.data || '{}') } catch { }
         const psd = d.providerSpecificData || {}
         const testStatus = String(d.testStatus || 'unknown')
         const isExpiredOrInvalid = testStatus === 'unavailable' || testStatus === 'error' || testStatus === 'expired'
@@ -1085,7 +1105,7 @@ export async function resolveRouterAccountsQuota({
       console.warn('[PathResolver] Gagal baca fallback kuota akun 9router:', err?.message || err)
       return { ok: false, liveSynced: false, accounts: [], modelGroups: [] }
     } finally {
-      try { db?.close?.() } catch {}
+      try { db?.close?.() } catch { }
     }
   }
 
@@ -1118,7 +1138,7 @@ export function resolveKokoroModelDir() {
       try {
         const st = statSync(modelPath)
         sizeMb = Math.round(st.size / (1024 * 1024))
-      } catch {}
+      } catch { }
     }
     return {
       dir,

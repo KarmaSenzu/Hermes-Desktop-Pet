@@ -37,6 +37,12 @@ const avatarApi = {
   pickAudioFiles: () => ipcRenderer.invoke('avatar:pick-audio-files'),
   loadMusicLibrary: () => ipcRenderer.invoke('avatar:music-load-library'),
   saveMusicLibrary: (data) => ipcRenderer.invoke('avatar:music-save-library', data),
+  searchOnlineMusic: (payload) => ipcRenderer.invoke('avatar:music-search', payload),
+  resolveMusicStream: (payload) => ipcRenderer.invoke('avatar:music-resolve-stream', payload),
+  controlBackgroundMusic: (action, payload) => ipcRenderer.invoke('avatar:music-bg-control', action, payload),
+  downloadMusicTrack: (payload) => ipcRenderer.invoke('avatar:music-download-track', payload),
+  checkMusicCached: (payload) => ipcRenderer.invoke('avatar:music-check-cached', payload),
+  openMusicFolder: (payload) => ipcRenderer.invoke('avatar:music-open-folder', payload),
 
   // Konfigurasi koneksi Hermes WebSocket & riwayat sesi
   getHermesConfig: () => ipcRenderer.invoke('avatar:hermes-config'),
@@ -63,9 +69,10 @@ const avatarApi = {
   launchApp: (appId, appName) => ipcRenderer.invoke('avatar:launch-app', appId, appName),
   getInstalledApps: () => ipcRenderer.invoke('avatar:get-installed-apps'),
 
-  // Info cuaca & berita real-time untuk avatar dialog
+  // Info cuaca, berita & asisten skill/jurnal untuk chat avatar
   getLiveWeather: (city) => ipcRenderer.invoke('avatar:get-live-weather', city),
   getLiveNews: () => ipcRenderer.invoke('avatar:get-live-news'),
+  skillAssistant: (payload) => ipcRenderer.invoke('avatar:skill-assistant', payload),
 
   // Vision layar & failover provider LLM
   captureScreen: (options) => ipcRenderer.invoke('avatar:capture-screen', options),

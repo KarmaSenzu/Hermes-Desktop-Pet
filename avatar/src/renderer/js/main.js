@@ -34,6 +34,12 @@ import {
   renderScreenVisionCard,
   renderDroppedFileCard
 } from './widget-controller.js'
+import {
+  isAcademicJournalQuery,
+  detectSkillRecommendation,
+  getInstalledSkillEnrichment,
+  renderSkillInstallRecommendationCard
+} from './skill-advisor.js'
 
 /**
  * main.js — entry renderer untuk window avatar (index.html).
@@ -656,8 +662,14 @@ window.addEventListener('avatar:dock-panels-update', () => {
   tilingManager.tile()
 })
 
-// Listener riset musik online via Hermes AI
+// Listener riset musik online via panel Musik / Hermes AI
 window.addEventListener('hermes:request-music-research', (e) => {
+  const foundTrack = e.detail?.track
+  if (foundTrack?.title) {
+    log('avatar', `Mencari & memutar lagu **${foundTrack.title}** (${foundTrack.artist || 'Online'}).`)
+    showSpeechBubble(`Memutar "${foundTrack.title}"`, 4000)
+    return
+  }
   const prompt = e.detail?.prompt || 'Tolong carikan rekomendasi stasiun lofi radio atau musik santai gratis di internet untuk menemani fokus!'
   if (chatSheet?.classList.contains('hidden')) {
     toggleChat()
@@ -1063,6 +1075,21 @@ async function tryFastWidgetCommand(text) {
         showSpeechBubble(`Memutar "${track.title}"`, 4500)
         speak(`Baik, aku putarkan ${track.title}.`, 'happy')
         return true
+      }
+      if (typeof musicPlayer.searchAndPlayOnline === 'function') {
+        showSpeechBubble(`Mencari lagu "${cmd.query}"...`, 4000)
+        const onlineTrack = await musicPlayer.searchAndPlayOnline({ query: cmd.query })
+        if (onlineTrack) {
+          log('avatar', `Mencari & memutar **${onlineTrack.title}** (${onlineTrack.artist || 'Online'}).`)
+          showSpeechBubble(`Memutar "${onlineTrack.title}"`, 4500)
+          speak(`Baik, aku sudah carikan dan putarkan ${onlineTrack.title}.`, 'happy')
+          return true
+        }
+        if (musicPlayer.waitingForNetwork) {
+          log('avatar', `⏳ Koneksi internet sedang terputus. Permintaan lagu **${cmd.query}** sudah dicatat & akan otomatis diputar begitu jaringan tersambung kembali.`)
+          showSpeechBubble(`Menunggu jaringan untuk "${cmd.query}"…`, 4500)
+          return true
+        }
       }
       openChatIfHidden()
       log('avatar', `Lagu/playlist "${cmd.query}" belum ditemukan persis. Pilih dari koleksimu di bawah ini:`)
@@ -1773,6 +1800,21 @@ attachDynamicAssessmentDelegationModule(chatLog, {
   handleUserChat
 })
 
+function runSelectedCapabilities(ids, cardRef = null) {
+  return executeSelectedCapabilities(ids, cardRef, {
+    activeAssessmentCard,
+    getController: () => controller,
+    showSpeechBubble,
+    speak,
+    log,
+    generateExecutiveSummary,
+    getCachedApps: () => cachedInstalledApps,
+    setCachedApps: (apps) => {
+      cachedInstalledApps = apps
+    }
+  })
+}
+
 function showCapabilityAssessmentCard() {
   activeAssessmentCard = createCapabilityAssessmentCard({
     chatLog,
@@ -1781,19 +1823,7 @@ function showCapabilityAssessmentCard() {
     getController: () => controller,
     showSpeechBubble,
     speak,
-    onExecute: (ids, card) =>
-      executeSelectedCapabilities(ids, card, {
-        activeAssessmentCard,
-        getController: () => controller,
-        showSpeechBubble,
-        speak,
-        log,
-        generateExecutiveSummary,
-        getCachedApps: () => cachedInstalledApps,
-        setCachedApps: (apps) => {
-          cachedInstalledApps = apps
-        }
-      })
+    onExecute: (ids, card) => runSelectedCapabilities(ids, card)
   })
 }
 
@@ -2092,8 +2122,17 @@ function log(who, text) {
 // Inisialisasi client Hermes (connect + buat session).
 let hermes = null
 let hermesReady = false
+let pendingOfflineChatPrompt = null
 let streamingLine = null // div untuk teks streaming (message.delta)
 let toolProgressEl = null // Elemen animasi status proses tool melayang sementara
+
+async function flushPendingOfflineChatPrompt() {
+  if (!pendingOfflineChatPrompt || !hermesReady || navigator.onLine === false) return
+  const queued = pendingOfflineChatPrompt
+  pendingOfflineChatPrompt = null
+  log('avatar', '📶 Jaringan & Hermes aktif kembali — memproses pesan tertunda...')
+  await handleUserChat(queued.text, null, queued.options)
+}
 
 function updateToolProgress(label) {
   if (!toolProgressEl) {
@@ -2126,6 +2165,7 @@ async function initHermes() {
     await hermes.createSession('Avatar chat')
     hermesReady = true
     log('avatar', 'Terhubung ke Hermes. Siap!')
+    flushPendingOfflineChatPrompt().catch(() => {})
     if (queuedResumeSessionId) {
       const targetSid = queuedResumeSessionId
       queuedResumeSessionId = null
@@ -2405,7 +2445,7 @@ async function initHermes() {
         const assessmentChoices = extractAssessmentChoices(text)
         if (assessmentChoices) {
           if (!assessmentChoices.includes('dynamic-handled')) {
-            await executeSelectedCapabilities(assessmentChoices)
+            await runSelectedCapabilities(assessmentChoices)
           }
           return
         }
@@ -2486,6 +2526,20 @@ function scheduleHermesReconnect() {
 }
 
 initHermes()
+
+window.addEventListener('online', () => {
+  if (!hermesReady) {
+    hermesReconnectAttempts = 0
+    if (hermesReconnectTimer) {
+      clearTimeout(hermesReconnectTimer)
+      hermesReconnectTimer = null
+    }
+    log('avatar', '📶 Jaringan internet kembali aktif — menghubungkan ulang ke Hermes...')
+    initHermes()
+  } else {
+    flushPendingOfflineChatPrompt().catch(() => {})
+  }
+})
 
 // Bubble idle tampil sejak awal (sebelum ada event).
 setStatus('')
@@ -2871,7 +2925,27 @@ function getVoiceSettings() {
 }
 
 // Prepend konteks waktu real-time, cuaca live, berita live hari ini & aplikasi terdaftar agar respon 100% akurat & instan <2 detik.
-async function buildPrompt(text) {
+let cachedInstalledSkills = null
+let cachedInstalledSkillsAt = 0
+
+async function getInstalledSkillsList(force = false) {
+  if (!force && Array.isArray(cachedInstalledSkills) && (Date.now() - cachedInstalledSkillsAt < 15000)) {
+    return cachedInstalledSkills
+  }
+  try {
+    const res = await window.hermesAvatar?.skillAssistant?.({ action: 'list' })
+    if (res?.ok && Array.isArray(res.skills)) {
+      cachedInstalledSkills = res.skills
+      cachedInstalledSkillsAt = Date.now()
+      return cachedInstalledSkills
+    }
+  } catch (err) {
+    console.warn('[SkillAdvisor] Gagal membaca daftar skill terpasang:', err)
+  }
+  return Array.isArray(cachedInstalledSkills) ? cachedInstalledSkills : []
+}
+
+async function buildPrompt(text, options = {}) {
   const now = new Date()
   const dateStr = now.toLocaleDateString('id-ID', {
     weekday: 'long',
@@ -2921,6 +2995,37 @@ async function buildPrompt(text) {
     }
   }
 
+  // Cek apakah pertanyaan terkait riset jurnal kuliah / Google Scholar / Publish or Perish
+  let academicCtx = ''
+  const installedSkills = await getInstalledSkillsList()
+  const hasJournalSkill = installedSkills.some((s) => String(s?.name || '').toLowerCase() === 'academic-journal-finder') ||
+    options?.activatedSkill?.id === 'academic-journal-finder'
+
+  if (hasJournalSkill && isAcademicJournalQuery(text)) {
+    try {
+      const res = await window.hermesAvatar?.skillAssistant?.({ action: 'academic-search', query: text, limit: 5 })
+      if (res?.ok && Array.isArray(res.papers) && res.papers.length > 0) {
+        const rows = res.papers.map((p, idx) => (
+          `${idx + 1}. "${p.title}" — ${p.authors} (${p.year}) | ${p.venue} | Sitasi: ${p.citedByCount}` +
+          (p.doiUrl ? ` | DOI: ${p.doiUrl}` : '') +
+          (p.pdfUrl ? ` | PDF/Akses: ${p.pdfUrl}` : '') +
+          ` | Google Scholar: ${p.scholarUrl}`
+        )).join('\n')
+        academicCtx = `[DATA JURNAL ILMIAH TERVERIFIKASI (OPENALEX / SETARA PUBLISH OR PERISH & GOOGLE SCHOLAR) UNTUK "${res.query}":\n` +
+          `${rows}\n` +
+          `Tautan pencarian Google Scholar umum: ${res.scholarSearchUrl}\n` +
+          `INSTRUKSI: Tampilkan daftar jurnal terverifikasi di atas beserta tautan klik langsung (DOI / PDF / Google Scholar), jumlah sitasi, serta contoh penulisan Daftar Pustaka (APA).]\n`
+      } else if (res?.scholarSearchUrl) {
+        academicCtx = `[Tautan pencarian Google Scholar langsung: ${res.scholarSearchUrl} — Gunakan link ini bila hasil API terbatas atau jalankan pencarian tambahan yang terverifikasi.]\n`
+      }
+    } catch (err) {
+      console.warn('[AcademicSearch] Gagal ambil metadata jurnal:', err)
+    }
+  }
+
+  const skillGuide = getInstalledSkillEnrichment(text, installedSkills, options?.activatedSkill)
+  const skillCtx = skillGuide ? `${skillGuide}\n` : ''
+
   const speedHint = `[PANDUAN RESPON CEPAT:
 1. Jika butuh info berita tambahan di luar konteks, jalankan: 'ddgs news -q "<topik>" -r id-id -t d -m 4' (timelimit 24 jam terakhir).
 2. Jika butuh cek cuaca kota lain, jalankan: 'ddgs text -q "cuaca <kota> hari ini" -r id-id -t d -m 2'.
@@ -2939,7 +3044,7 @@ Jika topik percakapan bersifat OBJEKTIF, KONSULTASI MASALAH, PERENCANAAN, ANALIS
 ATURAN MUTLAK CHAT RINGAN:
 - Untuk chat ringan, sapaan santai ("halo", "hai", "apa kabar"), pertanyaan fakta langsung/singkat ("1+1 berapa", "ibukota jepang apa"), atau instruksi spesifik to-the-point: DILARANG KERAS menyertakan tag <assessment>. Cukup jawab biasa secara natural tanpa blok assessment!]`
 
-  return `${timeContext}${appCtx}${liveWeatherCtx}${liveNewsCtx}${speedHint}${dynamicAssessmentGuideline}\n${text}`
+  return `${timeContext}${appCtx}${liveWeatherCtx}${liveNewsCtx}${academicCtx}${skillCtx}${speedHint}${dynamicAssessmentGuideline}\n${text}`
 }
 
 async function handleUserChat(text, displayText = null, options = {}) {
@@ -2951,7 +3056,9 @@ async function handleUserChat(text, displayText = null, options = {}) {
     return
   }
 
-  log('user', displayText || promptText)
+  if (!options?.skipUserLog) {
+    log('user', displayText || promptText)
+  }
   if (input) input.value = ''
 
   // Cek apakah perintah membuat notulen / ringkasan percakapan
@@ -2970,7 +3077,7 @@ async function handleUserChat(text, displayText = null, options = {}) {
   const assessmentChoices = extractAssessmentChoices(promptText)
   if (assessmentChoices) {
     if (!assessmentChoices.includes('dynamic-handled')) {
-      await executeSelectedCapabilities(assessmentChoices)
+      await runSelectedCapabilities(assessmentChoices)
     }
     return
   }
@@ -2986,15 +3093,57 @@ async function handleUserChat(text, displayText = null, options = {}) {
   }
 
   if (!hermesReady) {
-    log('avatar', '(offline) Hermes belum terhubung.')
+    if (navigator.onLine === false) {
+      pendingOfflineChatPrompt = { text: promptText, options: { ...options, skipUserLog: true } }
+      log('avatar', '⏳ Koneksi internet terputus — pesanmu sudah dicatat dan akan otomatis dikirim begitu jaringan tersambung kembali.')
+      showSpeechBubble('Menunggu internet tersambung kembali…', 4500)
+    } else {
+      pendingOfflineChatPrompt = { text: promptText, options: { ...options, skipUserLog: true } }
+      log('avatar', '⏳ Hermes sedang menghubungkan ulang… pesanmu otomatis masuk antrean.')
+      scheduleHermesReconnect()
+    }
     return
+  }
+
+  // Deteksi apakah permintaan membutuhkan skill khusus yang BELUM terpasang di perangkat user
+  if (!options?.skipSkillCheck && typeof window.hermesAvatar?.skillAssistant === 'function') {
+    const installedSkills = await getInstalledSkillsList()
+    const recommendedSkill = detectSkillRecommendation(promptText, installedSkills)
+    if (recommendedSkill) {
+      openChatIfHidden()
+      showSpeechBubble(`Skill "${recommendedSkill.title}" belum terpasang. Mau saya installkan?`, 5000)
+      speak(`Kemampuan ${recommendedSkill.title} belum terpasang di perangkat ini. Apakah Anda ingin saya instalkan sekarang agar saya bisa mengerjakannya?`, 'neutral')
+      renderSkillInstallRecommendationCard({
+        chatLog,
+        skill: recommendedSkill,
+        originalPrompt: promptText,
+        installSkill: (payload) => window.hermesAvatar.skillAssistant({ action: 'install', ...payload }),
+        onOpenSettings: () => window.hermesAvatar?.openSettings?.(),
+        onInstallAndRun: async (installedSkill, origPrompt) => {
+          cachedInstalledSkills = null
+          await getInstalledSkillsList(true)
+          await handleUserChat(origPrompt, null, {
+            skipSkillCheck: true,
+            skipUserLog: true,
+            activatedSkill: installedSkill
+          })
+        },
+        onSkipAndRun: async (_skippedSkill, origPrompt) => {
+          await handleUserChat(origPrompt, null, {
+            skipSkillCheck: true,
+            skipUserLog: true
+          })
+        }
+      })
+      return
+    }
   }
 
   // Kunci kolom chat selama Hermes bekerja.
   setInputLocked(true)
 
   try {
-    const finalPrompt = await buildPrompt(promptText)
+    const finalPrompt = await buildPrompt(promptText, options)
     await hermes.submitPrompt(finalPrompt)
   } catch (err) {
     log('avatar', `Gagal kirim: ${err.message}`)

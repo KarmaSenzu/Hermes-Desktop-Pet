@@ -10,6 +10,8 @@
 import WebSocket from 'ws'
 
 const DEFAULT_WS_URL = 'ws://127.0.0.1:9119/api/ws'
+const CONNECT_TIMEOUT_MS = 5000
+const REQUEST_TIMEOUT_MS = 15000
 
 let socket = null
 let nextId = 0
@@ -21,6 +23,18 @@ function buildUrl(token) {
   return token ? `${base}?token=${encodeURIComponent(token)}` : base
 }
 
+function rejectAllPending(reason) {
+  for (const [id, entry] of pending.entries()) {
+    clearTimeout(entry.timer)
+    pending.delete(id)
+    try {
+      entry.reject(new Error(reason))
+    } catch {
+      // abaikan
+    }
+  }
+}
+
 export function connectGateway(token) {
   return new Promise((resolve, reject) => {
     if (socket && connected) {
@@ -28,15 +42,37 @@ export function connectGateway(token) {
       return
     }
 
-    const url = buildUrl(token)
-    socket = new WebSocket(url)
+    if (socket) {
+      try { socket.terminate?.() || socket.close() } catch { /* abaikan */ }
+      socket = null
+      connected = false
+    }
 
-    socket.on('open', () => {
+    const url = buildUrl(token)
+    const ws = new WebSocket(url)
+    socket = ws
+    let settled = false
+
+    const connectTimer = setTimeout(() => {
+      if (!settled) {
+        settled = true
+        connected = false
+        try { ws.terminate?.() || ws.close() } catch { /* abaikan */ }
+        if (socket === ws) socket = null
+        reject(new Error('Koneksi ke Hermes gateway timeout'))
+      }
+    }, CONNECT_TIMEOUT_MS)
+
+    ws.on('open', () => {
+      clearTimeout(connectTimer)
       connected = true
-      resolve()
+      if (!settled) {
+        settled = true
+        resolve()
+      }
     })
 
-    socket.on('message', (raw) => {
+    ws.on('message', (raw) => {
       let frame
       try {
         frame = JSON.parse(raw.toString())
@@ -44,20 +80,34 @@ export function connectGateway(token) {
         return
       }
       if (frame.id != null && pending.has(frame.id)) {
-        const { resolve, reject } = pending.get(frame.id)
+        const entry = pending.get(frame.id)
+        clearTimeout(entry.timer)
         pending.delete(frame.id)
-        if (frame.error) reject(new Error(frame.error.message || 'Hermes RPC failed'))
-        else resolve(frame.result)
+        if (frame.error) entry.reject(new Error(frame.error.message || 'Hermes RPC failed'))
+        else entry.resolve(frame.result)
       }
     })
 
-    socket.on('error', (err) => {
+    ws.on('error', (err) => {
+      clearTimeout(connectTimer)
       connected = false
-      reject(err)
+      if (socket === ws) socket = null
+      rejectAllPending(err?.message || 'Koneksi Hermes gateway bermasalah')
+      if (!settled) {
+        settled = true
+        reject(err)
+      }
     })
 
-    socket.on('close', () => {
+    ws.on('close', () => {
+      clearTimeout(connectTimer)
       connected = false
+      if (socket === ws) socket = null
+      rejectAllPending('Koneksi Hermes gateway terputus')
+      if (!settled) {
+        settled = true
+        reject(new Error('Koneksi Hermes gateway ditutup'))
+      }
     })
   })
 }
@@ -73,12 +123,25 @@ export function request(method, params = {}) {
       return
     }
     const id = `g${++nextId}`
-    pending.set(id, { resolve, reject })
-    socket.send(JSON.stringify({ jsonrpc: '2.0', id, method, params }))
+    const timer = setTimeout(() => {
+      if (pending.has(id)) {
+        pending.delete(id)
+        reject(new Error(`RPC ${method} timeout (${REQUEST_TIMEOUT_MS}ms)`))
+      }
+    }, REQUEST_TIMEOUT_MS)
+    pending.set(id, { resolve, reject, timer })
+    try {
+      socket.send(JSON.stringify({ jsonrpc: '2.0', id, method, params }))
+    } catch (err) {
+      clearTimeout(timer)
+      pending.delete(id)
+      reject(err)
+    }
   })
 }
 
 export function disconnectGateway() {
+  rejectAllPending('Hermes gateway diputus oleh sistem')
   if (socket) {
     try {
       socket.close()

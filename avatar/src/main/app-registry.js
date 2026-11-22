@@ -116,9 +116,40 @@ export function createAppRegistry({
         })
       })
     } else {
+      if (app.path.toLowerCase().endsWith('.desktop')) {
+        const desktopId = basename(app.path, '.desktop')
+        return new Promise((resolve) => {
+          execFile('gtk-launch', [desktopId], (err) => {
+            if (!err) return resolve({ ok: true })
+            try {
+              const raw = typeof fs.readFileSync === 'function' ? fs.readFileSync(app.path, 'utf8') : ''
+              const execMatch = raw.match(/^Exec=(.+)$/m)
+              if (execMatch) {
+                const cleaned = execMatch[1].replace(/%[fFuUdDnNickvm]/g, '').trim()
+                const parts = cleaned.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) || []
+                const tokens = parts.map((t) => t.replace(/^["']|["']$/g, '')).filter(Boolean)
+                if (tokens.length > 0) {
+                  try {
+                    const child = execFile(tokens[0], tokens.slice(1), { detached: true, stdio: 'ignore' })
+                    child?.unref?.()
+                    return resolve({ ok: true })
+                  } catch {
+                    // lanjut ke shell.openPath
+                  }
+                }
+              }
+            } catch {
+              // lanjut ke shell.openPath
+            }
+            Promise.resolve(shell?.openPath?.(app.path))
+              .then((openErr) => resolve(openErr ? { ok: false, error: openErr } : { ok: true }))
+              .catch((e) => resolve({ ok: false, error: e?.message || String(e) }))
+          })
+        })
+      }
       try {
         const child = execFile(app.path, [], { detached: true, stdio: 'ignore' })
-        child.unref()
+        child?.unref?.()
         return { ok: true }
       } catch (err) {
         return { ok: false, error: err.message || String(err) }

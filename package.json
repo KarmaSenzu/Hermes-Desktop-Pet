@@ -1,0 +1,17 @@
+{
+  "name": "hermes-3d-avatar-root",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "avatar"
+  ],
+  "scripts": {
+    "dev": "npm --prefix avatar run dev",
+    "build": "npm --prefix avatar run build",
+    "build:patch": "npm --prefix avatar run build:patch",
+    "start": "npm --prefix avatar run start",
+    "preview": "npm --prefix avatar run preview",
+    "test": "npm --prefix avatar test",
+    "doctor": "npm --prefix avatar run doctor"
+  }
+}

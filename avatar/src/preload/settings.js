@@ -19,7 +19,11 @@ const settingsApi = {
   loadMusicLibrary: () => ipcRenderer.invoke('avatar:music-load-library'),
   saveMusicLibrary: (data) => ipcRenderer.invoke('avatar:music-save-library', data),
   getMusicLibraryInfo: () => ipcRenderer.invoke('avatar:music-library-info'),
-  openMusicFolder: () => ipcRenderer.invoke('avatar:music-open-folder'),
+  openMusicFolder: (payload) => ipcRenderer.invoke('avatar:music-open-folder', payload),
+  searchOnlineMusic: (payload) => ipcRenderer.invoke('avatar:music-search', payload),
+  resolveMusicStream: (payload) => ipcRenderer.invoke('avatar:music-resolve-stream', payload),
+  downloadMusicTrack: (payload) => ipcRenderer.invoke('avatar:music-download-track', payload),
+  checkMusicCached: (payload) => ipcRenderer.invoke('avatar:music-check-cached', payload),
 
   // Status Service & Hub Manajemen Paket
   getServiceStatus: () => ipcRenderer.invoke('avatar:service-status'),
@@ -62,6 +66,7 @@ const settingsApi = {
   addSkill: (payload) => ipcRenderer.invoke('avatar:add-skill', payload),
   deleteSkill: (payload) => ipcRenderer.invoke('avatar:delete-skill', payload),
   installSkill: (skillId) => ipcRenderer.invoke('avatar:install-skill', skillId),
+  skillAssistant: (payload) => ipcRenderer.invoke('avatar:skill-assistant', payload),
 
   // LLM Provider & Model Management
   loadLlmProviders: () => ipcRenderer.invoke('avatar:llm-load-providers'),

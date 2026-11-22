@@ -224,11 +224,13 @@
 
       <!-- Main Controls -->
       <div class="music-controls-row">
+        <button id="music-fav-ctrl-btn" class="music-ctrl-btn music-fav-ctrl-btn" title="Simpan ke Favorit" data-icon="heart" data-icon-size="15"></button>
         <button id="music-shuffle-btn" class="music-ctrl-btn" title="Acak Lagu (Shuffle)" data-icon="shuffle" data-icon-size="15"></button>
         <button id="music-prev-btn" class="music-ctrl-btn" title="Lagu Sebelumnya" data-icon="skip-back" data-icon-size="16"></button>
         <button id="music-play-btn" class="music-ctrl-btn music-play-main" title="Putar / Jeda Musik" data-icon="play" data-icon-size="17"></button>
         <button id="music-next-btn" class="music-ctrl-btn" title="Lagu Berikutnya" data-icon="skip-forward" data-icon-size="16"></button>
         <button id="music-repeat-btn" class="music-ctrl-btn active" title="Ulangi Lagu (Loop)" data-icon="repeat" data-icon-size="15"></button>
+        <button id="music-download-ctrl-btn" class="music-ctrl-btn music-download-ctrl-btn" title="Unduh / Simpan ke Komputer" data-icon="download" data-icon-size="15"></button>
       </div>
 
       <!-- Volume Bar -->
@@ -262,7 +264,7 @@
         </div>
       </div>
 
-      <!-- Footer Actions: Import Local Music & Online Stream -->
+      <!-- Footer Actions: Import Local Music & Online Stream & Storage -->
       <div class="music-footer">
         <button id="music-add-online-toggle-btn" class="music-add-btn online" title="Tambah Stasiun Radio atau Link Musik Online dari Internet">
           <span class="inline-icon" data-icon="globe" data-icon-size="13"></span>
@@ -271,6 +273,10 @@
         <button id="music-add-local-btn" class="music-add-btn local" title="Pilih File Musik dari Komputer Anda">
           <span class="inline-icon" data-icon="folder" data-icon-size="13"></span>
           <span>File Lokal</span>
+        </button>
+        <button id="music-open-folder-btn" class="music-add-btn storage" title="Buka Folder Penyimpanan Musik (~/.hermes-avatar/cache/audio)">
+          <span class="inline-icon" data-icon="hard-drive" data-icon-size="13"></span>
+          <span>Penyimpanan</span>
         </button>
       </div>
 
@@ -284,15 +290,17 @@
           <button id="music-online-drawer-close" class="panel-close-mini" data-icon="x" data-icon-size="13"></button>
         </div>
         <div class="drawer-body">
-          <input id="music-online-url-input" type="url" placeholder="URL Audio / YouTube (mis: https://youtube.com/watch?v=... atau .mp3)" autocomplete="off" />
+          <input id="music-online-url-input" type="url" placeholder="URL Audio / YouTube (opsional jika mencari judul/artis)..." autocomplete="off" />
           <div class="drawer-inputs-row">
-            <input id="music-online-title-input" type="text" placeholder="Nama Lagu / Video (otomatis)..." autocomplete="off" />
-            <input id="music-online-artist-input" type="text" placeholder="Artis / Channel (otomatis)..." autocomplete="off" />
+            <input id="music-online-title-input" type="text" placeholder="Nama Lagu / Video (mis: Hana)..." autocomplete="off" />
+            <input id="music-online-artist-input" type="text" placeholder="Artis / Channel (mis: Fujii Kaze)..." autocomplete="off" />
           </div>
           <div class="drawer-actions-row">
-            <button id="music-online-submit-btn" class="drawer-action-btn primary">Pasang & Putar</button>
-            <button id="music-online-research-btn" class="drawer-action-btn ai-agent" title="Minta Hermes AI meriset link musik lofi gratis di internet">Minta Hermes Carikan</button>
+            <button id="music-online-submit-btn" class="drawer-action-btn primary">Pasang &amp; Putar</button>
+            <button id="music-online-research-btn" class="drawer-action-btn ai-agent" title="Carikan lagu sesuai Nama Lagu & Artis di atas lalu putar otomatis">Minta Hermes Carikan</button>
           </div>
+          <div id="music-online-status" class="music-online-status" hidden></div>
+          <div id="music-online-results" class="music-online-results" hidden></div>
         </div>
       </div>
     </div>

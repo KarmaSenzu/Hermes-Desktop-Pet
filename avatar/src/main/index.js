@@ -49,7 +49,7 @@ import { RPC_ALLOWED_METHODS } from './ipc-policy.js'
 import { SAFE_QUERY } from './cli-args.js'
 import { readPngSize, estimateTextureMB } from './png-size.js'
 import { checkAppUpdate, downloadAndApplyUpdate, relaunchApp, cleanupStaleOtaTempDirs } from './updater-service.js'
-import { getLiveWeather, getLiveNews } from './feed-service.js'
+import { getLiveWeather, getLiveNews, getAcademicPapers } from './feed-service.js'
 import { synthesizeTts } from './tts-service.js'
 import {
   testProviderConnection,
@@ -99,6 +99,18 @@ import {
   archiveDroppedFile
 } from './storage-service.js'
 import { resolveSafeCropRect, pickMatchingScreenSource } from './screen-capture-utils.js'
+import {
+  searchOnlineMusic,
+  resolveMusicStream,
+  handleMusicStreamProtocolRequest,
+  controlBackgroundMusicPlayer,
+  stopBackgroundMusicPlayer,
+  isBackgroundMusicWebContents,
+  downloadAudioToCache,
+  findCachedAudioFile,
+  getAudioCacheDir,
+  extractYouTubeVideoId
+} from './music-service.js'
 
 const secretStore = createSecretStore(safeStorage)
 
@@ -170,6 +182,17 @@ async function findConfiguredApiKeyInHermesYaml(targetUrl) {
   }
 
   return ''
+}
+
+async function ensureLocalRouterIfTarget(target) {
+  const urls = Array.isArray(target) ? target : [target]
+  const needsRouter = urls.some((u) => u && isLocalRouterUrl(u))
+  if (!needsRouter) return
+  try {
+    if (!(await isPortOpen(ROUTER_PORT))) {
+      await startRouter()
+    }
+  } catch { /* biarkan fetch melaporkan detail error bila 9Router memang belum terpasang */ }
 }
 
 async function resolveApiKeyFor(sealed, url) {
@@ -288,6 +311,20 @@ export function ensureDeployedCompanionAndScripts() {
         if (existsSync(sIcons) && !existsSync(dIcons)) {
           cpSync(sIcons, dIcons, { recursive: true })
         }
+      }
+
+      // Sinkronkan bridge-token.json lokal ke folder ekstensi agar ekstensi siap pakai tanpa salin manual
+      try {
+        const tokenInfo = loadOrCreateBridgeToken()
+        if (tokenInfo?.token) {
+          const tokenFileInExt = join(userExtDir, 'bridge-token.json')
+          const tokenPayload = JSON.stringify({ bridgeToken: tokenInfo.token }, null, 2)
+          if (!existsSync(tokenFileInExt) || readFileSync(tokenFileInExt, 'utf8') !== tokenPayload) {
+            writeFileSync(tokenFileInExt, tokenPayload, 'utf8')
+          }
+        }
+      } catch {
+        // Abaikan bila gagal menyinkronkan bridge-token.json
       }
     }
   } catch (err) {
@@ -744,6 +781,9 @@ secureHandle('avatar:start', async (_event, modelPath) => {
 secureHandle('avatar:start-hermes-server', async () => {
   try {
     const res = await startHermes()
+    if (res?.ok) {
+      await ensureOptionalGatewayRpc()
+    }
     return res
   } catch (err) {
     return { ok: false, error: err?.message || String(err) }
@@ -877,6 +917,7 @@ secureHandle('avatar:run-in-terminal', async (_event, actionId) => {
     const repoRoot = candidateRoots.find((dir) => existsSync(join(dir, 'scripts', 'kokoro_server.py'))) || candidateRoots[0]
     const cwd = repoRoot
 
+    const envPath = fixSystemPath() || process.env.PATH || ''
     if (process.platform === 'win32') {
       const safeArgs = args.map(a => `'${a.replace(/'/g, "''")}'`).join(' ')
       const commandLine = `${cmd} ${safeArgs}`
@@ -887,27 +928,50 @@ secureHandle('avatar:run-in-terminal', async (_event, actionId) => {
         detached: true,
         stdio: 'ignore'
       })
+      child.on('error', (err) => console.warn('[Terminal] Gagal membuka terminal Windows:', err?.message || err))
       child.unref()
     } else if (process.platform === 'darwin') {
-      const commandLine = `${cmd} ${args.map(a => `"${a.replace(/"/g, '\\"')}"`).join(' ')}`
-      const safeMacCmd = commandLine.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
-      const safeCwd = cwd.replace(/\\/g, '\\\\').replace(/"/g, '\"')
-      const appleScript = `tell application "Terminal"
-        activate
-        do script "cd \\"${safeCwd}\\" && ${safeMacCmd}"
-      end tell`
-      const child = spawn('osascript', ['-e', appleScript], {
+      const escSh = (v) => `'${String(v).replace(/'/g, "'\\''")}'`
+      const commandParts = [cmd, ...args].map(escSh).join(' ')
+      const shellLine = `export PATH=${escSh(envPath)}:$PATH; cd ${escSh(cwd)} && ${commandParts}`
+      const appleScript = [
+        'on run argv',
+        '  tell application "Terminal"',
+        '    activate',
+        '    do script (item 1 of argv)',
+        '  end tell',
+        'end run'
+      ].join('\n')
+      const child = spawn('osascript', ['-e', appleScript, shellLine], {
         detached: true,
         stdio: 'ignore'
       })
+      child.on('error', (err) => console.warn('[Terminal] Gagal membuka Terminal.app macOS:', err?.message || err))
       child.unref()
     } else {
-      const child = spawn('x-terminal-emulator', ['-e', cmd, ...args], {
-        cwd,
-        detached: true,
-        stdio: 'ignore'
-      })
-      child.unref()
+      const escSh = (v) => `'${String(v).replace(/'/g, "'\\''")}'`
+      const commandParts = [cmd, ...args].map(escSh).join(' ')
+      const bashCmd = `export PATH=${escSh(envPath)}:$PATH; cd ${escSh(cwd)} && ${commandParts}; echo ""; read -p "Tekan Enter untuk menutup..." _`
+      const candidates = [
+        ['x-terminal-emulator', ['-e', 'bash', '-lc', bashCmd]],
+        ['gnome-terminal', ['--', 'bash', '-lc', bashCmd]],
+        ['konsole', ['-e', 'bash', '-lc', bashCmd]],
+        ['xfce4-terminal', ['-e', `bash -lc ${escSh(bashCmd)}`]],
+        ['xterm', ['-hold', '-e', 'bash', '-lc', bashCmd]]
+      ]
+      const spawnNext = (idx) => {
+        if (idx >= candidates.length) return
+        const [termBin, termArgs] = candidates[idx]
+        const child = spawn(termBin, termArgs, {
+          cwd,
+          env: { ...process.env, PATH: envPath },
+          detached: true,
+          stdio: 'ignore'
+        })
+        child.once('error', () => spawnNext(idx + 1))
+        child.unref()
+      }
+      spawnNext(0)
     }
     return { ok: true }
   } catch (err) {
@@ -1049,6 +1113,15 @@ secureHandle('avatar:music-load-library', async () => {
     }
     const raw = await readFile(MUSIC_LIBRARY_FILE, 'utf-8')
     const data = JSON.parse(raw)
+    // Daftarkan kembali folder track lokal yang tersimpan ke path-guard agar model:// diizinkan lintas restart.
+    if (Array.isArray(data?.localTracks)) {
+      for (const track of data.localTracks) {
+        const fp = track?.filePath || track?.path
+        if (fp && typeof fp === 'string') {
+          approveRoot(dirname(fp))
+        }
+      }
+    }
     return { ok: true, data, path: MUSIC_LIBRARY_FILE }
   } catch (err) {
     console.warn('[MusicLibrary] Gagal membaca music_library.json:', err)
@@ -1089,13 +1162,100 @@ secureHandle('avatar:music-library-info', async () => {
   }
 })
 
-// IPC: Buka folder ~/.hermes-avatar di Explorer / Finder
-secureHandle('avatar:music-open-folder', async () => {
+// IPC: Buka folder penyimpanan audio / unduhan (~/.hermes-avatar/cache/audio atau file spesifik) di Explorer / Finder
+secureHandle('avatar:music-open-folder', async (_event, payload = {}) => {
   try {
-    const dir = join(homedir(), '.hermes-avatar')
-    await mkdir(dir, { recursive: true })
-    await shell.openPath(dir)
-    return { ok: true }
+    const audioDir = getAudioCacheDir()
+    let targetPath = String(payload?.filePath || '').trim()
+
+    if (payload?.videoId) {
+      const cached = findCachedAudioFile(payload.videoId)
+      if (cached?.path) targetPath = cached.path
+    }
+
+    if (targetPath && existsSync(targetPath)) {
+      shell.showItemInFolder(targetPath)
+      return { ok: true, opened: targetPath }
+    }
+
+    await mkdir(audioDir, { recursive: true })
+    await shell.openPath(audioDir)
+    return { ok: true, opened: audioDir }
+  } catch (err) {
+    return { ok: false, error: err?.message || String(err) }
+  }
+})
+
+// IPC: Unduh track audio online ke cache/penyimpanan permanen lokal
+secureHandle('avatar:music-download-track', async (_event, payload = {}) => {
+  try {
+    const vid = String(payload?.videoId || extractYouTubeVideoId(payload?.url) || '').trim()
+    if (!vid) {
+      return { ok: false, error: 'Video ID YouTube tidak ditemukan.' }
+    }
+    const watchUrl = String(payload?.url || `https://www.youtube.com/watch?v=${vid}`).trim()
+    const result = await downloadAudioToCache(vid, watchUrl, { resolvePythonCmd })
+    if (result && result.path) {
+      return { ok: true, cached: true, filePath: result.path, size: result.size }
+    }
+    return { ok: false, error: 'Gagal mengunduh audio ke komputer.' }
+  } catch (err) {
+    return { ok: false, error: err?.message || String(err) }
+  }
+})
+
+// IPC: Cek apakah lagu sudah terunduh / tersimpan di disk lokal
+secureHandle('avatar:music-check-cached', async (_event, payload = {}) => {
+  try {
+    const vid = String(payload?.videoId || extractYouTubeVideoId(payload?.url) || '').trim()
+    if (!vid) return { cached: false }
+    const cached = findCachedAudioFile(vid)
+    return {
+      cached: Boolean(cached),
+      filePath: cached?.path || null,
+      size: cached?.size || 0,
+      mimeType: cached?.mimeType || null
+    }
+  } catch {
+    return { cached: false }
+  }
+})
+
+// IPC: Cari lagu / radio / stream musik online (YouTube InnerTube -> yt-dlp -> iTunes / Radio-Browser)
+secureHandle('avatar:music-search', async (_event, payload = {}) => {
+  try {
+    return await searchOnlineMusic({
+      query: payload?.query || '',
+      title: payload?.title || '',
+      artist: payload?.artist || '',
+      limit: payload?.limit || 6,
+      resolvePythonCmd
+    })
+  } catch (err) {
+    return { ok: false, results: [], error: err?.message || String(err) }
+  }
+})
+
+// IPC: Ekstrak URL stream audio nyata untuk playback lewat model://music-stream/
+secureHandle('avatar:music-resolve-stream', async (_event, payload = {}) => {
+  try {
+    return await resolveMusicStream({
+      url: payload?.url || '',
+      videoId: payload?.videoId || '',
+      title: payload?.title || '',
+      artist: payload?.artist || '',
+      forceRefresh: Boolean(payload?.forceRefresh),
+      resolvePythonCmd
+    })
+  } catch (err) {
+    return { ok: false, error: err?.message || String(err) }
+  }
+})
+
+// IPC: Kontrol pemutar latar belakang Electron bawaan (tanpa yt-dlp / zero-install fallback)
+secureHandle('avatar:music-bg-control', async (_event, action, payload = {}) => {
+  try {
+    return await controlBackgroundMusicPlayer(action, payload, { BrowserWindow })
   } catch (err) {
     return { ok: false, error: err?.message || String(err) }
   }
@@ -1429,10 +1589,11 @@ secureHandle('avatar:rpc', async (_event, method, params) => {
     return { ok: false, error: 'RPC method ditolak' }
   }
   try {
-    if (!isGatewayConnected()) {
-      await connectGateway(SESSION_TOKEN)
+    const gw = await ensureOptionalGatewayRpc()
+    if (!gw) {
+      return { ok: false, error: 'Daemon Hermes (:9119) belum aktif' }
     }
-    const result = await gatewayRequest(method, params || {})
+    const result = await gw(method, params || {})
     return { ok: true, result }
   } catch (err) {
     return { ok: false, error: err?.message || String(err) }
@@ -1442,6 +1603,16 @@ secureHandle('avatar:rpc', async (_event, method, params) => {
 async function ensureOptionalGatewayRpc() {
   if (isGatewayConnected()) return gatewayRequest
   try {
+    let targetPort = HERMES_PORT
+    if (process.env.HERMES_WS_URL) {
+      try {
+        const u = new URL(process.env.HERMES_WS_URL)
+        if (u.port) targetPort = Number(u.port)
+      } catch {
+        // gunakan HERMES_PORT baku
+      }
+    }
+    if (!(await isPortOpen(targetPort))) return null
     await connectGateway(SESSION_TOKEN)
     if (isGatewayConnected()) return gatewayRequest
   } catch { /* fallback offline */ }
@@ -1466,7 +1637,8 @@ secureHandle('avatar:hermes-search-sessions', async (_event, queryOrOpts = '', l
 // IPC: Ambil data Hermes Brain & Otomasi terstruktur untuk Settings
 secureHandle('avatar:hermes-brain-get', async (_event, section, params = {}) => {
   try {
-    const gw = isGatewayConnected() ? gatewayRequest : null
+    const needsGw = section === 'cron' || section === 'kanban'
+    const gw = needsGw ? await ensureOptionalGatewayRpc() : (isGatewayConnected() ? gatewayRequest : null)
     switch (String(section || '')) {
       case 'sessions':
         return await searchHermesSessions({
@@ -1630,25 +1802,108 @@ secureHandle('avatar:archive-attachment', async (_event, payload = {}) => {
   }
 })
 
+function getSkillRoots() {
+  const roots = [join(homedir(), '.hermes', 'skills')]
+  const winAppLocalSkills = join(homedir(), 'AppData', 'Local', 'hermes', 'skills')
+  if (process.platform === 'win32' && existsSync(winAppLocalSkills)) {
+    roots.push(winAppLocalSkills)
+  }
+  return Array.from(new Set(roots))
+}
+
+function listInstalledSkillsOnDisk() {
+  const seen = new Set()
+  const out = []
+
+  const scanDir = (dir, catHint = 'general', depth = 0) => {
+    if (depth > 4 || !existsSync(dir)) return
+    let entries = []
+    try {
+      entries = readdirSync(dir, { withFileTypes: true })
+    } catch {
+      return
+    }
+    for (const ent of entries) {
+      if (!ent.isDirectory() || ent.name.startsWith('.')) continue
+      const fullPath = join(dir, ent.name)
+      if (existsSync(join(fullPath, 'SKILL.md'))) {
+        const key = ent.name.toLowerCase()
+        if (!seen.has(key)) {
+          seen.add(key)
+          out.push({ name: ent.name, category: catHint })
+        }
+      } else {
+        scanDir(fullPath, depth === 0 ? ent.name : catHint, depth + 1)
+      }
+    }
+  }
+
+  for (const root of getSkillRoots()) {
+    scanDir(root, 'general', 0)
+  }
+  return out
+}
+
+async function writeCustomSkillFile({ name, category, content }) {
+  if (!name || !content) {
+    return { ok: false, error: 'Nama & isi skill wajib diisi.' }
+  }
+  const safeName = String(name).replace(/[^a-zA-Z0-9_-]/g, '-').replace(/^-+/, '')
+  const safeCat = String(category || 'general').replace(/[^a-zA-Z0-9_-]/g, '-').replace(/^-+/, '') || 'general'
+  if (!safeName) return { ok: false, error: 'Nama skill tidak valid.' }
+
+  const rawContent = String(content)
+  const finalBody = rawContent.trimStart().startsWith('---')
+    ? rawContent
+    : `---\nname: ${safeName}\ndescription: ${safeName}\n---\n\n${rawContent}`
+
+  const primaryDir = join(homedir(), '.hermes', 'skills', safeCat, safeName)
+  await mkdir(primaryDir, { recursive: true })
+  await writeFile(join(primaryDir, 'SKILL.md'), finalBody, 'utf8')
+
+  const winAppLocalSkills = join(homedir(), 'AppData', 'Local', 'hermes', 'skills')
+  if (process.platform === 'win32' && existsSync(winAppLocalSkills)) {
+    const mirrorDir = join(winAppLocalSkills, safeCat, safeName)
+    await mkdir(mirrorDir, { recursive: true })
+    await writeFile(join(mirrorDir, 'SKILL.md'), finalBody, 'utf8')
+  }
+
+  if (isGatewayConnected()) {
+    try {
+      await gatewayRequest('skills.reload', {})
+    } catch { /* reload bersifat best-effort */ }
+  }
+
+  return { ok: true, name: safeName, category: safeCat, path: primaryDir }
+}
+
 // IPC: tambah skill custom → tulis SKILL.md ke ~/.hermes/skills/<category>/<name>/.
 secureHandle('avatar:add-skill', async (_event, { name, category, content }) => {
   try {
-    if (!name || !content) {
-      return { ok: false, error: 'Nama & isi skill wajib diisi.' }
+    return await writeCustomSkillFile({ name, category, content })
+  } catch (err) {
+    return { ok: false, error: err?.message || String(err) }
+  }
+})
+
+// IPC: Asisten skill & pencarian jurnal ilmiah langsung dari panel Chat Avatar.
+secureHandle('avatar:skill-assistant', async (_event, payload = {}) => {
+  try {
+    const action = String(payload?.action || '').trim()
+    if (action === 'list') {
+      return { ok: true, skills: listInstalledSkillsOnDisk() }
     }
-    // Sanitasi nama & kategori (hindari path traversal).
-    const safeName = String(name).replace(/[^a-zA-Z0-9_-]/g, '-').replace(/^-+/, '')
-    const safeCat = (category || 'general').replace(/[^a-zA-Z0-9_-]/g, '-').replace(/^-+/, '') || 'general'
-    if (!safeName) return { ok: false, error: 'Nama skill tidak valid.' }
-
-    const skillsDir = join(homedir(), '.hermes', 'skills', safeCat, safeName)
-    await mkdir(skillsDir, { recursive: true })
-
-    // Buat SKILL.md dengan frontmatter minimal.
-    const frontmatter = `---\nname: ${safeName}\ndescription: ${safeName}\n---\n\n`
-    await writeFile(join(skillsDir, 'SKILL.md'), frontmatter + String(content), 'utf8')
-
-    return { ok: true, path: skillsDir }
+    if (action === 'install') {
+      return await writeCustomSkillFile({
+        name: payload?.name,
+        category: payload?.category,
+        content: payload?.content
+      })
+    }
+    if (action === 'academic-search') {
+      return await getAcademicPapers(payload?.query, payload?.limit || 5)
+    }
+    return { ok: false, error: 'Aksi skill-assistant tidak dikenal.' }
   } catch (err) {
     return { ok: false, error: err?.message || String(err) }
   }
@@ -1666,10 +1921,15 @@ secureHandle('avatar:delete-skill', async (_event, { name, category }) => {
       return { ok: false, error: 'Skill Mnemosyne adalah modul memori permanen bawaan sistem dan tidak dapat dihapus.' }
     }
 
-    const skillsDir = join(homedir(), '.hermes', 'skills', safeCat, safeName)
-    await rm(skillsDir, { recursive: true, force: true })
+    for (const root of getSkillRoots()) {
+      await rm(join(root, safeCat, safeName), { recursive: true, force: true }).catch(() => {})
+      await rm(join(root, safeName), { recursive: true, force: true }).catch(() => {})
+    }
+    if (isGatewayConnected()) {
+      await gatewayRequest('skills.reload', {}).catch(() => {})
+    }
 
-    return { ok: true, path: skillsDir }
+    return { ok: true, path: join(getSkillRoots()[0], safeCat, safeName) }
   } catch (err) {
     return { ok: false, error: err?.message || String(err) }
   }
@@ -1678,6 +1938,7 @@ secureHandle('avatar:delete-skill', async (_event, { name, category }) => {
 // IPC: tes koneksi model (chat completion sungguhan ke provider).
 // Kirim request "ping" ke model → verifikasi model benar-benar berfungsi.
 secureHandle('avatar:test-connection', async (_event, url, model, apiKey) => {
+  await ensureLocalRouterIfTarget(url)
   return await testProviderConnection({ url, model, apiKey, resolveApiKeyFor })
 })
 
@@ -1774,7 +2035,11 @@ secureHandle('avatar:set-llm-provider', async (_event, payload) => {
 // IPC: restart Hermes daemon
 secureHandle('avatar:restart-hermes', async () => {
   try {
+    try { disconnectGateway() } catch { /* abaikan */ }
     const res = await restartHermes()
+    if (res?.ok) {
+      await ensureOptionalGatewayRpc()
+    }
     return { ok: res.ok, already: res.already, error: res.error }
   } catch (err) {
     return { ok: false, error: err?.message || String(err) }
@@ -1783,6 +2048,7 @@ secureHandle('avatar:restart-hermes', async () => {
 
 // IPC: ambil model aktual langsung dari endpoint OpenAI-compatible (9Router, Ollama, dll)
 secureHandle('avatar:fetch-endpoint-models', async (_event, baseUrl, apiKey) => {
+  await ensureLocalRouterIfTarget(baseUrl)
   return await fetchEndpointModels({ baseUrl, apiKey, resolveApiKeyFor })
 })
 
@@ -1790,6 +2056,8 @@ secureHandle('avatar:fetch-endpoint-models', async (_event, baseUrl, apiKey) => 
 // Berguna agar model 9Router tetap muncul walau provider lain (mis. Google) sedang aktif.
 secureHandle('avatar:fetch-all-provider-models', async (_event, providers) => {
   try {
+    const urls = (Array.isArray(providers) ? providers : []).map((p) => p?.baseUrl)
+    await ensureLocalRouterIfTarget(urls)
     const results = await fetchModelsForProviders({ providers, resolveApiKeyFor })
     return { ok: true, results }
   } catch (err) {
@@ -1807,6 +2075,19 @@ secureHandle('avatar:start-oauth-login', async (_event, providerId = 'openrouter
 
 // IPC: Periksa sisa kuota, limit, dan status paket provider aktif
 secureHandle('avatar:check-provider-quota', async (_event, baseUrl, apiKey) => {
+  let hintUrl = String(baseUrl || '').trim()
+  if (!hintUrl) {
+    try {
+      const cfgPath = resolveHermesConfigPath()
+      if (cfgPath && existsSync(cfgPath)) {
+        const doc = YAML.parse(await readFile(cfgPath, 'utf8'))
+        hintUrl = String(doc?.model?.base_url || '').trim()
+      }
+    } catch {
+      // Abaikan kegagalan baca config.yaml opsional
+    }
+  }
+  await ensureLocalRouterIfTarget(hintUrl)
   return await checkProviderQuota({ baseUrl, apiKey, resolveApiKeyFor })
 })
 
@@ -2060,9 +2341,10 @@ secureHandle('avatar:get-current-model', async () => {
     let currentBaseUrl = null
     let currentAuthType = ''
 
-    if (isGatewayConnected()) {
+    const gw = await ensureOptionalGatewayRpc()
+    if (gw && isGatewayConnected()) {
       try {
-        const res = await gatewayRequest('config.get', { key: 'provider' })
+        const res = await gw('config.get', { key: 'provider' })
         if (res && res.model && res.model !== '—' && res.model !== 'none') {
           currentModel = res.model
           currentProvider = res.provider || null
@@ -2328,13 +2610,147 @@ function scanWindowsShortcuts() {
   return results
 }
 
+function buildAppAliases(rawName) {
+  const lower = String(rawName || '').toLowerCase()
+  const aliases = []
+  if (lower.includes('visual studio code') || lower === 'code') {
+    aliases.push('vscode', 'vs code', 'code', 'vsc')
+  } else if (lower === 'word' || lower.includes('microsoft word')) {
+    aliases.push('word', 'ms word', 'microsoft word')
+  } else if (lower === 'excel' || lower.includes('microsoft excel')) {
+    aliases.push('excel', 'ms excel', 'microsoft excel')
+  } else if (lower.includes('powerpoint')) {
+    aliases.push('powerpoint', 'ppt', 'ms powerpoint')
+  } else if (lower.includes('chrome')) {
+    aliases.push('chrome', 'google chrome')
+  } else if (lower.includes('edge')) {
+    aliases.push('edge', 'microsoft edge')
+  } else if (lower.includes('firefox')) {
+    aliases.push('firefox', 'mozilla firefox')
+  } else if (lower.includes('safari')) {
+    aliases.push('safari')
+  } else if (lower.includes('finder')) {
+    aliases.push('finder', 'file explorer')
+  } else if (lower.includes('terminal') || lower.includes('iterm')) {
+    aliases.push('terminal', 'cmd', 'command prompt')
+  } else if (lower.includes('calculator') || lower.includes('kalkulator')) {
+    aliases.push('calc', 'kalkulator', 'calculator')
+  } else if (lower.includes('task manager') || lower.includes('activity monitor') || lower.includes('system monitor')) {
+    aliases.push('task manager', 'taskmgr', 'taskman', 'activity monitor', 'system monitor')
+  } else if (lower.includes('notes') || lower.includes('notepad') || lower.includes('textedit')) {
+    aliases.push('notepad', 'notes', 'catatan')
+  }
+  return aliases
+}
+
+function scanMacApplications() {
+  const dirs = [
+    '/Applications',
+    '/System/Applications',
+    '/System/Applications/Utilities',
+    join(homedir(), 'Applications')
+  ].filter((p) => existsSync(p))
+
+  const results = []
+  const seenNames = new Set()
+
+  function walkMac(dir, depth = 0) {
+    if (depth > 2) return
+    try {
+      const entries = readdirSync(dir, { withFileTypes: true })
+      for (const ent of entries) {
+        if (ent.name.startsWith('.')) continue
+        const full = join(dir, ent.name)
+        if (ent.isDirectory() && ent.name.toLowerCase().endsWith('.app')) {
+          const rawName = ent.name.replace(/\.app$/i, '').trim()
+          const lower = rawName.toLowerCase()
+          if (!seenNames.has(lower)) {
+            seenNames.add(lower)
+            results.push({
+              name: rawName,
+              command: full,
+              aliases: buildAppAliases(rawName),
+              source: 'macos-applications'
+            })
+          }
+        } else if (ent.isDirectory()) {
+          walkMac(full, depth + 1)
+        }
+      }
+    } catch {
+      // Lewati folder yang tidak bisa diakses
+    }
+  }
+
+  for (const d of dirs) walkMac(d, 0)
+  return results
+}
+
+function scanLinuxApplications() {
+  const dirs = [
+    '/usr/share/applications',
+    '/usr/local/share/applications',
+    join(homedir(), '.local', 'share', 'applications'),
+    '/var/lib/flatpak/exports/share/applications',
+    join(homedir(), '.local', 'share', 'flatpak', 'exports', 'share', 'applications'),
+    '/var/lib/snapd/desktop/applications'
+  ].filter((p) => existsSync(p))
+
+  const results = []
+  const seenNames = new Set()
+
+  function walkLinux(dir, depth = 0) {
+    if (depth > 2) return
+    try {
+      const entries = readdirSync(dir, { withFileTypes: true })
+      for (const ent of entries) {
+        if (ent.name.startsWith('.')) continue
+        const full = join(dir, ent.name)
+        if (ent.isDirectory()) {
+          walkLinux(full, depth + 1)
+        } else if (ent.name.toLowerCase().endsWith('.desktop')) {
+          try {
+            const raw = readFileSync(full, 'utf8')
+            if (/^\s*NoDisplay\s*=\s*true\b/im.test(raw) || /^\s*Hidden\s*=\s*true\b/im.test(raw)) continue
+            if (/^\s*Type\s*=\s*(?!Application\b)/im.test(raw)) continue
+            const nameMatch = raw.match(/^\s*Name\s*=\s*(.+)$/m)
+            const rawName = (nameMatch ? nameMatch[1] : ent.name.replace(/\.desktop$/i, '')).trim()
+            const lower = rawName.toLowerCase()
+            if (!rawName || seenNames.has(lower)) continue
+            seenNames.add(lower)
+            results.push({
+              name: rawName,
+              command: full,
+              aliases: buildAppAliases(rawName),
+              source: 'linux-desktop'
+            })
+          } catch {
+            // Abaikan .desktop tidak terbaca
+          }
+        }
+      }
+    } catch {
+      // Lewati folder tidak terbaca
+    }
+  }
+
+  for (const d of dirs) walkLinux(d, 0)
+  return results
+}
+
+function scanInstalledAppsForPlatform() {
+  if (process.platform === 'win32') return scanWindowsShortcuts()
+  if (process.platform === 'darwin') return scanMacApplications()
+  return scanLinuxApplications()
+}
+
 // IPC: jalankan aplikasi berdasarkan appId aman (atau cocokkan nama/alias terverifikasi di registry)
 secureHandle('avatar:launch-app', async (_event, appId, appName) => {
   try {
     let res = await appRegistry.launchById(appId)
     if (!res.ok) {
       if (appRegistry.getPublicList().length === 0) {
-        appRegistry.setScannedApps(scanWindowsShortcuts())
+        appRegistry.setScannedApps(scanInstalledAppsForPlatform())
       }
       const reg = appRegistry.getRegistry()
       const norm = (s) => String(s || '').toLowerCase().trim()
@@ -2349,8 +2765,8 @@ secureHandle('avatar:launch-app', async (_event, appId, appName) => {
         const byExactName = reg.find((r) => norm(r.name) === q)
         if (byExactName) { matched = byExactName; break }
 
-        const qBase = q.replace(/\.(exe|lnk)$/i, '')
-        const byBase = reg.find((r) => norm(basename(r.path)).replace(/\.(exe|lnk)$/i, '') === qBase)
+        const qBase = q.replace(/\.(exe|lnk|app|desktop|appimage)$/i, '')
+        const byBase = reg.find((r) => norm(basename(r.path)).replace(/\.(exe|lnk|app|desktop|appimage)$/i, '') === qBase)
         if (byBase) { matched = byBase; break }
 
         const qComp = compact(q)
@@ -2370,10 +2786,10 @@ secureHandle('avatar:launch-app', async (_event, appId, appName) => {
   }
 })
 
-// IPC: Scan semua aplikasi terpasang di Windows (Start Menu & Builtins)
+// IPC: Scan semua aplikasi terpasang di Windows / macOS / Linux
 secureHandle('avatar:scan-installed-apps', async () => {
   try {
-    const scanned = scanWindowsShortcuts()
+    const scanned = scanInstalledAppsForPlatform()
     const apps = appRegistry.setScannedApps(scanned)
     return { ok: true, apps, count: apps.length }
   } catch (err) {
@@ -2386,7 +2802,7 @@ secureHandle('avatar:get-installed-apps', async () => {
   try {
     let apps = appRegistry.getPublicList()
     if (apps.length === 0) {
-      const scanned = scanWindowsShortcuts()
+      const scanned = scanInstalledAppsForPlatform()
       apps = appRegistry.setScannedApps(scanned)
     }
     return { ok: true, apps, count: apps.length }
@@ -2535,7 +2951,9 @@ const MIME_MAP = {
   '.ogg': 'audio/ogg',
   '.flac': 'audio/flac',
   '.m4a': 'audio/mp4',
-  '.aac': 'audio/aac'
+  '.aac': 'audio/aac',
+  '.mp4': 'video/mp4',
+  '.webm': 'audio/webm'
 }
 
 // Register custom protocol `model://` untuk serve file model + texture dari disk.
@@ -2567,6 +2985,9 @@ function registerModelProtocol() {
 
     try {
       const url = new URL(request.url)
+      if (url.hostname === 'music-stream') {
+        return await handleMusicStreamProtocolRequest(request, corsHeaders, { resolvePythonCmd })
+      }
       // Format: model://local/<segmen-encoded path> atau model://<drive>/<path>
       const hostPrefix = url.hostname && url.hostname !== 'local'
         ? (url.hostname.length === 1 ? `${url.hostname}:/` : `${url.hostname}/`)
@@ -2606,12 +3027,35 @@ function registerModelProtocol() {
 
       const mime = MIME_MAP[ext] || 'application/octet-stream'
       const { size } = statSync(filePath)
+      const rangeHeader = request.headers.get('range')
+      if (rangeHeader && size > 0) {
+        const rangeMatch = rangeHeader.match(/bytes=(\d+)-(\d*)/i)
+        if (rangeMatch) {
+          const start = Math.min(size - 1, Number(rangeMatch[1]))
+          const rawEnd = rangeMatch[2] ? Number(rangeMatch[2]) : size - 1
+          const end = Math.max(start, Math.min(size - 1, rawEnd))
+          const chunkLen = end - start + 1
+          const body = request.method === 'HEAD' ? null : Readable.toWeb(createReadStream(filePath, { start, end }))
+          return new Response(body, {
+            status: 206,
+            headers: {
+              'Content-Type': mime,
+              'Content-Length': String(chunkLen),
+              'Content-Range': `bytes ${start}-${end}/${size}`,
+              'Accept-Ranges': 'bytes',
+              ...corsHeaders
+            }
+          })
+        }
+      }
+
       const body = request.method === 'HEAD' ? null : Readable.toWeb(createReadStream(filePath))
       return new Response(body, {
         status: 200,
         headers: {
           'Content-Type': mime,
           'Content-Length': String(size),
+          'Accept-Ranges': 'bytes',
           ...corsHeaders
         }
       })
@@ -2624,10 +3068,19 @@ function registerModelProtocol() {
 
 app.on('web-contents-created', (_e, wc) => {
   wc.setWindowOpenHandler(({ url }) => {
+    if (isBackgroundMusicWebContents(wc.id)) {
+      return { action: 'deny' }
+    }
     if (/^https?:\/\//i.test(url)) shell.openExternal(url)
     return { action: 'deny' }
   })
   wc.on('will-navigate', (e, url) => {
+    if (isBackgroundMusicWebContents(wc.id)) {
+      if (!/^https:\/\/(?:[\w-]+\.)?(?:youtube\.com|youtu\.be|googlevideo\.com)\//i.test(url)) {
+        e.preventDefault()
+      }
+      return
+    }
     const dev = process.env['ELECTRON_RENDERER_URL']
     if (!(url.startsWith('file://') || (dev && url.startsWith(dev)))) e.preventDefault()
   })
@@ -2716,8 +3169,13 @@ app.whenReady().then(() => {
   })
 })
 
+app.on('before-quit', () => {
+  stopBackgroundMusicPlayer()
+})
+
 app.on('window-all-closed', () => {
   stopMotion()
+  stopBackgroundMusicPlayer()
   unregisterGlobalShortcuts()
   cronOutputWatcher?.stop()
   disconnectGateway()

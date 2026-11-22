@@ -55,15 +55,38 @@ conversations/
 chat_history/
 
 # ------------------------------------------------------------------------------
-# 5. DOKUMEN PRIBADI, PATH LOKAL, & CATATAN DEV
+# 5. DOKUMEN PRIBADI, INFORMASI INTERNAL, PATH LOKAL, & CATATAN DEV
 # ------------------------------------------------------------------------------
-docs/private/
-docs/MANUAL_TASKS.md
-docs/GIT_SETUP.md
-docs/TEST_CHECKLIST.md
+docs/
 hermes-qa/
 ANALISIS_*.md
 PANDUAN_*.md
+LAPORAN_*.md
+RENCANA_*.md
+HARDENING_*.md
+PROJECT_*.md
+GOALS.md
+CONTRIBUTING.md
+CHANGELOG.md
+RINGKASAN_*.md
+CLAUDE_AI_*
+
+# Sembunyikan file dokumen .md ke GitHub (kecuali README.md utama & definisi skill)
+*.md
+!README.md
+!avatar/assets/live2d/**/NOTICE.md
+!avatar/assets/models/**/NOTICE.md
+!avatar/assets/audio/**/NOTICE.md
+!avatar/assets/default-skills/**/README.md
+!avatar/assets/default-skills/**/SKILL.md
+!avatar/assets/default-skills/**/mandatory.md
+!avatar/assets/default-skills/**/skill-card.md
+!skills/**/README.md
+!skills/**/SKILL.md
+!skills/**/mandatory.md
+!skills/**/skill-card.md
+!extensions/**/README.md
+!avatar/extensions/**/README.md
 
 # ------------------------------------------------------------------------------
 # 6. FILE TEMPORER, AUDIO TESTING CACHE, & DUMP SCRIPTS
@@ -75,6 +98,7 @@ _texture_backup_original/
 **/_texture_backup_original/
 kokoro_test.wav
 dump_*.py
+scratch_*.py
 scratch/
 *.tmp
 *.bak
