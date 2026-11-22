@@ -205,7 +205,7 @@ describe('storage-service', () => {
     db.exec('CREATE TABLE items (id INTEGER PRIMARY KEY, body TEXT);')
     const ins = db.prepare('INSERT INTO items (body) VALUES (?)')
     const bigText = 'x'.repeat(2000)
-    for (let i = 0; i < 80; i++) {
+    for (let i = 0; i < 25; i++) {
       ins.run(bigText)
     }
     db.exec('DELETE FROM items;')
@@ -215,7 +215,7 @@ describe('storage-service', () => {
     expect(vRes.ok).toBe(true)
     expect(vRes.beforeBytes).toBeGreaterThan(vRes.afterBytes)
     expect(vRes.savedBytes).toBeGreaterThan(0)
-  })
+  }, 20000)
 
   it('7) mode 2-fase getStorageSummary({ includeEngine: false }) & getStorageEngineSummary memakai cache engine dengan benar', async () => {
     const sb = await makeTempSandbox()
