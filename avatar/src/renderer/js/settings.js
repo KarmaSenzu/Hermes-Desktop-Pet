@@ -543,6 +543,9 @@ function updateHomeLlmRouteUi(s, llmInfo = null, pingState = llmPingState) {
       homeLlmRouteDesc.textContent = 'Jalur aktif: 9Router Lokal (:20128) sedang offline — nyalakan 9Router atau beralih ke OAuth/API langsung'
     } else if (sameKey && pingState.status === 'failed' && pingState.error) {
       homeLlmRouteDesc.textContent = `${target.routeLabel} — Ping gagal: ${pingState.error}`
+    } else if (sameKey && pingState.status === 'ok') {
+      const latNote = typeof pingState.latencyMs === 'number' ? ` (${pingState.latencyMs}ms)` : ''
+      homeLlmRouteDesc.textContent = `Jalur aktif: ${target.routeLabel} — Ping teruji normal${latNote}`
     } else {
       const routerNote = target.usesRouter
         ? '9Router aktif di port 20128'
@@ -552,7 +555,11 @@ function updateHomeLlmRouteUi(s, llmInfo = null, pingState = llmPingState) {
   }
 
   if (homeLlmPingStatus) {
-    homeLlmPingStatus.title = sameKey && pingState.error ? pingState.error : ''
+    homeLlmPingStatus.title = sameKey && pingState.error
+      ? pingState.error
+      : (sameKey && pingState.status === 'ok'
+        ? `Respons normal (${pingState.latencyMs ?? 0}ms)`
+        : 'Klik "Tes Ping" untuk menguji latensi secara manual kapan saja.')
     if (!info.ok || !target.model) {
       homeLlmPingStatus.textContent = 'Belum Ada Model'
       homeLlmPingStatus.className = 'badge warning'
@@ -619,7 +626,7 @@ async function verifyActiveLlmPing({ interactive = false, force = false } = {}) 
       return { ok: false, rto: false, error: msg }
     }
 
-    if (!force && llmPingState.key === key && llmPingState.status === 'ok' && (Date.now() - llmPingState.checkedAt < 60000)) {
+    if (!force && llmPingState.key === key && llmPingState.status === 'ok') {
       return { ok: true, rto: false, latencyMs: llmPingState.latencyMs }
     }
 
@@ -752,11 +759,8 @@ prereqAutoBtn?.addEventListener('click', async () => {
     const llmInfo = await checkActiveLlmModel()
     const llmTarget = resolveActiveLlmTarget(llmInfo)
     const targetKey = buildLlmTargetKey(llmTarget)
-    if (llmInfo.ok && llmTarget.baseUrl && (!llmTarget.usesRouter || s.router)) {
-      await verifyActiveLlmPing({ interactive: false, force: true })
-    }
     const isRouterBlocking = Boolean(llmTarget.usesRouter && !s.router)
-    const isPingFailed = llmPingState.key === targetKey && llmPingState.status === 'failed'
+    const isPingFailed = Boolean(targetKey && llmPingState.key === targetKey && llmPingState.status === 'failed')
     const isLlmConnOk = Boolean(llmInfo.ok && !isRouterBlocking && !isPingFailed)
 
     if (s.hermes && active && llmInfo.ok && isLlmConnOk) {
@@ -1192,10 +1196,6 @@ async function refreshServiceStatus({ skipAutoPing = false } = {}) {
     const isPingFailed = hasSameKeyPing && llmPingState.status === 'failed'
     const isLlmConnectionOk = Boolean(isLlmOk && !isRouterBlocking && !isPingFailed)
     const isTtsOk = !!(s.kokoro || settings.tts?.provider === 'edge')
-
-    if (!skipAutoPing && isLlmOk && !isRouterBlocking && llmTarget.baseUrl && (!hasSameKeyPing || llmPingState.status === 'idle')) {
-      verifyActiveLlmPing({ interactive: false, force: false })
-    }
 
     updateHomeLlmRouteUi(s, llmInfo, llmPingState)
 
@@ -2199,19 +2199,12 @@ startBtn.addEventListener('click', async () => {
     const llmTarget = resolveActiveLlmTarget(llmInfo)
     const targetKey = buildLlmTargetKey(llmTarget)
 
-    if (llmInfo.ok && llmTarget.baseUrl && (!llmTarget.usesRouter || s.router)) {
-      if (llmPingState.key !== targetKey || llmPingState.status !== 'ok') {
-        showToast('Menguji Ping Model LLM...', `Memastikan ${llmTarget.model} merespons & tidak RTO...`, 'running', '📡')
-        await verifyActiveLlmPing({ interactive: false, force: true })
-      }
-    }
-
     // Periksa apakah semua layanan & jalur koneksi LLM siap (OAuth maupun 9Router opsional)
     const isHermesReady = !!s.hermes
     const isLlmReady = !!llmInfo.ok
     const isTtsReady = !!(s.kokoro || settings.tts?.provider === 'edge')
     const isRouterBlocking = Boolean(llmTarget.usesRouter && !s.router)
-    const isPingFailed = llmPingState.key === targetKey && llmPingState.status === 'failed'
+    const isPingFailed = Boolean(targetKey && llmPingState.key === targetKey && llmPingState.status === 'failed')
     const isLlmConnReady = Boolean(isLlmReady && !isRouterBlocking && !isPingFailed)
 
     // Jika ada layanan, model LLM, atau ping model belum siap, tampilkan modal Prasyarat
