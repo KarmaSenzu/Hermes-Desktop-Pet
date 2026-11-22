@@ -107,7 +107,8 @@ async function runDoctor() {
       let missingDeps = []
       for (const dep of allDeps) {
         const depPath = join(avatarDir, 'node_modules', dep)
-        if (!existsSync(depPath)) {
+        const rootDepPath = join(rootDir, 'node_modules', dep)
+        if (!existsSync(depPath) && !existsSync(rootDepPath)) {
           missingDeps.push(dep)
         }
       }
