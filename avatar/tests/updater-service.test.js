@@ -16,6 +16,7 @@ vi.mock('electron', () => ({
 
 import {
   isNewerVersion,
+  getVersionDiffType,
   checkAppUpdate,
   isValidAssetName,
   isValidGithubAssetUrl,
@@ -35,6 +36,15 @@ describe('updater-service', () => {
     expect(isNewerVersion('v0.2.0', 'v0.1.9')).toBe(true)
     expect(isNewerVersion('', '0.1.4')).toBe(false)
     expect(isNewerVersion(null, '0.1.4')).toBe(false)
+  })
+
+  it('getVersionDiffType mengklasifikasikan patch, minor, dan major dengan tepat', () => {
+    expect(getVersionDiffType('v1.1.2', 'v1.1.1')).toBe('patch')
+    expect(getVersionDiffType('1.2.0', '1.1.5')).toBe('minor')
+    expect(getVersionDiffType('v2.0.0', 'v1.9.9')).toBe('major')
+    expect(getVersionDiffType('1.1.2', '0.1.7')).toBe('major')
+    expect(getVersionDiffType('1.1.1', '1.1.1')).toBe('none')
+    expect(getVersionDiffType('1.1.0', '1.1.2')).toBe('none')
   })
 
   it('checkAppUpdate terdefinisi sebagai fungsi async', () => {

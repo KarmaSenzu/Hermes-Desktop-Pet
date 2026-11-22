@@ -4437,9 +4437,14 @@ async function checkAppUpdates(interactive = false) {
     if (res.hasUpdate) {
       if (banner) banner.classList.remove('hidden')
       if (bannerTag) bannerTag.textContent = latestVer
-      const patchNote = res.isPatchUpdate && res.assetSizeMb
-        ? `Patch Ringan (${res.assetSizeMb} MB) — hanya mengunduh kode yang berubah.`
-        : (res.assetSizeMb ? `Ukuran unduhan: ${res.assetSizeMb} MB.` : '')
+      let patchNote = ''
+      if (res.isPatchUpdate && res.assetSizeMb) {
+        patchNote = `⚡ Pembaruan Ringan (${res.assetSizeMb} MB) — mengunduh perbaikan kode terbaru secara instan.`
+      } else if (res.isMajorOrMinor && res.assetSizeMb) {
+        patchNote = `📦 Pembaruan Lengkap (${res.assetSizeMb} MB) — pembaruan versi besar termasuk fitur dan aset/karakter terbaru.`
+      } else if (res.assetSizeMb) {
+        patchNote = `Ukuran unduhan: ${res.assetSizeMb} MB.`
+      }
       if (bannerDesc) {
         bannerDesc.textContent = patchNote
           ? `Versi ${latestVer} tersedia! ${patchNote}`

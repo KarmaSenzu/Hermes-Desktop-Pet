@@ -34,6 +34,29 @@ export function isNewerVersion(vLatest, vCurrent) {
 }
 
 /**
+ * Mendeteksi kategori selisih versi (major, minor, atau patch).
+ * Digunakan untuk memilih apakah update cukup memakai OTA patch ringan (~1 MB)
+ * atau butuh Full Package Installer (~150 MB) agar aset/karakter baru ikut terpasang.
+ */
+export function getVersionDiffType(vLatest, vCurrent) {
+  if (!vLatest || !vCurrent) return 'none'
+  const p1 = String(vLatest).replace(/^v/i, '').split('.').map((x) => parseInt(x, 10) || 0)
+  const p2 = String(vCurrent).replace(/^v/i, '').split('.').map((x) => parseInt(x, 10) || 0)
+  const major1 = p1[0] || 0
+  const minor1 = p1[1] || 0
+  const patch1 = p1[2] || 0
+
+  const major2 = p2[0] || 0
+  const minor2 = p2[1] || 0
+  const patch2 = p2[2] || 0
+
+  if (major1 > major2) return 'major'
+  if (major1 === major2 && minor1 > minor2) return 'minor'
+  if (major1 === major2 && minor1 === minor2 && patch1 > patch2) return 'patch'
+  return 'none'
+}
+
+/**
  * Validasi ketat nama file asset rilis untuk mencegah traversal, ADS, dan nama device Windows.
  */
 export function isValidAssetName(filename) {
@@ -321,32 +344,48 @@ export async function checkAppUpdate() {
         : []
     }
 
+    const diffType = getVersionDiffType(cleanLatest, cleanCurrent)
+    const isMajorOrMinor = diffType === 'major' || diffType === 'minor'
+
     let downloadUrl = data.html_url
     let matchedAsset = null
     if (data.assets && Array.isArray(data.assets)) {
       // Normalisasi nama aset ke huruf kecil agar `.ZIP`/`.DMG`/`.EXE` tetap cocok.
       const nameOf = (a) => String(a?.name || '').toLowerCase()
       const patchAsset = data.assets.find((a) => nameOf(a).endsWith('.zip') && nameOf(a).includes('patch'))
+
+      // Temukan paket instalasi penuh (Full Package: installer setup atau full portable zip/dmg)
+      let fullAsset = null
       if (process.platform === 'darwin') {
-        matchedAsset =
-          patchAsset ||
+        fullAsset =
           data.assets.find((a) => nameOf(a).endsWith('.dmg')) ||
-          data.assets.find((a) => nameOf(a).endsWith('.zip') && nameOf(a).includes('mac'))
+          data.assets.find((a) => nameOf(a).endsWith('.zip') && nameOf(a).includes('mac') && !nameOf(a).includes('patch'))
       } else if (process.platform === 'win32') {
-        matchedAsset =
-          patchAsset ||
+        fullAsset =
+          data.assets.find((a) => nameOf(a).endsWith('.exe')) ||
           data.assets.find(
-            (a) => nameOf(a).endsWith('.zip') && (nameOf(a).includes('win') || nameOf(a).includes('windows'))
+            (a) => nameOf(a).endsWith('.zip') && (nameOf(a).includes('win') || nameOf(a).includes('windows') || nameOf(a).includes('portable')) && !nameOf(a).includes('patch')
           ) ||
           data.assets.find(
-            (a) => nameOf(a).endsWith('.zip') && !nameOf(a).includes('mac') && !nameOf(a).includes('linux')
-          ) ||
-          data.assets.find((a) => nameOf(a).endsWith('.exe'))
+            (a) => nameOf(a).endsWith('.zip') && !nameOf(a).includes('mac') && !nameOf(a).includes('linux') && !nameOf(a).includes('patch')
+          )
       } else {
-        matchedAsset =
+        fullAsset =
           data.assets.find((a) => nameOf(a).endsWith('.appimage')) ||
           data.assets.find((a) => nameOf(a).endsWith('.deb'))
       }
+
+      // Aturan Cerdas Pemilihan Aset:
+      // 1. Jika ini update Major/Minor (lompatan versi besar / penambahan fitur & aset model baru):
+      //    Prioritaskan Full Package/Installer agar seluruh model karakter & aset baru ikut terpasang!
+      // 2. Jika ini update Patch biasa (misal 1.1.1 -> 1.1.2):
+      //    Prioritaskan Patch Ringan (~1-2 MB) agar proses unduh super cepat dan hemat kuota!
+      if (isMajorOrMinor) {
+        matchedAsset = fullAsset || patchAsset
+      } else {
+        matchedAsset = patchAsset || fullAsset
+      }
+
       if (matchedAsset?.browser_download_url) {
         downloadUrl = matchedAsset.browser_download_url
       }
@@ -362,6 +401,8 @@ export async function checkAppUpdate() {
       hasUpdate,
       canAutoUpdate: Boolean(matchedAsset),
       isPatchUpdate,
+      updateType: diffType,
+      isMajorOrMinor,
       assetSizeMb,
       currentVersion,
       latestVersion: latestTag.startsWith('v') ? latestTag : `v${latestTag}`,

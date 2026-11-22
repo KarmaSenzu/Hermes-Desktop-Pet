@@ -826,7 +826,10 @@ secureHandle('avatar:start', async (_event, modelPath) => {
   }
 
   if (!resolvedPath || !existsSync(resolvedPath)) {
-    return { ok: false, error: `File model tidak ditemukan di disk. Pastikan aset model Live2D tersedia.` }
+    return {
+      ok: false,
+      error: `File model belum tersedia di komputer. Jika Anda memperbarui aplikasi lewat patch ringan (OTA), silakan unduh Paket Lengkap dari halaman GitHub Releases atau tambahkan model manual di menu Karakter.`
+    }
   }
   approveRoot(dirname(resolvedPath))
 
