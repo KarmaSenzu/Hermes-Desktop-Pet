@@ -2618,6 +2618,7 @@ async function processSpeechQueue() {
   let hadSpokenAnswer = false
   let hadInterrupted = false
   let prefetched = null
+  let speechErrorShown = false
 
   updatePerfMode(true)
   musicPlayer?.duck(true)
@@ -2679,9 +2680,13 @@ async function processSpeechQueue() {
       } catch (err) {
         prefetched = null
         console.error('[TTS error]', err?.message || err)
-        if (!isProgress && speechQueue.length === 0) {
-          showSpeechBubble(`Suara TTS gagal: ${err?.message || 'periksa pengaturan suara'}`, 3500)
+        // Selalu tampilkan sekali & hentikan antrean agar kegagalan tidak "senyap"
+        // (sebelumnya hanya muncul bila antrean kosong, lalu ditutup hideSpeechBubble).
+        if (!isProgress && !speechErrorShown) {
+          speechErrorShown = true
+          showSpeechBubble(`Suara TTS gagal: ${err?.message || 'periksa pengaturan suara'}`, 8000)
         }
+        speechQueue.length = 0
       } finally {
         activeSpeechItem = null
       }
@@ -2698,7 +2703,8 @@ async function processSpeechQueue() {
     isSpeaking = false
     musicPlayer?.duck(false)
     updatePerfMode()
-    hideSpeechBubble()
+    // Jangan langsung menutup bubble bila itu bubble error TTS (biarkan tampil 8 dtk).
+    if (!speechErrorShown) hideSpeechBubble()
     // Kembalikan status ke idle setelah selesai berbicara.
     setStatus('')
     if (conversationState === 'speaking') setConversationState('idle')
@@ -2922,7 +2928,9 @@ function getVoiceSettings() {
   try {
     const raw = localStorage.getItem('hermes-avatar-settings')
     const s = raw ? JSON.parse(raw) : {}
-    const provider = s.tts?.provider || 'kokoro'
+    // Default 'edge' (sama dengan settings-store.js). 'kokoro' hanya bila dipilih eksplisit
+    // & server-nya aktif — mencegah tiap balasan chat menunggu 12 dtk lalu senyap.
+    const provider = s.tts?.provider || 'edge'
     let voice = s.tts?.voice || (provider === 'kokoro' ? 'af_heart' : 'id-ID-GadisNeural')
     if (provider === 'kokoro' && !/^[a-z]{2}_/i.test(voice)) {
       voice = 'af_heart'
@@ -2941,8 +2949,8 @@ function getVoiceSettings() {
     }
   } catch {
     return {
-      voice: 'af_heart',
-      provider: 'kokoro',
+      voice: 'id-ID-GadisNeural',
+      provider: 'edge',
       intonation: 'anime',
       kokoroEndpoint: 'http://127.0.0.1:8880',
       speed: 1.0,

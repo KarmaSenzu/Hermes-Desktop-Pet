@@ -14,9 +14,9 @@
         <!-- Traffic lights window controls -->
         <div class="sidebar-topbar">
           <div class="window-controls">
-            <button type="button" class="traffic-light traffic-close" id="btn-win-close" title="Tutup (Close)"></button>
-            <button type="button" class="traffic-light traffic-minimize" id="btn-win-minimize" title="Kecilkan (Minimize)"></button>
-            <button type="button" class="traffic-light traffic-maximize" id="btn-win-maximize" title="Besarkan (Maximize)"></button>
+            <button type="button" class="traffic-light traffic-close" id="btn-win-close" title="Tutup (Close)" data-i18n-attr="title:shell.winClose"></button>
+            <button type="button" class="traffic-light traffic-minimize" id="btn-win-minimize" title="Kecilkan (Minimize)" data-i18n-attr="title:shell.winMin"></button>
+            <button type="button" class="traffic-light traffic-maximize" id="btn-win-maximize" title="Besarkan (Maximize)" data-i18n-attr="title:shell.winMax"></button>
           </div>
         </div>
 
@@ -64,11 +64,11 @@
             <h2 id="current-section-title" class="current-section-title">Home</h2>
           </div>
           <div class="header-right" style="display:flex; align-items:center; gap:8px;">
-            <button type="button" id="ui-mode-toggle-btn" class="theme-toggle-btn" title="Ganti antara tampilan ramah pemula atau tampilan teknis developer">
+            <button type="button" id="ui-mode-toggle-btn" class="theme-toggle-btn" title="Ganti antara tampilan ramah pemula atau tampilan teknis developer" data-i18n-attr="title:shell.uiModeTitle">
               <span id="ui-mode-icon" class="theme-icon" data-icon="sliders-horizontal" data-icon-size="13"></span>
               <span id="ui-mode-text" class="theme-text">Mode Sederhana</span>
             </button>
-            <button type="button" id="theme-toggle-btn" class="theme-toggle-btn" title="Ganti Mode Hitam / Putih">
+            <button type="button" id="theme-toggle-btn" class="theme-toggle-btn" title="Ganti Mode Hitam / Putih" data-i18n-attr="title:shell.themeTitle">
               <span id="theme-icon" class="theme-icon" data-icon="moon" data-icon-size="13"></span>
               <span id="theme-text" class="theme-text">Mode Gelap</span>
             </button>
@@ -1076,12 +1076,12 @@
 
         <!-- LLM -->
         <section id="panel-llm" class="panel">
-          <h1>LLM &amp; Provider</h1>
-          <p class="subtitle">Kelola model AI aktif, monitor kuota, login akun OAuth resmi, jembatan 9Router, dan daftar penyedia.</p>
+          <h1 data-i18n="llm.title">LLM &amp; Provider</h1>
+          <p class="subtitle" data-i18n="llm.subtitle">Kelola model AI aktif, monitor kuota, login akun OAuth resmi, jembatan 9Router, dan daftar penyedia.</p>
 
           <!-- VIEW 1: Menu Utama LLM & Provider (Model Aktif + Sub-Menu Terstruktur) -->
           <div id="llm-menu-view">
-            <div class="group-header">Model AI Aktif Saat Ini</div>
+            <div class="group-header" data-i18n="llm.active.group">Model AI Aktif Saat Ini</div>
             <div class="card">
               <div class="settings-row">
                 <div class="format-emblem theme-indigo">
@@ -1089,17 +1089,17 @@
                 </div>
                 <div class="format-info-col">
                   <div class="format-title-line">
-                    <span class="format-title">Model Terpasang</span>
+                    <span class="format-title" data-i18n="llm.active.title">Model Terpasang</span>
                   </div>
-                  <p class="format-desc-text">Model yang digunakan untuk berpikir dan menjawab</p>
+                  <p class="format-desc-text" data-i18n="llm.active.desc">Model yang digunakan untuk berpikir dan menjawab</p>
                 </div>
                 <div class="row-control">
                   <div id="llm-active" class="llm-active"></div>
-                  <button type="button" id="llm-ping-active-btn" class="mini-btn use" style="margin-left: 6px;" title="Uji ping ke model LLM aktif untuk memastikan tidak RTO">
+                  <button type="button" id="llm-ping-active-btn" class="mini-btn use" style="margin-left: 6px;" title="Uji ping ke model LLM aktif untuk memastikan tidak RTO" data-i18n-attr="title:llm.active.pingTitle">
                     <span class="btn-svg-icon" data-icon="activity" data-icon-size="12"></span>
-                    <span>Tes Ping Model</span>
+                    <span data-i18n="llm.active.pingBtn">Tes Ping Model</span>
                   </button>
-                  <button type="button" id="llm-refresh-btn" class="mini-btn browse" style="margin-left: 6px;"><span class="btn-svg-icon" data-icon="refresh-cw"></span> Segarkan</button>
+                  <button type="button" id="llm-refresh-btn" class="mini-btn browse" style="margin-left: 6px;"><span class="btn-svg-icon" data-icon="refresh-cw"></span> <span data-i18n="common.refresh">Segarkan</span></button>
                 </div>
               </div>
               <div class="settings-row">
@@ -1108,19 +1108,19 @@
                 </div>
                 <div class="format-info-col">
                   <div class="format-title-line">
-                    <span class="format-title">Ganti Model Cepat</span>
+                    <span class="format-title" data-i18n="llm.quick.title">Ganti Model Cepat</span>
                   </div>
-                  <p class="format-desc-text">Pilih dari daftar model yang terdeteksi</p>
+                  <p class="format-desc-text" data-i18n="llm.quick.desc">Pilih dari daftar model yang terdeteksi</p>
                 </div>
                 <div class="row-control">
                   <select id="llm-switch-model" class="mac-select"></select>
-                  <button type="button" id="llm-switch-btn" class="mini-btn primary" style="margin-left: 6px;">Terapkan</button>
+                  <button type="button" id="llm-switch-btn" class="mini-btn primary" data-i18n="llm.quick.apply" style="margin-left: 6px;">Terapkan</button>
                 </div>
               </div>
             </div>
-            <p class="hint" style="margin: 6px 10px 14px; font-size: 11.5px; color: var(--text-secondary);">Anda bebas memilih <strong>Login OAuth Resmi</strong> atau <strong>9Router Lokal (Opsional)</strong>. Selama <strong>Tes Ping Model</strong> berhasil dan tidak RTO, avatar siap dijalankan (5/5).</p>
+            <p class="hint" data-i18n="llm.menuHint" style="margin: 6px 10px 14px; font-size: 11.5px; color: var(--text-secondary);">Anda bebas memilih <strong>Login OAuth Resmi</strong> atau <strong>9Router Lokal (Opsional)</strong>. Selama <strong>Tes Ping Model</strong> berhasil dan tidak RTO, avatar siap dijalankan (5/5).</p>
 
-            <div class="group-header">Kategori Pengaturan AI &amp; Provider</div>
+            <div class="group-header" data-i18n="llm.category.group">Kategori Pengaturan AI &amp; Provider</div>
             <div class="card">
               <div id="llm-sub-menu" class="anim-menu-list">
                 <div class="format-item" data-llm-sub="quota-monitor" tabindex="0">
@@ -1129,12 +1129,12 @@
                   </div>
                   <div class="format-info-col">
                     <div class="format-title-line">
-                      <span class="format-title">Monitor Kuota &amp; Status Akun Aktif</span>
+                      <span class="format-title" data-i18n="llm.sub.quota.title">Monitor Kuota &amp; Status Akun Aktif</span>
                     </div>
-                    <p class="format-desc-text">Pantau sisa kredit bulanan, Bonus Pack 9Router, dan cincin limit model OAuth secara real-time</p>
+                    <p class="format-desc-text" data-i18n="llm.sub.quota.desc">Pantau sisa kredit bulanan, Bonus Pack 9Router, dan cincin limit model OAuth secara real-time</p>
                   </div>
                   <div class="format-status-col">
-                    <span id="llm-menu-badge-quota" class="format-count-pill on">Memuat…</span>
+                    <span id="llm-menu-badge-quota" class="format-count-pill on" data-i18n="common.loading">Memuat…</span>
                     <span class="format-arrow">›</span>
                   </div>
                 </div>
@@ -1145,9 +1145,9 @@
                   </div>
                   <div class="format-info-col">
                     <div class="format-title-line">
-                      <span class="format-title">Login Akun Resmi &amp; Paket Gratis (OAuth)</span>
+                      <span class="format-title" data-i18n="llm.sub.oauth.title">Login Akun Resmi &amp; Paket Gratis (OAuth)</span>
                     </div>
-                    <p class="format-desc-text">Masuk 1-klik dengan akun Google atau GitHub (OpenRouter, Google Gemini AI Studio, Groq, Mistral)</p>
+                    <p class="format-desc-text" data-i18n="llm.sub.oauth.desc">Masuk 1-klik dengan akun Google atau GitHub (OpenRouter, Google Gemini AI Studio, Groq, Mistral)</p>
                   </div>
                   <div class="format-status-col">
                     <span id="llm-menu-badge-oauth" class="format-count-pill on">4 Penyedia Gratis</span>
@@ -1161,9 +1161,9 @@
                   </div>
                   <div class="format-info-col">
                     <div class="format-title-line">
-                      <span class="format-title">Jembatan Multi-Akun 9Router Lokal (:20128)</span>
+                      <span class="format-title" data-i18n="llm.sub.router.title">Jembatan Multi-Akun 9Router Lokal (:20128)</span>
                     </div>
-                    <p class="format-desc-text">Hubungkan 9Router lokal untuk memakai akun OAuth Claude, ChatGPT Codex, Kiro, &amp; Codebuddy</p>
+                    <p class="format-desc-text" data-i18n="llm.sub.router.desc">Hubungkan 9Router lokal untuk memakai akun OAuth Claude, ChatGPT Codex, Kiro, &amp; Codebuddy</p>
                   </div>
                   <div class="format-status-col">
                     <span id="llm-menu-badge-router" class="format-count-pill off">Siap Hubungkan</span>
@@ -1177,9 +1177,9 @@
                   </div>
                   <div class="format-info-col">
                     <div class="format-title-line">
-                      <span class="format-title">Pilih Preset &amp; Tambah Provider Baru</span>
+                      <span class="format-title" data-i18n="llm.sub.preset.title">Pilih Preset &amp; Tambah Provider Baru</span>
                     </div>
-                    <p class="format-desc-text">Pilih cepat 8 preset penyedia AI atau atur koneksi server OpenAI-compatible kustom</p>
+                    <p class="format-desc-text" data-i18n="llm.sub.preset.desc">Pilih cepat 8 preset penyedia AI atau atur koneksi server OpenAI-compatible kustom</p>
                   </div>
                   <div class="format-status-col">
                     <span id="llm-menu-badge-preset" class="format-count-pill off">8 Preset AI</span>
@@ -1193,9 +1193,9 @@
                   </div>
                   <div class="format-info-col">
                     <div class="format-title-line">
-                      <span class="format-title">Daftar Provider AI Tersimpan</span>
+                      <span class="format-title" data-i18n="llm.sub.saved.title">Daftar Provider AI Tersimpan</span>
                     </div>
-                    <p class="format-desc-text">Kelola, uji koneksi, aktifkan, edit, atau hapus daftar penyedia AI yang telah disimpan</p>
+                    <p class="format-desc-text" data-i18n="llm.sub.saved.desc">Kelola, uji koneksi, aktifkan, edit, atau hapus daftar penyedia AI yang telah disimpan</p>
                   </div>
                   <div class="format-status-col">
                     <span id="llm-menu-badge-saved" class="format-count-pill off">0 Tersimpan</span>
@@ -1208,7 +1208,7 @@
 
           <!-- VIEW 2: Detail Sub-Panel (Ditampilkan satu per satu saat menu diklik) -->
           <div id="llm-detail-view" class="hidden">
-            <button type="button" id="llm-back-btn" class="back-btn">‹ Kembali ke Menu LLM &amp; Provider</button>
+            <button type="button" id="llm-back-btn" class="back-btn">‹ <span data-i18n="llm.back">Kembali ke Menu LLM &amp; Provider</span></button>
 
             <!-- Sub-Panel 1: Monitor Kuota & Status Akun Aktif -->
             <div id="llm-subpanel-quota" class="llm-subpanel hidden" data-subpanel="quota-monitor">

@@ -74,10 +74,13 @@ export async function synthesizeTts({
     try {
       let autoStarted = false
       if (typeof isPortOpen === 'function' && !(await isPortOpen(kokoroPort))) {
-        console.log('[tts-service] Kokoro server belum aktif di port 8880, mencoba auto-start...')
+        // JANGAN memblokir balasan pertama selama ~12 dtk menunggu Kokoro menyala.
+        // Nyalakan di latar (fire-and-forget) lalu langsung pakai jalur cadangan untuk
+        // giliran ini; Kokoro siap untuk balasan berikutnya.
+        console.log('[tts-service] Kokoro belum aktif di port 8880 — menyalakan di latar, memakai fallback giliran ini.')
         if (typeof startKokoro === 'function') {
-          await startKokoro()
-          autoStarted = true
+          Promise.resolve(startKokoro()).catch(() => {})
+          return null
         }
       }
 
@@ -129,9 +132,13 @@ export async function synthesizeTts({
     if (resp.ok) {
       const data = await resp.json()
       if (data && data.ok && data.data_url) {
+        // Sertakan base64 juga agar renderer tak bergantung pada parsing data URL.
+        const ci = String(data.data_url).indexOf(',')
+        const b64 = ci >= 0 ? String(data.data_url).slice(ci + 1) : ''
         return {
           ok: true,
           dataUrl: data.data_url,
+          base64: b64,
           mimeType: data.mime_type || 'audio/mpeg',
           isFallback: isKokoro,
           warning: fallbackWarning

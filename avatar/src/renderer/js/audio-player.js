@@ -29,16 +29,29 @@ export class AudioPlayer {
    */
   async play(buffer) {
     const ctx = this._ensureContext()
-    if (ctx.state === 'suspended') await ctx.resume()
+    // resume() bisa melempar NotAllowedError; tangkap agar tidak disalahartikan sebagai
+    // kegagalan sintesis TTS.
+    try {
+      if (ctx.state === 'suspended') await ctx.resume()
+    } catch (e) {
+      throw new Error(`AudioContext resume gagal (${e?.name || 'error'}): ${e?.message || e}`)
+    }
 
     // Hentikan audio sebelumnya.
     this.stop()
 
-    const audioBuffer = await ctx.decodeAudioData(buffer.slice(0))
+    let audioBuffer
+    try {
+      audioBuffer = await ctx.decodeAudioData(buffer.slice(0))
+    } catch (e) {
+      throw new Error(`decodeAudioData gagal (${buffer?.byteLength || 0} byte): ${e?.message || e}`)
+    }
     const source = ctx.createBufferSource()
     source.buffer = audioBuffer
+    // Cukup sambungkan ke analyser — analyser sudah tersambung ke destination di
+    // _ensureContext(). Sambung ganda (analyser + destination) membuat sinyal dijumlah
+    // dua kali (+6 dB) sehingga bisa terdistorsi/ter-clip.
     source.connect(this.analyser)
-    source.connect(ctx.destination)
     this.currentSource = source
 
     return new Promise((resolve) => {

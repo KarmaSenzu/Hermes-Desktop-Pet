@@ -20,16 +20,24 @@ export async function synthesize(text, voice = VOICE_DEFAULT, options = {}) {
   let base64 = result.base64 || ''
   let mimeType = result.mimeType || 'audio/mpeg'
 
-  // Jalur Hermes mengembalikan data URL lengkap.
-  if (result.dataUrl) {
-    const match = result.dataUrl.match(/^data:([^;]+);base64,(.+)$/)
-    if (match) {
-      mimeType = match[1] || mimeType
-      base64 = match[2] || ''
+  // Jalur Hermes/SAPI/Kokoro mengembalikan data URL lengkap. Ambil payload setelah koma
+  // PERTAMA (hindari regex yang gagal bila payload kosong/berisi karakter khusus).
+  if (!base64 && result.dataUrl) {
+    const commaIdx = result.dataUrl.indexOf(',')
+    const header = commaIdx >= 0 ? result.dataUrl.slice(0, commaIdx) : ''
+    const payload = commaIdx >= 0 ? result.dataUrl.slice(commaIdx + 1) : ''
+    if (header.startsWith('data:') && header.includes(';base64')) {
+      const m = header.slice(5).split(';')[0]
+      if (m) mimeType = m
+      base64 = payload
     }
   }
 
-  if (!base64) throw new Error('TTS mengembalikan audio kosong')
+  if (!base64 || !base64.trim()) {
+    throw new Error(
+      `TTS mengembalikan audio kosong (keys: ${Object.keys(result).join(', ') || '—'})`
+    )
+  }
 
   // base64 → ArrayBuffer (untuk decodeAudioData di audio-player).
   const binary = atob(base64)
