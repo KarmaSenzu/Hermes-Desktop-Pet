@@ -38,9 +38,21 @@ pnpm-debug.log*
 *.token
 *session-token*
 *credential*
-*secret*
+# Catatan: pola `*secret*` sebelumnya terlalu luas (ikut "mencocokkan" file kode
+# seperti secret-store.js sehingga menyesatkan). Ganti dengan pola tepat:
+*.secret
+secrets/
+secrets.*
 shortcuts.json
 apps_cache.json
+# File pengaturan runtime aplikasi (bisa memuat teks sensitif) — jangan di-commit
+settings.json
+settings.*.json
+# Konfigurasi Hermes (.yaml/.yml) memuat api_key literal → jangan di-commit
+config.yaml
+config.yml
+*.local.yaml
+*.local.yml
 
 # ------------------------------------------------------------------------------
 # 4. PERCAKAPAN PRIBADI, RIWAYAT CHAT, & DATABASE MEMORI
