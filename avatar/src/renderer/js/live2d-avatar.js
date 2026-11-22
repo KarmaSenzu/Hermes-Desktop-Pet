@@ -11,6 +11,8 @@ import { voiceManager } from './voice-manager.js'
 import { PERF } from './perf-config.js'
 
 Live2DModel.registerTicker(PIXI.Ticker)
+// Matikan auto-mipmap pada tekstur Live2D (2048/1024 POT) untuk menghemat ~33% VRAM
+PIXI.settings.MIPMAP_TEXTURES = PIXI.MIPMAP_MODES.OFF
 
 const STORAGE_KEYS = {
   pos: 'hermes-avatar-pos',
@@ -28,7 +30,7 @@ export class Live2DAvatar {
       width,
       height,
       backgroundAlpha: 0,
-      antialias: true,
+      antialias: false,
       autoStart: true,
       clearBeforeRender: true,
       resolution: Math.min(window.devicePixelRatio || 1, PERF.MAX_DPR),
@@ -112,11 +114,11 @@ export class Live2DAvatar {
   async load(url) {
     console.log('[Live2DAvatar] Loading model from:', url)
 
-    // Bersihkan stage terlebih dahulu untuk mencegah penumpukan ganda (ghosting)
+    // Bersihkan stage terlebih dahulu untuk mencegah penumpukan ganda (ghosting) & kebocoran tekstur GPU
     if (this.model) {
       try {
         this.app.stage.removeChild(this.model)
-        this.model.destroy()
+        this.model.destroy({ texture: true, baseTexture: true })
       } catch (e) {
         console.warn('[Live2DAvatar] Gagal membersihkan model lama:', e)
       }
@@ -859,6 +861,11 @@ export class Live2DAvatar {
     }, 1000)
   }
 
+  _isSnipOverlayActive() {
+    const el = document.getElementById('snip-overlay')
+    return Boolean(el && !el.hasAttribute('hidden'))
+  }
+
   _bindEvents() {
     let movedDistance = 0
 
@@ -873,6 +880,15 @@ export class Live2DAvatar {
 
     // 1. Mouse move: Hit test presisi + Click-Through OS + Smooth Dragging
     this._onMouseMove = (e) => {
+      // Selama overlay potong layar (Screen Snip) aktif, pertahankan tangkapan mouse penuh (jangan click-through)
+      if (this._isSnipOverlayActive()) {
+        if (this.ignoringMouse) {
+          window.hermesAvatar?.setIgnoreMouse(false)
+          this.ignoringMouse = false
+        }
+        return
+      }
+
       const hitChar = this._hitTestModel(e.clientX, e.clientY)
       const hitUI = !!e.target.closest('.interactive-ui')
 
@@ -921,6 +937,7 @@ export class Live2DAvatar {
 
     // 2. Mouse down: Mulai drag
     this._onMouseDown = (e) => {
+      if (this._isSnipOverlayActive()) return
       if (e.target.closest('.interactive-ui')) return
 
       const hit = this._hitTestModel(e.clientX, e.clientY)
@@ -963,6 +980,7 @@ export class Live2DAvatar {
 
     // 4. Mouse leave: Reset kursor & aktifkan click-through ke desktop
     this._onMouseLeave = () => {
+      if (this._isSnipOverlayActive()) return
       if (!this.isDragging && !this.ignoringMouse) {
         window.hermesAvatar?.setIgnoreMouse(true, true)
         this.ignoringMouse = true
@@ -974,6 +992,7 @@ export class Live2DAvatar {
 
     // 5. Mouse Wheel: Zoom in / Zoom out karakter halus
     this._onWheel = (e) => {
+      if (this._isSnipOverlayActive()) return
       const hit = this._hitTestModel(e.clientX, e.clientY)
       if (!hit || !this.model) return
 
@@ -1025,7 +1044,7 @@ export class Live2DAvatar {
         if (this.app?.stage) {
           this.app.stage.removeChild(this.model)
         }
-        this.model.destroy()
+        this.model.destroy({ texture: true, baseTexture: true })
       } catch (e) {
         console.warn('[Live2DAvatar] Gagal destroy model:', e)
       }

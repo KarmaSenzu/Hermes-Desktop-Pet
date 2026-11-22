@@ -125,7 +125,7 @@ function renderSummary(summary) {
     }
     if (ratio >= 1) {
       diskMetaEl.classList.add('danger')
-      parts.unshift('⚠️ Melebihi batas pengingat — pertimbangkan membersihkan Cache, Gambar, atau Lampiran lama.')
+      parts.unshift('Melebihi batas pengingat — pertimbangkan membersihkan Cache, Gambar, atau Lampiran lama.')
     } else if (ratio >= 0.85) {
       diskMetaEl.classList.add('warn')
       parts.unshift('Mendekati batas pengingat penyimpanan.')
@@ -192,7 +192,7 @@ function renderEngineCard(engine, { loading = false, error = '' } = {}) {
   const hTitle = document.createElement('div')
   hTitle.className = 'storage-cat-title'
   if (loading) {
-    hTitle.textContent = 'Engine & Runtime Inti: Menghitung… ⏳'
+    hTitle.textContent = 'Engine & Runtime Inti: Menghitung…'
   } else if (error) {
     hTitle.textContent = 'Engine & Runtime Inti'
   } else {
@@ -212,7 +212,7 @@ function renderEngineCard(engine, { loading = false, error = '' } = {}) {
   const openBtn = document.createElement('button')
   openBtn.type = 'button'
   openBtn.className = 'mini-btn secondary'
-  openBtn.textContent = '📂 Buka Folder Hermes'
+  openBtn.innerHTML = `<span class="btn-svg-icon">${renderIcon('folder-open', { size: 13 })}</span> Buka Folder Hermes`
   openBtn.addEventListener('click', () => {
     window.hermesAvatar?.storageAction?.('open-folder', { categoryId: 'hermes-root' })
   })
@@ -310,16 +310,21 @@ export async function refreshStoragePanel(forceRefreshEngine = false) {
   } finally {
     if (myToken === latestScanToken && refreshBtn) {
       refreshBtn.disabled = false
-      refreshBtn.textContent = 'Segarkan ↻'
+      refreshBtn.innerHTML = `<span class="btn-svg-icon">${renderIcon('refresh-cw', { size: 13 })}</span> Segarkan`
     }
   }
 }
 
-function makeActionButton(label, cls, onClick) {
+function makeActionButton(label, cls, onClick, iconName = '') {
   const btn = document.createElement('button')
   btn.type = 'button'
   btn.className = `mini-btn ${cls}`
-  btn.textContent = label
+  if (iconName) {
+    const labelHtml = label ? ` <span>${label}</span>` : ''
+    btn.innerHTML = `<span class="btn-svg-icon">${renderIcon(iconName, { size: 13 })}</span>${labelHtml}`
+  } else {
+    btn.textContent = label
+  }
   btn.addEventListener('click', onClick)
   return btn
 }
@@ -357,24 +362,24 @@ async function openCategoryDetail(categoryId, { skipSummaryRefresh = false } = {
   if (actionsEl) {
     actionsEl.replaceChildren()
     actionsEl.appendChild(
-      makeActionButton('📂 Buka Folder', 'secondary', async () => {
+      makeActionButton('Buka Folder', 'secondary', async () => {
         const r = await window.hermesAvatar?.storageAction?.('open-folder', { categoryId })
         if (!r?.ok) uiDeps.showToast('Gagal Membuka Folder', r?.error || 'Error', 'error', '❌')
-      })
+      }, 'folder-open')
     )
 
     if (categoryId === 'chat') {
       actionsEl.appendChild(
-        makeActionButton('⚡ Optimalkan Database (VACUUM)', 'primary', async (ev) => {
+        makeActionButton('Optimalkan Database (VACUUM)', 'primary', async (ev) => {
           const btn = ev.currentTarget
           btn.disabled = true
-          btn.textContent = '⏳ Mengoptimalkan...'
+          btn.textContent = 'Mengoptimalkan…'
           const vRes = await window.hermesAvatar?.storageAction?.('vacuum-db')
           btn.disabled = false
-          btn.textContent = '⚡ Optimalkan Database (VACUUM)'
+          btn.innerHTML = `<span class="btn-svg-icon">${renderIcon('zap', { size: 13 })}</span> <span>Optimalkan Database (VACUUM)</span>`
           if (vRes?.ok) {
             uiDeps.showToast(
-              'Database Dioptimalkan ✅',
+              'Database Dioptimalkan',
               `Sebelum: ${formatBytes(vRes.beforeBytes)} → Sesudah: ${formatBytes(vRes.afterBytes)} (hemat ${formatBytes(vRes.savedBytes)})`,
               'success',
               '⚡',
@@ -384,25 +389,25 @@ async function openCategoryDetail(categoryId, { skipSummaryRefresh = false } = {
           } else {
             uiDeps.showToast('Optimasi DB Gagal', vRes?.error || 'Database sedang sibuk', 'error', '❌', 5000)
           }
-        })
+        }, 'zap')
       )
       actionsEl.appendChild(
-        makeActionButton('🗂️ Kelola Riwayat Sesi →', 'secondary', () => {
+        makeActionButton('Kelola Riwayat Sesi →', 'secondary', () => {
           uiDeps.navigateToSection('brain')
-        })
+        }, 'layers')
       )
     }
 
     if (categoryId === 'packages') {
       actionsEl.appendChild(
-        makeActionButton('📦 Buka Package Hub →', 'secondary', () => {
+        makeActionButton('Buka Package Hub →', 'secondary', () => {
           uiDeps.navigateToSection('package')
-        })
+        }, 'package')
       )
     }
 
     if (res.cleanable && items.length > 0) {
-      const clearLabel = categoryId === 'cache' ? '🧹 Bersihkan Semua Cache & Log' : '🗑️ Hapus Semua di Kategori Ini'
+      const clearLabel = categoryId === 'cache' ? 'Bersihkan Semua Cache & Log' : 'Hapus Semua di Kategori Ini'
       actionsEl.appendChild(
         makeActionButton(clearLabel, 'del', async () => {
           const ok = await uiDeps.confirmDialog(
@@ -413,7 +418,7 @@ async function openCategoryDetail(categoryId, { skipSummaryRefresh = false } = {
           const cRes = await window.hermesAvatar?.storageAction?.('clear-category', { categoryId })
           if (cRes?.ok) {
             uiDeps.showToast(
-              'Penyimpanan Dibersihkan 🧹',
+              'Penyimpanan Dibersihkan',
               `${cRes.deletedCount} file dihapus · Menghemat ${formatBytes(cRes.freedBytes)}`,
               'success',
               '🧹',
@@ -423,7 +428,7 @@ async function openCategoryDetail(categoryId, { skipSummaryRefresh = false } = {
           } else {
             uiDeps.showToast('Gagal Membersihkan', cRes?.error || 'Error', 'error', '❌')
           }
-        })
+        }, 'trash-2')
       )
     }
   }
@@ -473,13 +478,13 @@ async function openCategoryDetail(categoryId, { skipSummaryRefresh = false } = {
       const rowBtns = document.createElement('div')
       rowBtns.className = 'storage-image-actions'
       rowBtns.appendChild(
-        makeActionButton('📂', 'secondary', () => {
+        makeActionButton('', 'secondary', () => {
           window.hermesAvatar?.storageAction?.('open-folder', { path: item.path })
-        })
+        }, 'folder-open')
       )
       if (item.deletable) {
         rowBtns.appendChild(
-          makeActionButton('🗑️', 'del', async () => {
+          makeActionButton('', 'del', async () => {
             const ok = await uiDeps.confirmDialog('Hapus Gambar?', `Hapus permanen "${item.name}" (${formatBytes(item.size)})?`)
             if (!ok) return
             const dRes = await window.hermesAvatar?.storageAction?.('delete-item', { path: item.path })
@@ -527,13 +532,13 @@ async function openCategoryDetail(categoryId, { skipSummaryRefresh = false } = {
     const right = document.createElement('div')
     right.className = 'storage-item-btns'
     right.appendChild(
-      makeActionButton('📂', 'secondary', () => {
+      makeActionButton('', 'secondary', () => {
         window.hermesAvatar?.storageAction?.('open-folder', { path: item.path })
-      })
+      }, 'folder-open')
     )
     if (item.deletable) {
       right.appendChild(
-        makeActionButton('🗑️', 'del', async () => {
+        makeActionButton('', 'del', async () => {
           const ok = await uiDeps.confirmDialog('Hapus File?', `Hapus permanen "${item.name}" (${formatBytes(item.size)})?`)
           if (!ok) return
           const dRes = await window.hermesAvatar?.storageAction?.('delete-item', { path: item.path })
@@ -611,7 +616,7 @@ export function initStoragePanel({ showToast, confirmDialog, navigateToSection }
     const res = await window.hermesAvatar?.storageAction?.('clear-category', { categoryId: 'cache' })
     if (res?.ok) {
       uiDeps.showToast(
-        'Cache Dibersihkan 🧹',
+        'Cache Dibersihkan',
         `${res.deletedCount} file dibersihkan · Menghemat ${formatBytes(res.freedBytes)}`,
         'success',
         '🧹',

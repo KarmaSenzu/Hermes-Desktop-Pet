@@ -217,7 +217,7 @@ export async function tryFastLaunchApp(text, options = {}) {
     if (!musicPlayer.isPlaying) {
       musicPlayer.playTrack(musicPlayer.currentTrackIndex)
     }
-    showSpeechBubble('Memutar musik lofi companion untukmu 🎵', 3500)
+    showSpeechBubble('Memutar musik lofi companion untukmu.', 3500)
     speak('Memutar musik companion untukmu sekarang!', 'happy')
     return true
   }
@@ -252,7 +252,7 @@ export async function tryFastLaunchApp(text, options = {}) {
     if (missingApps.length > 0) {
       const missingList = missingApps.map((q) => `"${q}"`).join(', ')
       log('avatar', `Aplikasi ${missingList} belum ditemukan di sistem.`)
-      showSpeechBubble(`Aplikasi ${missingList} belum terdaftar 🤔`, 3500)
+      showSpeechBubble(`Aplikasi ${missingList} belum terdaftar.`, 3500)
       speak(`Aku belum tahu lokasi aplikasi ${missingList}. Kamu bisa menambahkannya di Pengaturan.`, 'neutral')
       return true
     }
@@ -263,15 +263,15 @@ export async function tryFastLaunchApp(text, options = {}) {
 
   if (matchedApps.length === 1) {
     const app = matchedApps[0]
-    setStatus(`Membuka ${app.name}… 🚀`)
-    showSpeechBubble(`Membuka ${app.name}... 🚀`, 3500)
-    log('avatar', `🚀 Membuka ${app.name}...`)
+    setStatus(`Membuka ${app.name}…`)
+    showSpeechBubble(`Membuka ${app.name}…`, 3500)
+    log('avatar', `Membuka ${app.name}…`)
     speak(`Membuka ${app.name} sekarang!`, 'happy')
   } else {
     const names = matchedApps.map((a) => a.name).join(', ')
-    setStatus(`Membuka ${matchedApps.length} aplikasi… 🚀`)
-    showSpeechBubble(`Membuka ${names}... 🚀`, 4500)
-    log('avatar', `🚀 Membuka ${matchedApps.length} aplikasi sekaligus: ${names}`)
+    setStatus(`Membuka ${matchedApps.length} aplikasi…`)
+    showSpeechBubble(`Membuka ${names}…`, 4500)
+    log('avatar', `Membuka ${matchedApps.length} aplikasi sekaligus: ${names}`)
     speak(`Membuka ${matchedApps.length} aplikasi sekaligus: ${names}!`, 'happy')
   }
 
@@ -292,10 +292,10 @@ export async function tryFastLaunchApp(text, options = {}) {
         } catch {}
       }
       if (!res?.ok) {
-        log('avatar', `⚠️ Gagal membuka ${app.name}: ${res?.error || 'Unknown error'}`)
+        log('avatar', `Gagal membuka ${app.name}: ${res?.error || 'Unknown error'}`)
       }
     } catch (err) {
-      log('avatar', `⚠️ Error membuka ${app.name}: ${err.message}`)
+      log('avatar', `Error membuka ${app.name}: ${err.message}`)
     }
     if (matchedApps.length > 1) {
       await new Promise((r) => setTimeout(r, 200))

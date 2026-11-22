@@ -4,7 +4,7 @@
  */
 
 import { loadSettings, saveSettings } from './settings-store.js'
-import { renderIcon } from './icons.js'
+import { renderIcon, hydrateIcons } from './icons.js'
 import { escapeHtml } from './utils.js'
 import { showToast } from './toast.js'
 export { showToast }
@@ -234,10 +234,10 @@ function applyTheme(theme) {
   const iconEl = document.getElementById('theme-icon')
   const textEl = document.getElementById('theme-text')
   if (theme === 'light') {
-    if (iconEl) iconEl.textContent = '☀️'
+    if (iconEl) iconEl.innerHTML = renderIcon('sun', { size: 13 })
     if (textEl) textEl.textContent = 'Mode Terang'
   } else {
-    if (iconEl) iconEl.textContent = '🌙'
+    if (iconEl) iconEl.innerHTML = renderIcon('moon', { size: 13 })
     if (textEl) textEl.textContent = 'Mode Gelap'
   }
 }
@@ -262,15 +262,16 @@ function applyUiMode(mode) {
   const iconEl = document.getElementById('ui-mode-icon')
   const textEl = document.getElementById('ui-mode-text')
   if (normalized === 'advanced') {
-    if (iconEl) iconEl.textContent = '🛠️'
+    if (iconEl) iconEl.innerHTML = renderIcon('terminal', { size: 13 })
     if (textEl) textEl.textContent = 'Mode Teknis'
   } else {
-    if (iconEl) iconEl.textContent = '✨'
+    if (iconEl) iconEl.innerHTML = renderIcon('sliders-horizontal', { size: 13 })
     if (textEl) textEl.textContent = 'Mode Sederhana'
   }
 }
 
 function initUiModeSwitcher() {
+  hydrateIcons(document)
   const initialMode = settings.uiMode === 'advanced' ? 'advanced' : 'simple'
   applyUiMode(initialMode)
 
@@ -282,12 +283,12 @@ function initUiModeSwitcher() {
     saveSettings(settings)
     applyUiMode(next)
     showToast(
-      next === 'simple' ? 'Mode Sederhana Aktif ✨' : 'Mode Teknis Aktif 🛠️',
+      next === 'simple' ? 'Mode Sederhana Aktif' : 'Mode Teknis Aktif',
       next === 'simple'
         ? 'Menampilkan antarmuka ringkas yang ramah pengguna.'
         : 'Menampilkan seluruh opsi port, URL endpoint, dan terminal developer.',
       'info',
-      next === 'simple' ? '✨' : '🛠️'
+      next === 'simple' ? 'sliders-horizontal' : 'terminal'
     )
   })
 }
@@ -299,6 +300,10 @@ const alertInstallAllBtn = document.getElementById('alert-install-all-btn')
 const homePrereqBadge = document.getElementById('home-prereq-badge')
 const homeStartHermesBtn = document.getElementById('home-start-hermes-btn')
 const homeCharDesc = document.getElementById('home-char-desc')
+const homeLlmRouteDesc = document.getElementById('home-llm-route-desc')
+const homeLlmPingStatus = document.getElementById('home-llm-ping-status')
+const homeLlmPingBtn = document.getElementById('home-llm-ping-btn')
+const llmPingActiveBtn = document.getElementById('llm-ping-active-btn')
 const homeTtsStatus = document.getElementById('home-tts-status')
 const homeTtsDesc = document.getElementById('home-tts-desc')
 
@@ -428,7 +433,7 @@ homeStartHermesBtn?.addEventListener('click', async () => {
       await loadDetectedPathsOnce(true)
     }
     if (res?.ok || res?.already) {
-      showToast('Hermes Aktif! ✅', 'Daemon AI siap di port 9119', 'success', '⚡')
+      showToast('Hermes Aktif', 'Daemon AI siap di port 9119', 'success', '⚡')
     } else {
       showToast('Gagal Menyalakan Hermes', res?.error || 'Pastikan koneksi internet stabil atau buka Package Hub', 'error', '❌')
     }
@@ -437,7 +442,7 @@ homeStartHermesBtn?.addEventListener('click', async () => {
     showToast('Gagal Menyalakan Hermes', err?.message || err, 'error', '❌')
   } finally {
     homeStartHermesBtn.disabled = false
-    homeStartHermesBtn.textContent = 'Nyalakan ⚡'
+    homeStartHermesBtn.innerHTML = `<span class="btn-svg-icon">${renderIcon('zap', { size: 13 })}</span> Nyalakan`
   }
 })
 
@@ -456,15 +461,241 @@ prereqLlmBtn?.addEventListener('click', () => {
   navigateToSection('llm')
 })
 
-// Cache status model LLM aktif
-let cachedLlmModelInfo = { ok: false, model: null, provider: null }
+// Cache status model LLM aktif & hasil uji ping koneksi (anti-RTO)
+let cachedLlmModelInfo = { ok: false, model: null, provider: null, baseUrl: '', authType: '', usesRouter: false }
+let llmPingState = {
+  key: '',
+  status: 'idle', // 'idle' | 'checking' | 'ok' | 'failed'
+  ok: false,
+  rto: false,
+  latencyMs: null,
+  error: null,
+  checkedAt: 0
+}
+let activePingPromise = null
+
+function resetLlmPingState() {
+  llmPingState = {
+    key: '',
+    status: 'idle',
+    ok: false,
+    rto: false,
+    latencyMs: null,
+    error: null,
+    checkedAt: 0
+  }
+}
+
+function isLocal9RouterUrl(u) {
+  return /^https?:\/\/(127\.0\.0\.1|localhost):20128(\/|$)/i.test(String(u || '').trim())
+}
+
+function buildLlmTargetKey(target) {
+  const url = String(target?.baseUrl || '').trim().replace(/\/+$/, '').toLowerCase()
+  const model = String(target?.model || '').trim()
+  return model ? `${url}::${model}` : ''
+}
+
+function resolveActiveLlmTarget(llmInfo = null) {
+  const info = llmInfo || cachedLlmModelInfo || { ok: false }
+  const provs = settings.llm?.providers || []
+  const normU = (u) => String(u || '').trim().replace(/\/+$/, '').toLowerCase()
+  const infoUrlNorm = normU(info.baseUrl)
+  const activeById = provs.find((p) => p.id === settings.llm?.activeId) || null
+  const activeProv =
+    (infoUrlNorm && provs.find((p) => normU(p.baseUrl) === infoUrlNorm)) ||
+    (activeById && (!info.model || activeById.model === info.model || (Array.isArray(activeById.models) && activeById.models.includes(info.model))) ? activeById : null) ||
+    provs.find((p) => info.model && (p.model === info.model || (Array.isArray(p.models) && p.models.includes(info.model)))) ||
+    activeById ||
+    null
+
+  const model = String(info.model || activeProv?.model || '').trim()
+  const provider = String(info.provider || activeProv?.name || '').trim()
+  const baseUrl = String(info.baseUrl || activeProv?.baseUrl || '').trim()
+  const apiKey = String(activeProv?.apiKey || '').trim()
+  const authType = String(info.authType || activeProv?.authType || '').trim().toLowerCase()
+  const usesRouter = Boolean(info.usesRouter || authType === '9router' || isLocal9RouterUrl(baseUrl))
+
+  let routeLabel = 'OAuth / Provider Langsung'
+  if (usesRouter) routeLabel = '9Router Lokal (:20128)'
+  else if (authType === 'oauth' || /oauth/i.test(provider)) routeLabel = 'Login OAuth Resmi'
+
+  return { model, provider, baseUrl, apiKey, authType, usesRouter, routeLabel }
+}
+
+function updateHomeLlmRouteUi(s, llmInfo = null, pingState = llmPingState) {
+  const info = llmInfo || cachedLlmModelInfo || { ok: false }
+  const target = resolveActiveLlmTarget(info)
+  const key = buildLlmTargetKey(target)
+  const sameKey = Boolean(key && pingState.key === key)
+
+  if (homeLlmRouteDesc) {
+    if (!info.ok || !target.model) {
+      homeLlmRouteDesc.textContent = 'Bebas memakai Login OAuth Resmi atau 9Router Lokal (opsional) — pilih model di LLM & Provider lalu Tes Ping'
+    } else if (target.usesRouter && !s?.router) {
+      homeLlmRouteDesc.textContent = 'Jalur aktif: 9Router Lokal (:20128) sedang offline — nyalakan 9Router atau beralih ke OAuth/API langsung'
+    } else if (sameKey && pingState.status === 'failed' && pingState.error) {
+      homeLlmRouteDesc.textContent = `${target.routeLabel} — Ping gagal: ${pingState.error}`
+    } else {
+      const routerNote = target.usesRouter
+        ? '9Router aktif di port 20128'
+        : `9Router ${s?.router ? 'aktif' : 'tidak wajib (OAuth / langsung)'}`
+      homeLlmRouteDesc.textContent = `Jalur aktif: ${target.routeLabel} (${routerNote})`
+    }
+  }
+
+  if (homeLlmPingStatus) {
+    homeLlmPingStatus.title = sameKey && pingState.error ? pingState.error : ''
+    if (!info.ok || !target.model) {
+      homeLlmPingStatus.textContent = 'Belum Ada Model'
+      homeLlmPingStatus.className = 'badge warning'
+    } else if (target.usesRouter && !s?.router) {
+      homeLlmPingStatus.textContent = '9Router Mati'
+      homeLlmPingStatus.className = 'badge warning'
+    } else if (!target.baseUrl) {
+      homeLlmPingStatus.textContent = 'Endpoint Kosong'
+      homeLlmPingStatus.className = 'badge warning'
+    } else if (sameKey && pingState.status === 'checking') {
+      homeLlmPingStatus.textContent = 'Menguji Ping…'
+      homeLlmPingStatus.className = 'badge info'
+    } else if (sameKey && pingState.status === 'ok') {
+      homeLlmPingStatus.textContent = `Ping OK (${pingState.latencyMs ?? 0}ms)`
+      homeLlmPingStatus.className = 'badge ready'
+    } else if (sameKey && pingState.status === 'failed') {
+      homeLlmPingStatus.textContent = pingState.rto ? 'RTO (Timeout)' : 'Ping Gagal'
+      homeLlmPingStatus.className = 'badge warning'
+    } else {
+      homeLlmPingStatus.textContent = target.usesRouter ? 'Siap (9Router)' : 'Siap (OAuth/Langsung)'
+      homeLlmPingStatus.className = 'badge ready'
+    }
+  }
+}
+
+async function verifyActiveLlmPing({ interactive = false, force = false } = {}) {
+  if (activePingPromise && !force) {
+    return activePingPromise
+  }
+
+  const runPing = async () => {
+    const llmInfo = await checkActiveLlmModel()
+    const s = await window.hermesAvatar.getServiceStatus().catch(() => lastServiceStatus || { hermes: false, router: false, kokoro: false })
+    const target = resolveActiveLlmTarget(llmInfo)
+    const key = buildLlmTargetKey(target)
+
+    if (!llmInfo.ok || !target.model) {
+      if (interactive) {
+        showToast('Model LLM Belum Dipilih', 'Pilih model aktif terlebih dahulu di menu LLM & Provider.', 'warning', '⚠️')
+      }
+      updateHomeLlmRouteUi(s, llmInfo, llmPingState)
+      return { ok: false, rto: false, error: 'Model LLM belum dipilih' }
+    }
+
+    if (target.usesRouter && !s.router) {
+      const msg = 'Model aktif menggunakan 9Router Lokal (:20128), tetapi layanan 9Router belum aktif.'
+      llmPingState = { key, status: 'failed', ok: false, rto: false, latencyMs: null, error: msg, checkedAt: Date.now() }
+      updateHomeLlmRouteUi(s, llmInfo, llmPingState)
+      if (interactive) {
+        showToast('9Router Lokal Belum Aktif', msg, 'warning', '⚠️', 5500)
+      }
+      await refreshServiceStatus({ skipAutoPing: true })
+      return { ok: false, rto: false, error: msg }
+    }
+
+    if (!target.baseUrl) {
+      const msg = 'Base URL endpoint model aktif belum tersedia.'
+      llmPingState = { key, status: 'failed', ok: false, rto: false, latencyMs: null, error: msg, checkedAt: Date.now() }
+      updateHomeLlmRouteUi(s, llmInfo, llmPingState)
+      if (interactive) {
+        showToast('Endpoint Model Tidak Ditemukan', msg, 'warning', '⚠️', 5000)
+      }
+      await refreshServiceStatus({ skipAutoPing: true })
+      return { ok: false, rto: false, error: msg }
+    }
+
+    if (!force && llmPingState.key === key && llmPingState.status === 'ok' && (Date.now() - llmPingState.checkedAt < 60000)) {
+      return { ok: true, rto: false, latencyMs: llmPingState.latencyMs }
+    }
+
+    llmPingState = { key, status: 'checking', ok: false, rto: false, latencyMs: null, error: null, checkedAt: Date.now() }
+    updateHomeLlmRouteUi(s, llmInfo, llmPingState)
+
+    if (interactive) {
+      showToast('Menguji Ping Model LLM...', `Menghubungi ${target.model} (${target.routeLabel})...`, 'running', '📡')
+    }
+
+    try {
+      const res = await window.hermesAvatar.testConnection(target.baseUrl, target.model, target.apiKey || '')
+      if (res?.ok) {
+        llmPingState = {
+          key,
+          status: 'ok',
+          ok: true,
+          rto: false,
+          latencyMs: typeof res.latencyMs === 'number' ? res.latencyMs : null,
+          error: null,
+          checkedAt: Date.now()
+        }
+        if (interactive) {
+          const latNote = typeof res.latencyMs === 'number' ? ` (${res.latencyMs}ms)` : ''
+          showToast('Ping Model LLM Berhasil', `${target.model} merespons normal${latNote} — bukan RTO.`, 'success', '⚡', 4500)
+        }
+      } else {
+        const errText = res?.error || 'Model tidak merespons'
+        const isRto = Boolean(res?.rto || /rto|timed?\s*out|timeout/i.test(errText))
+        llmPingState = {
+          key,
+          status: 'failed',
+          ok: false,
+          rto: isRto,
+          latencyMs: typeof res?.latencyMs === 'number' ? res.latencyMs : null,
+          error: errText,
+          checkedAt: Date.now()
+        }
+        if (interactive) {
+          showToast(isRto ? 'Ping Model LLM RTO (Timeout)' : 'Ping Model LLM Gagal', errText, 'error', '❌', 6000)
+        }
+      }
+    } catch (err) {
+      const errText = err?.message || String(err)
+      const isRto = /rto|timed?\s*out|timeout/i.test(errText)
+      llmPingState = {
+        key,
+        status: 'failed',
+        ok: false,
+        rto: isRto,
+        latencyMs: null,
+        error: errText,
+        checkedAt: Date.now()
+      }
+      if (interactive) {
+        showToast(isRto ? 'Ping Model LLM RTO (Timeout)' : 'Ping Model LLM Gagal', errText, 'error', '❌', 6000)
+      }
+    }
+
+    await refreshServiceStatus({ skipAutoPing: true })
+    return llmPingState
+  }
+
+  const p = runPing().finally(() => {
+    if (activePingPromise === p) activePingPromise = null
+  })
+  activePingPromise = p
+  return p
+}
 
 async function checkActiveLlmModel() {
   try {
     if (window.hermesAvatar?.getCurrentModel) {
       const res = await window.hermesAvatar.getCurrentModel()
       if (res && res.ok && res.model) {
-        cachedLlmModelInfo = { ok: true, model: res.model, provider: res.provider || 'default' }
+        cachedLlmModelInfo = {
+          ok: true,
+          model: res.model,
+          provider: res.provider || 'default',
+          baseUrl: res.baseUrl || '',
+          authType: res.authType || '',
+          usesRouter: !!res.usesRouter
+        }
         return cachedLlmModelInfo
       }
     }
@@ -473,45 +704,63 @@ async function checkActiveLlmModel() {
     if (res && res.ok && res.result) {
       const model = (res.result.model || '').trim()
       const provider = (res.result.provider || '').trim()
+      const baseUrl = (res.result.base_url || '').trim()
       if (model && model !== '—' && model !== 'none' && model !== 'Tidak ada model') {
-        cachedLlmModelInfo = { ok: true, model, provider: provider || 'default' }
+        cachedLlmModelInfo = {
+          ok: true,
+          model,
+          provider: provider || 'default',
+          baseUrl,
+          authType: isLocal9RouterUrl(baseUrl) ? '9router' : '',
+          usesRouter: isLocal9RouterUrl(baseUrl)
+        }
         return cachedLlmModelInfo
       }
     }
   } catch (err) {
     console.warn('[checkActiveLlmModel] check error:', err)
   }
-  cachedLlmModelInfo = { ok: false, model: null, provider: null }
+  cachedLlmModelInfo = { ok: false, model: null, provider: null, baseUrl: '', authType: '', usesRouter: false }
   return cachedLlmModelInfo
 }
 
 prereqAutoBtn?.addEventListener('click', async () => {
   prereqAutoBtn.disabled = true
-  prereqAutoBtn.textContent = '⏳ Menyiapkan…'
+  prereqAutoBtn.textContent = 'Menyiapkan…'
   showToast('Menyiapkan Layanan Otomatis...', 'Menjalankan Hermes & Kokoro...', 'running', '⚡')
   try {
     let hermesRes = await window.hermesAvatar.startHermesServer()
     if (!hermesRes?.ok && !hermesRes?.already && typeof window.hermesAvatar?.installPackage === 'function') {
-      prereqAutoBtn.textContent = '📦 Memasang Hermes…'
+      prereqAutoBtn.textContent = 'Memasang Hermes…'
       showToast('Hermes Belum Terpasang', 'Memasang Hermes Agent otomatis di latar belakang...', 'running', '📦', 10000)
       await window.hermesAvatar.installPackage('hermes')
       await loadDetectedPathsOnce(true)
     }
     await window.hermesAvatar.startKokoroServer()
     await new Promise(r => setTimeout(r, 1200))
-    await refreshServiceStatus()
+    await refreshServiceStatus({ skipAutoPing: true })
 
     const active = (settings.characters || []).find((c) => c.active)
     const s = await window.hermesAvatar.getServiceStatus()
     const llmInfo = await checkActiveLlmModel()
+    const llmTarget = resolveActiveLlmTarget(llmInfo)
+    const targetKey = buildLlmTargetKey(llmTarget)
+    if (llmInfo.ok && llmTarget.baseUrl && (!llmTarget.usesRouter || s.router)) {
+      await verifyActiveLlmPing({ interactive: false, force: true })
+    }
+    const isRouterBlocking = Boolean(llmTarget.usesRouter && !s.router)
+    const isPingFailed = llmPingState.key === targetKey && llmPingState.status === 'failed'
+    const isLlmConnOk = Boolean(llmInfo.ok && !isRouterBlocking && !isPingFailed)
 
-    if (s.hermes && active && llmInfo.ok) {
+    if (s.hermes && active && llmInfo.ok && isLlmConnOk) {
       if (prereqModal) prereqModal.hidden = true
-      showToast('Prasyarat Siap! 🚀', 'Memulai avatar ke desktop...', 'success', '✨')
+      showToast('Prasyarat Siap', 'Memulai avatar ke desktop...', 'success', '✨')
       await launchAvatarDirect(active.path)
     } else {
       if (!llmInfo.ok) {
-        showToast('Model LLM Belum Dipilih 🤖', 'Harap klik "Pilih Model LLM 🤖" untuk memilih model AI sebelum memulai.', 'error', '⚠️', 6000)
+        showToast('Model LLM Belum Dipilih', 'Harap klik "Pilih Model LLM" untuk memilih model AI sebelum memulai.', 'error', '⚠️', 6000)
+      } else if (isPingFailed) {
+        showToast(llmPingState.rto ? 'Ping Model LLM RTO' : 'Ping Model LLM Gagal', llmPingState.error || 'Model tidak merespons saat diuji ping.', 'error', '❌', 6000)
       } else {
         showToast('Layanan Masih Perlu Penyiapan', 'Buka menu Package Hub untuk instalasi paket', 'info', 'ℹ️')
       }
@@ -521,7 +770,7 @@ prereqAutoBtn?.addEventListener('click', async () => {
     showToast('Gagal Menyiapkan', err.message, 'error', '❌')
   } finally {
     prereqAutoBtn.disabled = false
-    prereqAutoBtn.textContent = '⚡ Nyalakan Otomatis'
+    prereqAutoBtn.innerHTML = `<span class="btn-svg-icon">${renderIcon('zap', { size: 13 })}</span> Nyalakan Otomatis`
   }
 })
 
@@ -529,7 +778,7 @@ prereqForceBtn?.addEventListener('click', async () => {
   if (prereqModal) prereqModal.hidden = true
   const active = (settings.characters || []).find((c) => c.active)
   if (active) {
-    showToast('Memulai Mode Tampilan Saja 🎮', 'Avatar tampil di desktop tanpa koneksi AI', 'info', '🎮')
+    showToast('Memulai Mode Tampilan Saja', 'Avatar tampil di desktop tanpa koneksi AI', 'info', '🎮')
     await launchAvatarDirect(active.path)
   }
 })
@@ -537,66 +786,95 @@ prereqForceBtn?.addEventListener('click', async () => {
 function renderPrereqModalItems(s, active, llmInfo = null) {
   if (!prereqModalList) return
   const currentLlm = llmInfo || cachedLlmModelInfo || { ok: false }
+  const target = resolveActiveLlmTarget(currentLlm)
+  const targetKey = buildLlmTargetKey(target)
+  const sameKey = Boolean(targetKey && llmPingState.key === targetKey)
   const isCharOk = !!active
   const isHermesOk = !!s.hermes
   const isLlmOk = !!currentLlm.ok
-  const isRouterOk = !!s.router
+  const isRouterBlocking = Boolean(target.usesRouter && !s.router)
+  const isPingFailed = sameKey && llmPingState.status === 'failed'
+  const isLlmConnOk = Boolean(isLlmOk && !isRouterBlocking && !isPingFailed)
   const isTtsOk = !!(s.kokoro || settings.tts?.provider === 'edge')
+
+  let connDesc = 'OAuth Resmi atau 9Router (opsional) tersedia setelah model LLM dipilih'
+  let connPillText = 'Menunggu Model'
+  let connPillCls = 'warning'
+
+  if (isLlmOk) {
+    if (isRouterBlocking) {
+      connDesc = 'Model aktif memakai 9Router (:20128), tetapi layanan 9Router belum aktif'
+      connPillText = '9Router Mati'
+      connPillCls = 'missing'
+    } else if (isPingFailed) {
+      connDesc = `${target.routeLabel} — ${llmPingState.error || 'Ping model gagal / RTO'}`
+      connPillText = llmPingState.rto ? 'RTO (Timeout)' : 'Ping Gagal'
+      connPillCls = 'missing'
+    } else if (sameKey && llmPingState.status === 'ok') {
+      connDesc = `${target.routeLabel} · Ping berhasil (${llmPingState.latencyMs ?? 0}ms, tidak RTO)`
+      connPillText = `Ping OK (${llmPingState.latencyMs ?? 0}ms)`
+      connPillCls = 'ready'
+    } else {
+      connDesc = `${target.routeLabel} · 9Router ${s.router ? 'Aktif' : 'tidak wajib saat pakai OAuth'}`
+      connPillText = target.usesRouter ? 'Aktif (9Router)' : 'Siap (OAuth/Langsung)'
+      connPillCls = 'ready'
+    }
+  }
 
   prereqModalList.innerHTML = `
     <div class="prereq-card">
       <div class="prereq-card-left">
-        <span class="prereq-card-icon">🎭</span>
+        <span class="prereq-card-icon">${renderIcon('user-round', { size: 18 })}</span>
         <div class="prereq-card-texts">
           <span class="prereq-card-title">Model Karakter Visual</span>
           <span class="prereq-card-desc">${isCharOk ? escapeHtml(active.name) : 'Belum ada model aktif terpilih'}</span>
         </div>
       </div>
-      <span class="prereq-pill ${isCharOk ? 'ready' : 'missing'}">${isCharOk ? 'Siap ✅' : 'Belum Dipilih ❌'}</span>
+      <span class="prereq-pill ${isCharOk ? 'ready' : 'missing'}">${isCharOk ? 'Siap' : 'Belum Dipilih'}</span>
     </div>
 
     <div class="prereq-card">
       <div class="prereq-card-left">
-        <span class="prereq-card-icon">🧠</span>
+        <span class="prereq-card-icon">${renderIcon('brain', { size: 18 })}</span>
         <div class="prereq-card-texts">
           <span class="prereq-card-title">Otak AI Hermes (Port 9119)</span>
           <span class="prereq-card-desc">Layanan utama berpikir, memori & tools</span>
         </div>
       </div>
-      <span class="prereq-pill ${isHermesOk ? 'ready' : 'missing'}">${isHermesOk ? 'Aktif ✅' : 'Belum Aktif ⚠️'}</span>
+      <span class="prereq-pill ${isHermesOk ? 'ready' : 'missing'}">${isHermesOk ? 'Aktif' : 'Belum Aktif'}</span>
     </div>
 
     <div class="prereq-card">
       <div class="prereq-card-left">
-        <span class="prereq-card-icon">🤖</span>
+        <span class="prereq-card-icon">${renderIcon('bot', { size: 18 })}</span>
         <div class="prereq-card-texts">
           <span class="prereq-card-title">Model AI / LLM (Otak Percakapan)</span>
           <span class="prereq-card-desc">${isLlmOk ? `${escapeHtml(currentLlm.model)} ${currentLlm.provider ? `(${escapeHtml(currentLlm.provider)})` : ''}` : 'Belum ada model AI dipilih! Wajib diatur agar avatar bisa menjawab.'}</span>
         </div>
       </div>
-      <span class="prereq-pill ${isLlmOk ? 'ready' : 'missing'}">${isLlmOk ? 'Siap ✅' : 'Belum Dipilih ❌'}</span>
+      <span class="prereq-pill ${isLlmOk ? 'ready' : 'missing'}">${isLlmOk ? 'Siap' : 'Belum Dipilih'}</span>
     </div>
 
     <div class="prereq-card">
       <div class="prereq-card-left">
-        <span class="prereq-card-icon">🌐</span>
+        <span class="prereq-card-icon">${renderIcon('globe', { size: 18 })}</span>
         <div class="prereq-card-texts">
-          <span class="prereq-card-title">Proxy Model 9Router (Port 20128)</span>
-          <span class="prereq-card-desc">Proxy LLM multi-model lokal</span>
+          <span class="prereq-card-title">Jalur Koneksi &amp; Ping LLM (OAuth / 9Router Opsional)</span>
+          <span class="prereq-card-desc">${escapeHtml(connDesc)}</span>
         </div>
       </div>
-      <span class="prereq-pill ${isRouterOk ? 'ready' : 'warning'}">${isRouterOk ? 'Aktif ✅' : 'Offline (Opsional)'}</span>
+      <span class="prereq-pill ${isLlmConnOk ? 'ready' : connPillCls}">${escapeHtml(connPillText)}</span>
     </div>
 
     <div class="prereq-card">
       <div class="prereq-card-left">
-        <span class="prereq-card-icon">🔊</span>
+        <span class="prereq-card-icon">${renderIcon('volume-2', { size: 18 })}</span>
         <div class="prereq-card-texts">
           <span class="prereq-card-title">Mesin Suara Avatar (TTS)</span>
           <span class="prereq-card-desc">${settings.tts?.provider === 'kokoro' ? 'Kokoro-TTS Lokal (:8880)' : 'Edge-TTS Cloud Online'}</span>
         </div>
       </div>
-      <span class="prereq-pill ${isTtsOk ? 'ready' : 'warning'}">${isTtsOk ? 'Siap ✅' : 'Belum Siap ⚠️'}</span>
+      <span class="prereq-pill ${isTtsOk ? 'ready' : 'warning'}">${isTtsOk ? 'Siap' : 'Belum Siap'}</span>
     </div>
   `
 }
@@ -641,10 +919,10 @@ function updatePackageQuickButtons(s = lastServiceStatus, dp = lastDetectedPaths
       btn.classList.add('ready')
     } else if (installed) {
       btn.classList.remove('ready')
-      btn.textContent = '⚡ Nyalakan 1-Klik'
+      btn.innerHTML = `<span class="btn-svg-icon">${renderIcon('zap', { size: 12 })}</span> Nyalakan 1-Klik`
     } else {
       btn.classList.remove('ready')
-      btn.textContent = '⚡ Install 1-Klik'
+      btn.innerHTML = `<span class="btn-svg-icon">${renderIcon('zap', { size: 12 })}</span> Install 1-Klik`
     }
   })
 }
@@ -673,11 +951,11 @@ function renderInstallChecklist(queueState) {
   pkgInstallChecklist.hidden = false
   pkgInstallChecklist.innerHTML = ''
 
-  const icons = {
-    pending: '⏸️',
-    running: '⏳',
-    done: '✅',
-    failed: '❌'
+  const iconNames = {
+    pending: 'clock',
+    running: 'refresh-cw',
+    done: 'check-circle',
+    failed: 'circle-alert'
   }
 
   for (const item of items) {
@@ -689,7 +967,7 @@ function renderInstallChecklist(queueState) {
 
     const iconEl = document.createElement('span')
     iconEl.className = 'pkg-checklist-icon'
-    iconEl.textContent = icons[item.status] || '⏸️'
+    iconEl.innerHTML = renderIcon(iconNames[item.status] || 'clock', { size: 15 })
 
     const infoEl = document.createElement('div')
     infoEl.className = 'pkg-checklist-info'
@@ -720,7 +998,7 @@ function renderInstallChecklist(queueState) {
       const retryBtn = document.createElement('button')
       retryBtn.type = 'button'
       retryBtn.className = 'mini-btn browse'
-      retryBtn.textContent = '🔄 Coba Lagi'
+      retryBtn.innerHTML = `<span class="btn-svg-icon">${renderIcon('refresh-cw', { size: 12 })}</span> Coba Lagi`
       retryBtn.addEventListener('click', (e) => {
         e.stopPropagation()
         runOneClickPackageInstall(item.id, retryBtn)
@@ -777,7 +1055,7 @@ function initPackageInstallProgressSync() {
     const targetLogId = info.subPkg || (info.pkgId !== 'all' && info.pkgId !== 'resume' ? info.pkgId : null)
     if (targetLogId) {
       const inlineLog = document.getElementById(`pkg-inline-log-${targetLogId}`)
-      if (inlineLog) inlineLog.textContent = `⏳ [${pct}%] ${msg}`
+      if (inlineLog) inlineLog.textContent = `[${pct}%] ${msg}`
     }
 
     if (info.queue) {
@@ -806,10 +1084,10 @@ async function runOneClickPackageInstall(pkgId, triggerBtn = null) {
 
   const origLabels = new Map()
   for (const b of relatedBtns) {
-    origLabels.set(b, b.textContent)
+    origLabels.set(b, b.innerHTML)
     b.disabled = true
     b.dataset.installing = '1'
-    b.textContent = '⏳ Memasang…'
+    b.textContent = 'Memasang…'
   }
 
   const labels = {
@@ -829,7 +1107,7 @@ async function runOneClickPackageInstall(pkgId, triggerBtn = null) {
   if (pkgGlobalProgressBar) pkgGlobalProgressBar.style.width = '3%'
   if (!isBatch) {
     const inlineLog = document.getElementById(`pkg-inline-log-${id}`)
-    if (inlineLog) inlineLog.textContent = `⏳ [3%] Menyiapkan ${pkgTitle} di latar belakang...`
+    if (inlineLog) inlineLog.textContent = `[3%] Menyiapkan ${pkgTitle} di latar belakang...`
   }
 
   showToast(`Menyiapkan ${pkgTitle}...`, 'Proses berjalan senyap di latar belakang (bisa ditinggal).', 'running', '📦', 8000)
@@ -848,33 +1126,33 @@ async function runOneClickPackageInstall(pkgId, triggerBtn = null) {
     if (res?.ok) {
       if (pkgGlobalProgressPct) pkgGlobalProgressPct.textContent = '100%'
       if (pkgGlobalProgressBar) pkgGlobalProgressBar.style.width = '100%'
-      if (pkgGlobalProgressText) pkgGlobalProgressText.textContent = `✅ ${pkgTitle} selesai dipasang dan siap digunakan!`
-      if (inlineEl) inlineEl.textContent = `✅ ${pkgTitle} berhasil disiapkan & siap digunakan.`
-      showToast(`${pkgTitle} Siap! ✅`, 'Instalasi & aktivasi latar belakang berhasil diselesaikan.', 'success', '🎉', 5000)
+      if (pkgGlobalProgressText) pkgGlobalProgressText.textContent = `${pkgTitle} selesai dipasang dan siap digunakan.`
+      if (inlineEl) inlineEl.textContent = `${pkgTitle} berhasil disiapkan & siap digunakan.`
+      showToast(`${pkgTitle} Siap`, 'Instalasi & aktivasi latar belakang berhasil diselesaikan.', 'success', '🎉', 5000)
     } else {
       const errText = res?.error || 'Sebagian paket gagal. Klik "Lanjutkan (Continue)" untuk mencoba kembali bagian yang gagal.'
-      if (pkgGlobalProgressText) pkgGlobalProgressText.textContent = `⚠️ ${errText}`
-      if (inlineEl) inlineEl.textContent = `❌ ${errText}`
-      showToast(`Pemasangan ${pkgTitle} Perlu Perhatian ⚠️`, errText, 'error', '❌', 7000)
+      if (pkgGlobalProgressText) pkgGlobalProgressText.textContent = errText
+      if (inlineEl) inlineEl.textContent = errText
+      showToast(`Pemasangan ${pkgTitle} Perlu Perhatian`, errText, 'error', '❌', 7000)
     }
   } catch (err) {
     const errMsg = err?.message || String(err)
     const inlineEl = !isBatch ? document.getElementById(`pkg-inline-log-${id}`) : null
-    if (inlineEl) inlineEl.textContent = `❌ Error: ${errMsg}`
+    if (inlineEl) inlineEl.textContent = `Error: ${errMsg}`
     showToast(`Error Pemasangan ${pkgTitle}`, errMsg, 'error', '❌', 7000)
   } finally {
     activeOneClickInstalls.delete(id)
     for (const b of relatedBtns) {
       delete b.dataset.installing
       b.disabled = false
-      b.textContent = origLabels.get(b) || '⚡ Install 1-Klik'
+      b.innerHTML = origLabels.get(b) || `<span class="btn-svg-icon">${renderIcon('zap', { size: 12 })}</span> Install 1-Klik`
     }
     updatePackageQuickButtons()
   }
 }
 
 // Status service (9Router, Hermes, Kokoro, Bridge) — murni cek port via TCP non-blocking (<0.1ms, 0% CPU)
-async function refreshServiceStatus() {
+async function refreshServiceStatus({ skipAutoPing = false } = {}) {
   try {
     const s = await window.hermesAvatar.getServiceStatus()
     setBadge(hermesStatus, s.hermes, 'Aktif', 'Mati')
@@ -885,7 +1163,7 @@ async function refreshServiceStatus() {
     if (pkgStatusCompanion) setBadge(pkgStatusCompanion, s.companion, 'Bridge Aktif (Port 9124)', 'Siap Digunakan')
 
     if (pkgBridgeStatusText) {
-      pkgBridgeStatusText.textContent = s.companion ? 'Aktif di 127.0.0.1:9124 ✅' : 'Port 9124 (Menunggu Permintaan)'
+      pkgBridgeStatusText.textContent = s.companion ? 'Aktif di 127.0.0.1:9124' : 'Port 9124 (Menunggu Permintaan)'
       pkgBridgeStatusText.style.color = s.companion ? '#7ee787' : '#8b949e'
     }
 
@@ -895,24 +1173,35 @@ async function refreshServiceStatus() {
       llmInfo = await checkActiveLlmModel()
     }
 
-    // Update Kartu Prasyarat di Home (5 item lengkap)
+    // Update Kartu Prasyarat di Home (5 item lengkap: OAuth / 9Router opsional + ping model LLM)
     const active = (settings.characters || []).find((c) => c.active)
     const isCharOk = !!active
     const isHermesOk = !!s.hermes
     const isLlmOk = !!llmInfo.ok
-    const isRouterOk = !!s.router
+    const llmTarget = resolveActiveLlmTarget(llmInfo)
+    const targetKey = buildLlmTargetKey(llmTarget)
+    const hasSameKeyPing = Boolean(targetKey && llmPingState.key === targetKey)
+    const isRouterBlocking = Boolean(llmTarget.usesRouter && !s.router)
+    const isPingFailed = hasSameKeyPing && llmPingState.status === 'failed'
+    const isLlmConnectionOk = Boolean(isLlmOk && !isRouterBlocking && !isPingFailed)
     const isTtsOk = !!(s.kokoro || settings.tts?.provider === 'edge')
+
+    if (!skipAutoPing && isLlmOk && !isRouterBlocking && llmTarget.baseUrl && (!hasSameKeyPing || llmPingState.status === 'idle')) {
+      verifyActiveLlmPing({ interactive: false, force: false })
+    }
+
+    updateHomeLlmRouteUi(s, llmInfo, llmPingState)
 
     let readyCount = 0
     if (isCharOk) readyCount++
     if (isHermesOk) readyCount++
     if (isLlmOk) readyCount++
-    if (isRouterOk) readyCount++
+    if (isLlmConnectionOk) readyCount++
     if (isTtsOk) readyCount++
 
     if (homePrereqBadge) {
       if (readyCount === 5) {
-        homePrereqBadge.textContent = '5/5 Siap Memulai ✅'
+        homePrereqBadge.textContent = '5/5 Siap Memulai'
         homePrereqBadge.className = 'badge ready'
       } else {
         homePrereqBadge.textContent = `${readyCount}/5 Prasyarat Terpenuhi`
@@ -932,13 +1221,13 @@ async function refreshServiceStatus() {
       if (settings.tts?.provider === 'kokoro') {
         setBadge(homeTtsStatus, s.kokoro, 'Aktif (Kokoro :8880)', 'Belum Aktif (:8880)')
       } else {
-        homeTtsStatus.textContent = 'Aktif (Edge Cloud) ✅'
+        homeTtsStatus.textContent = 'Aktif (Edge Cloud)'
         homeTtsStatus.className = 'badge ready'
       }
     }
 
-    // Tampilkan alert banner di Home bila ada service inti yang belum jalan
-    const needRouter = !!settings.routerChecked
+    // Tampilkan alert banner di Home bila ada service inti (Hermes, TTS, atau 9Router bila sedang dipakai model aktif) yang belum jalan
+    const needRouter = Boolean(llmTarget.usesRouter)
     const allReady = s.hermes && (!needRouter || s.router) && isTtsOk
     if (homeSetupAlert) {
       homeSetupAlert.classList.toggle('hidden', allReady)
@@ -946,10 +1235,10 @@ async function refreshServiceStatus() {
 
     if (packageOverallStatus) {
       if (allReady) {
-        packageOverallStatus.textContent = '✅ Semua Paket Siap Digunakan'
+        packageOverallStatus.textContent = 'Semua Paket Siap Digunakan'
         packageOverallStatus.className = 'overall-badge ready'
       } else {
-        packageOverallStatus.textContent = '⚠️ Persiapan Diperlukan (Ada modul belum aktif)'
+        packageOverallStatus.textContent = 'Persiapan Diperlukan (Ada modul belum aktif)'
         packageOverallStatus.className = 'overall-badge attention'
       }
     }
@@ -999,7 +1288,7 @@ async function loadDetectedPathsOnce(force = false) {
     if (pkgPythonSourceBadge) {
       pkgPythonSourceBadge.textContent = dp.python?.ok
         ? (dp.python.source || 'Terdeteksi')
-        : 'Belum Terpasang ❌'
+        : 'Belum Terpasang'
       pkgPythonSourceBadge.className = `badge ${dp.python?.ok ? (dp.python.isCustom ? 'info' : 'ready') : 'warning'}`
     }
     if (pkgPythonResetBtn) {
@@ -1010,12 +1299,12 @@ async function loadDetectedPathsOnce(force = false) {
     if (pkgHermesLocation) {
       pkgHermesLocation.textContent = dp.hermes?.ok
         ? dp.hermes.cmd
-        : 'Belum terpasang. Klik tombol ⚡ Install 1-Klik untuk pemasangan otomatis.'
+        : 'Belum terpasang. Klik tombol Install 1-Klik untuk pemasangan otomatis.'
     }
     if (pkgHermesSourceBadge) {
       pkgHermesSourceBadge.textContent = dp.hermes?.ok
         ? (dp.hermes.source || 'Terdeteksi')
-        : 'Belum Terpasang ❌'
+        : 'Belum Terpasang'
       pkgHermesSourceBadge.className = `badge ${dp.hermes?.ok ? (dp.hermes.isCustom ? 'info' : 'ready') : 'warning'}`
     }
     if (pkgHermesStartBtn) {
@@ -1029,12 +1318,12 @@ async function loadDetectedPathsOnce(force = false) {
     if (pkgRouterLocation) {
       pkgRouterLocation.textContent = dp.router?.ok
         ? dp.router.cmd
-        : 'Belum terpasang. Klik tombol ⚡ Install 1-Klik untuk pemasangan otomatis.'
+        : 'Belum terpasang. Klik tombol Install 1-Klik untuk pemasangan otomatis.'
     }
     if (pkgRouterSourceBadge) {
       pkgRouterSourceBadge.textContent = dp.router?.ok
         ? (dp.router.source || 'Terdeteksi')
-        : 'Belum Terpasang ❌'
+        : 'Belum Terpasang'
       pkgRouterSourceBadge.className = `badge ${dp.router?.ok ? (dp.router.isCustom ? 'info' : 'ready') : 'warning'}`
     }
     if (pkgRouterStartBtn) {
@@ -1047,16 +1336,16 @@ async function loadDetectedPathsOnce(force = false) {
     // 5. Kokoro Model & Pip Status
     if (pkgKokoroPipStatus) {
       if (dp.kokoroInstalled) {
-        pkgKokoroPipStatus.textContent = 'Terpasang ✅'
+        pkgKokoroPipStatus.textContent = 'Terpasang'
         pkgKokoroPipStatus.style.color = '#7ee787'
       } else {
-        pkgKokoroPipStatus.textContent = 'Belum Terpasang ❌'
+        pkgKokoroPipStatus.textContent = 'Belum Terpasang'
         pkgKokoroPipStatus.style.color = '#ff7b72'
       }
     }
     if (pkgKokoroModelStatus) {
       if (dp.kokoro?.modelReady) {
-        pkgKokoroModelStatus.textContent = dp.kokoro.sizeMb ? `Siap di Disk (${dp.kokoro.sizeMb} MB) ✅` : 'Siap di Disk ✅'
+        pkgKokoroModelStatus.textContent = dp.kokoro.sizeMb ? `Siap di Disk (${dp.kokoro.sizeMb} MB)` : 'Siap di Disk'
         pkgKokoroModelStatus.style.color = '#7ee787'
       } else {
         pkgKokoroModelStatus.textContent = 'Belum Diunduh (Otomatis saat start)'
@@ -1069,7 +1358,7 @@ async function loadDetectedPathsOnce(force = false) {
     if (pkgKokoroSourceBadge) {
       pkgKokoroSourceBadge.textContent = dp.kokoro?.modelReady
         ? (dp.kokoro.source || 'Siap')
-        : 'Belum Siap ⚠️'
+        : 'Belum Siap'
       pkgKokoroSourceBadge.className = `badge ${dp.kokoro?.modelReady ? (dp.kokoro.isCustom ? 'info' : 'ready') : 'warning'}`
     }
     if (pkgKokoroResetBtn) {
@@ -1151,12 +1440,12 @@ function bindPackageActions() {
         if (typeof window.hermesAvatar?.runInTerminal === 'function') {
           const res = await window.hermesAvatar.runInTerminal(cmd)
           if (!res?.ok) {
-            showToast('Gagal Membuka Terminal ❌', res?.error || 'Unknown error', 'error', '❌')
+            showToast('Gagal Membuka Terminal', res?.error || 'Unknown error', 'error', '❌')
             return
           }
         } else {
           await navigator.clipboard.writeText(cmd)
-          showToast('Perintah Tersalin! 📋', 'Tempel di PowerShell: ' + cmd, 'success', '📋')
+          showToast('Perintah Tersalin', 'Tempel di PowerShell: ' + cmd, 'success', '📋')
         }
 
         // Jika perintah menjalankan server Kokoro, auto-polling sampai port 8880 aktif
@@ -1168,7 +1457,7 @@ function bindPackageActions() {
             if (check?.kokoro) {
               clearInterval(pollTimer)
               refreshServiceStatus()
-              showToast('Server Kokoro Terdeteksi Aktif! 🟢', 'Port 8880 berhasil terhubung dari terminal', 'success', '🎉', 4500)
+              showToast('Server Kokoro Terdeteksi Aktif', 'Port 8880 berhasil terhubung dari terminal', 'success', '🎉', 4500)
             } else if (attempts >= 10) {
               clearInterval(pollTimer)
               refreshServiceStatus()
@@ -1189,12 +1478,12 @@ function bindPackageActions() {
       if (!cmd) return
       try {
         await navigator.clipboard.writeText(cmd)
-        showToast('Perintah Tersalin! 📋', cmd, 'success', '✅')
-        const origText = btn.textContent
-        btn.textContent = 'Tersalin! ✅'
+        showToast('Perintah Tersalin', cmd, 'success', '✅')
+        const origHtml = btn.innerHTML
+        btn.innerHTML = `<span class="btn-svg-icon">${renderIcon('check', { size: 12 })}</span> Tersalin`
         btn.classList.add('primary')
         setTimeout(() => {
-          btn.textContent = origText
+          btn.innerHTML = origHtml
           btn.classList.remove('primary')
         }, 1800)
       } catch {
@@ -1208,7 +1497,7 @@ function bindPackageActions() {
     showToast('Memindai Drive (C:, D:)...', 'Mencari direktori & binary Hermes, Python, 9Router...', 'info', '🔍', 4000)
     await loadDetectedPathsOnce(true)
     await refreshServiceStatus()
-    showToast('Pemeriksaan Selesai! 🎯', 'Status lokasi binary dan prasyarat berhasil diperbarui', 'success', '✅')
+    showToast('Pemeriksaan Selesai', 'Status lokasi binary dan prasyarat berhasil diperbarui', 'success', '✅')
   })
 
   // 5b. Tombol Kontrol Jalur Kustom & Start Senyap (Hermes, 9Router, Kokoro, Python)
@@ -1218,7 +1507,7 @@ function bindPackageActions() {
     try {
       const res = await window.hermesAvatar?.startHermesServer?.()
       if (res?.ok || res?.already) {
-        showToast('Hermes Aktif! 🟢', 'Port 9119 online dan siap melayani AI', 'success', '⚡', 4500)
+        showToast('Hermes Aktif', 'Port 9119 online dan siap melayani AI', 'success', '⚡', 4500)
       } else {
         showToast('Gagal Menyalakan Hermes', res?.error || 'Port 9119 tidak aktif', 'error', '❌', 6000)
       }
@@ -1270,7 +1559,7 @@ function bindPackageActions() {
     try {
       const res = await window.hermesAvatar?.startRouter?.()
       if (res?.ok) {
-        showToast('9Router Aktif! 🟢', 'Port 20128 online dan siap melayani permintaan model', 'success', '⚡', 4500)
+        showToast('9Router Aktif', 'Port 20128 online dan siap melayani permintaan model', 'success', '⚡', 4500)
       } else {
         showToast('Gagal Menyalakan 9Router', res?.error || 'Port 20128 tidak aktif', 'error', '❌', 6000)
       }
@@ -1321,7 +1610,7 @@ function bindPackageActions() {
     pkgStartKokoroBtn.addEventListener('click', async () => {
       pkgStartKokoroBtn.disabled = true
       showToast('Menjalankan Server Kokoro...', 'Sedang menginisialisasi server ONNX (port 8880)...', 'running', '🎙️', 9000)
-      if (pkgKokoroLog) pkgKokoroLog.innerHTML = '⏳ Memulai server Kokoro (<code>scripts/kokoro_server.py</code>)... Menunggu port 8880 aktif...'
+      if (pkgKokoroLog) pkgKokoroLog.innerHTML = 'Memulai server Kokoro (<code>scripts/kokoro_server.py</code>)... Menunggu port 8880 aktif...'
       try {
         const res = await window.hermesAvatar.startKokoroServer()
         // Periksa status aktual secara teliti
@@ -1330,15 +1619,15 @@ function bindPackageActions() {
         const isPortActive = !!(check?.kokoro || res?.ok)
 
         if (res?.ok && isPortActive) {
-          if (pkgKokoroLog) pkgKokoroLog.innerHTML = '✅ Server Kokoro berhasil aktif di port <code>8880</code> (<code>http://127.0.0.1:8880</code>).'
-          showToast('Server Kokoro Aktif! 🟢', 'Port 8880 berhasil terhubung dan siap digunakan', 'success', '🎙️', 4500)
+          if (pkgKokoroLog) pkgKokoroLog.innerHTML = 'Server Kokoro berhasil aktif di port <code>8880</code> (<code>http://127.0.0.1:8880</code>).'
+          showToast('Server Kokoro Aktif', 'Port 8880 berhasil terhubung dan siap digunakan', 'success', '🎙️', 4500)
         } else {
           const errMsg = res?.error || 'Port 8880 belum aktif setelah dimulai. Periksa apakah dependensi python kokoro-onnx sudah terpasang.'
-          if (pkgKokoroLog) pkgKokoroLog.innerHTML = `❌ Gagal: ${escapeHtml(errMsg)}.<br>👉 Anda juga dapat menggunakan tombol: <strong>"⚡ Buka Terminal & Jalankan Server"</strong>.`
-          showToast('Server Belum Aktif ❌', errMsg, 'error', '❌', 6000)
+          if (pkgKokoroLog) pkgKokoroLog.innerHTML = `Gagal: ${escapeHtml(errMsg)}.<br>Anda juga dapat menggunakan tombol: <strong>"Buka Terminal &amp; Jalankan Server"</strong>.`
+          showToast('Server Belum Aktif', errMsg, 'error', '❌', 6000)
         }
       } catch (err) {
-        if (pkgKokoroLog) pkgKokoroLog.innerHTML = `❌ Error: ${escapeHtml(err.message)}`
+        if (pkgKokoroLog) pkgKokoroLog.innerHTML = `Error: ${escapeHtml(err.message)}`
         showToast('Error Server', err.message, 'error', '❌')
       } finally {
         pkgStartKokoroBtn.disabled = false
@@ -1359,7 +1648,7 @@ function bindPackageActions() {
           if (pkgKokoroLog) {
             pkgKokoroLog.innerHTML = '✅ Sukses terpasang! Sekarang Anda bisa klik <strong>"Jalankan Server Kokoro"</strong>.'
           }
-          showToast('Dependensi Berhasil Terpasang! ✅', 'kokoro-onnx & soundfile siap', 'success', '🎉')
+          showToast('Dependensi Berhasil Terpasang', 'kokoro-onnx & soundfile siap', 'success', '🎉')
           await loadDetectedPathsOnce(true)
           refreshServiceStatus()
         } else {
@@ -1388,7 +1677,7 @@ function bindPackageActions() {
         }
         const res = await window.hermesAvatar.openPackageFolder('kokoro')
         if (res.ok) {
-          showToast('Membuka Folder Paket 📁', res.path, 'info', '📂')
+          showToast('Membuka Folder Paket', res.path, 'info', '📂')
           if (pkgKokoroLog) {
             pkgKokoroLog.innerHTML = `📂 Folder paket dibuka: <code>${escapeHtml(res.path)}</code><br><span style="font-size:11px; color:var(--text-secondary);">💡 Model suara (<code>kokoro-v1.0.onnx</code> ~340MB) akan otomatis diunduh ke folder ini saat server pertama kali dijalankan.</span>`
           }
@@ -1411,7 +1700,7 @@ function bindPackageActions() {
       try {
         const res = await window.hermesAvatar.cleanPackage('kokoro')
         if (res.ok) {
-          showToast('Cache Berhasil Dibersihkan! 🗑️', 'Ruang disk berhasil dihemat', 'success', '✅')
+          showToast('Cache Berhasil Dibersihkan', 'Ruang disk berhasil dihemat', 'success', '✅')
           if (pkgKokoroLog) pkgKokoroLog.innerHTML = '🗑️ File model dan cache berhasil dibersihkan dari disk.'
           await loadDetectedPathsOnce(true)
           refreshServiceStatus()
@@ -1438,7 +1727,7 @@ function bindPackageActions() {
       try {
         const res = await window.hermesAvatar.uninstallKokoroDeps()
         if (res.ok) {
-          showToast('Dependensi Dicopot! ✅', 'Modul python telah dihapus', 'success', '✅')
+          showToast('Dependensi Dicopot', 'Modul python telah dihapus', 'success', '✅')
           if (pkgKokoroLog) pkgKokoroLog.innerHTML = '✅ Modul Python berhasil dicopot.'
           await loadDetectedPathsOnce(true)
           refreshServiceStatus()
@@ -1463,7 +1752,7 @@ function bindPackageActions() {
           await navigator.clipboard.writeText(res.path)
         } catch {}
         showToast(
-          'Folder Siap & Path Tersalin! ⚡',
+          'Folder Siap & Path Tersalin',
           'Di Chrome/Edge, aktifkan Developer mode → Load unpacked → Tempel path folder (Ctrl+V)',
           'success',
           '🌐',
@@ -1487,7 +1776,7 @@ function bindPackageActions() {
       try {
         const res = await window.hermesAvatar.openPackageFolder('chrome-extension')
         if (res.ok) {
-          showToast('Membuka Folder Ekstensi 📂', res.path, 'info', '📂')
+          showToast('Membuka Folder Ekstensi', res.path, 'info', '📂')
           if (pkgBridgeLog) {
             pkgBridgeLog.innerHTML = `📂 Folder ekstensi dibuka: <code>${escapeHtml(res.path)}</code><br>👉 Di Chrome/Edge, klik <strong>"Load unpacked"</strong> lalu pilih folder <strong>chrome</strong> ini.`
           }
@@ -1507,7 +1796,7 @@ function bindPackageActions() {
         const res = await window.hermesAvatar.openPackageFolder('chrome-extension')
         if (res.ok && res.path) {
           await navigator.clipboard.writeText(res.path)
-          showToast('Path Ekstensi Disalin! 📋', res.path, 'success', '📋')
+          showToast('Path Ekstensi Disalin', res.path, 'success', '📋')
           if (pkgBridgeLog) {
             pkgBridgeLog.innerHTML = `📋 Path folder ekstensi disalin ke clipboard: <code>${escapeHtml(res.path)}</code><br>💡 Di jendela pemilih file Chrome (macOS), tekan <strong>Cmd + Shift + G</strong> lalu paste!`
           }
@@ -1526,7 +1815,7 @@ function bindPackageActions() {
         const res = await fetch('http://127.0.0.1:9124/api/ping', { cache: 'no-store' })
         if (res.ok) {
           const data = await res.json()
-          showToast('Bridge Terhubung Sempurna! ✅', 'Port 9124 siap melayani ekstensi browser', 'success', '🌐')
+          showToast('Bridge Terhubung Sempurna', 'Port 9124 siap melayani ekstensi browser', 'success', '🌐')
           if (pkgBridgeLog) {
             pkgBridgeLog.innerHTML = `✅ <strong>Bridge HTTP Online:</strong> ${escapeHtml(data.app)} (v${escapeHtml(data.version)}) pada port <code>9124</code>.`
           }
@@ -1536,7 +1825,7 @@ function bindPackageActions() {
       } catch (err) {
         showToast('Bridge Belum Merespons', 'Pastikan aplikasi berjalan', 'error', '❌')
         if (pkgBridgeLog) {
-          pkgBridgeLog.innerHTML = `❌ Gagal menghubungi bridge: <code>${escapeHtml(err.message)}</code>`
+          pkgBridgeLog.innerHTML = `Gagal menghubungi bridge: <code>${escapeHtml(err.message)}</code>`
         }
       } finally {
         pkgTestBridgeBtn.disabled = false
@@ -1603,7 +1892,7 @@ function renderFormatList() {
       </div>
       <div class="format-status-col">
         ${count > 0 
-          ? `<span class="format-count-pill on">🟢 ${count} Karakter</span>`
+          ? `<span class="format-count-pill on">${count} Karakter</span>`
           : `<span class="format-count-pill off">0 Karakter</span>`
         }
         <span class="format-arrow">${renderIcon('chevron-right', { size: 16 })}</span>
@@ -1733,7 +2022,7 @@ function openFormatDetail(ext) {
         if (pendingImage) c.image = pendingImage
         saveSettings(settings)
         statusEl.textContent = 'Karakter diperbarui.'
-        showToast('Karakter Diperbarui! ✅', `Perubahan avatar ${name} disimpan`, 'success', '💾')
+        showToast('Karakter Diperbarui', `Perubahan avatar ${name} disimpan`, 'success', '💾')
       }
       editingCharId = null
       pendingImage = null
@@ -1743,7 +2032,7 @@ function openFormatDetail(ext) {
 
     // Mode tambah.
     if (!path) {
-      statusEl.textContent = '⚠️ Pilih file model.'
+      statusEl.textContent = 'Pilih file model.'
       showToast('File Model Belum Dipilih', 'Pilih file model 3D/2D terlebih dahulu', 'error', '⚠️')
       return
     }
@@ -1752,7 +2041,7 @@ function openFormatDetail(ext) {
     const id = Date.now().toString(36)
     settings.characters.push({ id, name: finalName, path, format: ext, image: pendingImage || '', active: false })
     saveSettings(settings)
-    showToast('Karakter Ditambahkan! 🎉', `${finalName} berhasil didaftarkan`, 'success', '✨')
+    showToast('Karakter Ditambahkan', `${finalName} berhasil didaftarkan`, 'success', '✨')
     pendingImage = null
     openFormatDetail(ext) // refresh detail (galeri + reset form)
     statusEl.textContent = 'Karakter disimpan.'
@@ -1769,7 +2058,7 @@ function openFormatDetail(ext) {
       saveSettings(settings)
       renderActiveChar()
       openFormatDetail(ext)
-      showToast('Karakter Aktif Diubah! ✨', `${selectedChar?.name || 'Karakter'} sekarang aktif sebagai avatar desktop`, 'success', '✨')
+      showToast('Karakter Aktif Diubah', `${selectedChar?.name || 'Karakter'} sekarang aktif sebagai avatar desktop`, 'success', '✨')
     } else if (action === 'edit') {
       const c = settings.characters.find((x) => x.id === id)
       if (!c) return
@@ -1795,7 +2084,7 @@ function openFormatDetail(ext) {
       saveSettings(settings)
       renderActiveChar()
       openFormatDetail(ext)
-      showToast('Karakter Dihapus 🗑️', `Avatar ${c?.name} telah dihapus`, 'info', '🗑️')
+      showToast('Karakter Dihapus', `Avatar ${c?.name} telah dihapus`, 'info', '🗑️')
     }
   })
 }
@@ -1829,7 +2118,7 @@ backToFormats.addEventListener('click', () => {
 async function launchAvatarDirect(path) {
   startBtn.disabled = true
   statusEl.textContent = 'Memulai…'
-  showToast('Memulai Avatar... 🚀', 'Menyiapkan window desktop pet', 'running', '🚀')
+  showToast('Memulai Avatar…', 'Menyiapkan window desktop pet', 'running', '🚀')
   try {
     const res = await window.hermesAvatar.startAvatar(path)
     if (res && res.ok === false) {
@@ -1837,7 +2126,7 @@ async function launchAvatarDirect(path) {
     }
     startBtn.disabled = false
     statusEl.textContent = ''
-    showToast('Avatar Aktif! ✨', 'Model siap berinteraksi di desktop', 'success', '✨')
+    showToast('Avatar Aktif', 'Model siap berinteraksi di desktop', 'success', '✨')
   } catch (err) {
     statusEl.textContent = `Gagal: ${err.message}`
     startBtn.disabled = false
@@ -1896,26 +2185,44 @@ startBtn.addEventListener('click', async () => {
         }
         saveSettings(settings)
         loadVoiceUI()
-        showToast('Menggunakan Suara Cloud Otomatis 🔊', 'Layanan suara lokal belum terpasang; beralih otomatis ke Edge-TTS agar avatar langsung siap bicara.', 'info', '🔊', 4500)
+        showToast('Menggunakan Suara Cloud Otomatis', 'Layanan suara lokal belum terpasang; beralih otomatis ke Edge-TTS agar avatar langsung siap bicara.', 'info', '🔊', 4500)
       }
     }
 
-    // Periksa status model AI / LLM (Otak Percakapan)
+    // Periksa status model AI / LLM (Otak Percakapan) & verifikasi ping anti-RTO
     const llmInfo = await checkActiveLlmModel()
+    const llmTarget = resolveActiveLlmTarget(llmInfo)
+    const targetKey = buildLlmTargetKey(llmTarget)
 
-    // Periksa apakah ada layanan atau model yang belum siap
+    if (llmInfo.ok && llmTarget.baseUrl && (!llmTarget.usesRouter || s.router)) {
+      if (llmPingState.key !== targetKey || llmPingState.status !== 'ok') {
+        showToast('Menguji Ping Model LLM...', `Memastikan ${llmTarget.model} merespons & tidak RTO...`, 'running', '📡')
+        await verifyActiveLlmPing({ interactive: false, force: true })
+      }
+    }
+
+    // Periksa apakah semua layanan & jalur koneksi LLM siap (OAuth maupun 9Router opsional)
     const isHermesReady = !!s.hermes
     const isLlmReady = !!llmInfo.ok
     const isTtsReady = !!(s.kokoro || settings.tts?.provider === 'edge')
-    const isRouterReady = settings.routerChecked ? !!s.router : true
+    const isRouterBlocking = Boolean(llmTarget.usesRouter && !s.router)
+    const isPingFailed = llmPingState.key === targetKey && llmPingState.status === 'failed'
+    const isLlmConnReady = Boolean(isLlmReady && !isRouterBlocking && !isPingFailed)
 
-    // Jika ada layanan atau model LLM yang belum siap, tampilkan pop-up modal Prasyarat & BLOKIR masuk!
-    if (!isHermesReady || !isLlmReady || !isTtsReady || !isRouterReady) {
+    // Jika ada layanan, model LLM, atau ping model belum siap, tampilkan modal Prasyarat
+    if (!isHermesReady || !isLlmReady || !isTtsReady || !isLlmConnReady) {
       if (!isLlmReady) {
-        statusEl.textContent = '⚠️ Model LLM belum dipilih. Buka menu Model & Provider LLM.'
-        showToast('Model LLM Belum Dipilih! 🤖', 'Avatar membutuhkan model AI untuk berpikir. Silakan periksa menu Model & Provider LLM terlebih dahulu.', 'error', '⚠️', 6000)
+        statusEl.textContent = 'Model LLM belum dipilih. Buka menu Model & Provider LLM.'
+        showToast('Model LLM Belum Dipilih', 'Avatar membutuhkan model AI untuk berpikir. Silakan periksa menu Model & Provider LLM terlebih dahulu.', 'error', '⚠️', 6000)
+      } else if (isRouterBlocking) {
+        statusEl.textContent = 'Model aktif memakai 9Router (:20128) yang sedang offline.'
+        showToast('9Router Lokal Belum Aktif', 'Nyalakan 9Router atau beralih ke model OAuth / API langsung.', 'warning', '⚠️', 6000)
+      } else if (isPingFailed) {
+        const pingErr = llmPingState.error || 'Model tidak merespons (RTO)'
+        statusEl.textContent = `Ping model LLM gagal: ${pingErr}`
+        showToast(llmPingState.rto ? 'Model LLM Timeout (RTO)' : 'Ping Model LLM Gagal', pingErr, 'error', '❌', 6000)
       } else {
-        statusEl.textContent = '⚠️ Menunggu prasyarat layanan siap...'
+        statusEl.textContent = 'Menunggu prasyarat layanan siap...'
       }
       showPrerequisitesModal(s, active, llmInfo)
       return
@@ -1941,12 +2248,14 @@ setInterval(() => {
   }
 }, 4500)
 
-// --- Checklist 9Router (pengingat manual, persisten) ---
-routerCheck.checked = !!settings.routerChecked
-routerCheck.addEventListener('change', () => {
-  settings.routerChecked = routerCheck.checked
-  saveSettings(settings)
-})
+// --- Checklist 9Router (disimpan demi kompatibilitas setting lama) ---
+if (routerCheck) {
+  routerCheck.checked = !!settings.routerChecked
+  routerCheck.addEventListener('change', () => {
+    settings.routerChecked = routerCheck.checked
+    saveSettings(settings)
+  })
+}
 
 // --- Suara (TTS & STT & Percakapan) ---
 const ttsEnabled = document.getElementById('tts-enabled')
@@ -1966,19 +2275,19 @@ const convBargeIn = document.getElementById('conv-barge-in')
 const convContinuous = document.getElementById('conv-continuous')
 
 export const VOICE_CATALOG = [
-  // 🇯🇵 Jepang (Anime Seiyuu)
-  { id: 'jf_alpha', name: 'Alpha', gender: 'Perempuan', country: 'jp', countryName: 'Jepang', trait: 'Anime Ceria & Heroine ⭐', provider: 'kokoro' },
+  // Jepang (Anime Seiyuu)
+  { id: 'jf_alpha', name: 'Alpha', gender: 'Perempuan', country: 'jp', countryName: 'Jepang', trait: 'Anime Ceria & Heroine (Rekomendasi)', provider: 'kokoro' },
   { id: 'jf_gongitsune', name: 'Gongitsune', gender: 'Perempuan', country: 'jp', countryName: 'Jepang', trait: 'Anime Imut & Nada Tinggi (Mascot/Tsundere)', provider: 'kokoro' },
   { id: 'jf_nezumi', name: 'Nezumi', gender: 'Perempuan', country: 'jp', countryName: 'Jepang', trait: 'Anime Lembut & Manis (Kuudere)', provider: 'kokoro' },
   { id: 'jf_tebukuro', name: 'Tebukuro', gender: 'Perempuan', country: 'jp', countryName: 'Jepang', trait: 'Anime Kasual & Natural', provider: 'kokoro' },
   { id: 'jm_kumo', name: 'Kumo', gender: 'Laki-laki', country: 'jp', countryName: 'Jepang', trait: 'Anime Keren & Tenang (Ikemen)', provider: 'kokoro' },
 
-  // 🇮🇩 Indonesia (Edge Natural)
-  { id: 'id-ID-GadisNeural', name: 'Gadis', gender: 'Perempuan', country: 'id', countryName: 'Indonesia', trait: 'Bahasa Indonesia Alami & Ramah ⭐', provider: 'edge' },
+  // Indonesia (Edge Natural)
+  { id: 'id-ID-GadisNeural', name: 'Gadis', gender: 'Perempuan', country: 'id', countryName: 'Indonesia', trait: 'Bahasa Indonesia Alami & Ramah (Rekomendasi)', provider: 'edge' },
   { id: 'id-ID-ArdiNeural', name: 'Ardi', gender: 'Laki-laki', country: 'id', countryName: 'Indonesia', trait: 'Bahasa Indonesia Formal & Jelas', provider: 'edge' },
 
-  // 🇺🇸 Amerika Serikat (US English)
-  { id: 'af_heart', name: 'Heart', gender: 'Perempuan', country: 'us', countryName: 'Amerika Serikat', trait: 'Ekspresif & Paling Populer ⭐', provider: 'kokoro' },
+  // Amerika Serikat (US English)
+  { id: 'af_heart', name: 'Heart', gender: 'Perempuan', country: 'us', countryName: 'Amerika Serikat', trait: 'Ekspresif & Paling Populer (Rekomendasi)', provider: 'kokoro' },
   { id: 'af_bella', name: 'Bella', gender: 'Perempuan', country: 'us', countryName: 'Amerika Serikat', trait: 'Hangat, Ramah & Keibuan', provider: 'kokoro' },
   { id: 'af_nicole', name: 'Nicole', gender: 'Perempuan', country: 'us', countryName: 'Amerika Serikat', trait: 'Ceria & Berenergi Tinggi', provider: 'kokoro' },
   { id: 'af_sky', name: 'Sky', gender: 'Perempuan', country: 'us', countryName: 'Amerika Serikat', trait: 'Halus, Ringan & Merdu', provider: 'kokoro' },
@@ -1986,7 +2295,7 @@ export const VOICE_CATALOG = [
   { id: 'af_nova', name: 'Nova', gender: 'Perempuan', country: 'us', countryName: 'Amerika Serikat', trait: 'Percaya Diri & Tajam', provider: 'kokoro' },
   { id: 'af_river', name: 'River', gender: 'Perempuan', country: 'us', countryName: 'Amerika Serikat', trait: 'Santai & Lembut', provider: 'kokoro' },
   { id: 'af_jessica', name: 'Jessica', gender: 'Perempuan', country: 'us', countryName: 'Amerika Serikat', trait: 'Artikulatif & Cerdas', provider: 'kokoro' },
-  { id: 'am_adam', name: 'Adam', gender: 'Laki-laki', country: 'us', countryName: 'Amerika Serikat', trait: 'Berat, Tenang & Narator ⭐', provider: 'kokoro' },
+  { id: 'am_adam', name: 'Adam', gender: 'Laki-laki', country: 'us', countryName: 'Amerika Serikat', trait: 'Berat, Tenang & Narator (Rekomendasi)', provider: 'kokoro' },
   { id: 'am_michael', name: 'Michael', gender: 'Laki-laki', country: 'us', countryName: 'Amerika Serikat', trait: 'Tegas, Tegap & Percaya Diri', provider: 'kokoro' },
   { id: 'am_echo', name: 'Echo', gender: 'Laki-laki', country: 'us', countryName: 'Amerika Serikat', trait: 'Resonan & Dalam', provider: 'kokoro' },
   { id: 'am_eric', name: 'Eric', gender: 'Laki-laki', country: 'us', countryName: 'Amerika Serikat', trait: 'Santai & Percakapan Harian', provider: 'kokoro' },
@@ -2228,9 +2537,9 @@ ttsTestBtn?.addEventListener('click', async () => {
     currentTestAudio.currentTime = 0
     currentTestAudio = null
     ttsTestBtn.disabled = false
-    if (ttsTestIcon) ttsTestIcon.textContent = '🔊'
+    if (ttsTestIcon) ttsTestIcon.innerHTML = renderIcon('volume-2', { size: 14 })
     if (ttsTestText) ttsTestText.textContent = 'Uji'
-    showToast('Pemutaran Dihentikan ⏹️', 'Sampel audio tes dihentikan', 'info', '⏹️')
+    showToast('Pemutaran Dihentikan', 'Sampel audio tes dihentikan', 'info', '⏹️')
     return
   }
 
@@ -2242,10 +2551,10 @@ ttsTestBtn?.addEventListener('click', async () => {
   const kokoroEndpoint = ttsKokoroEndpoint?.value.trim() || 'http://127.0.0.1:8880'
 
   ttsTestBtn.disabled = true
-  if (ttsTestIcon) ttsTestIcon.textContent = '⏳'
+  if (ttsTestIcon) ttsTestIcon.innerHTML = renderIcon('refresh-cw', { size: 14 })
   if (ttsTestText) ttsTestText.textContent = '...'
 
-  showToast('Memproses Audio... 🎙️', `Sintesis ucapan [${voice}] via ${provider}`, 'running', '🎙️', 3500)
+  showToast('Memproses Audio...', `Sintesis ucapan [${voice}] via ${provider}`, 'running', '🎙️', 3500)
 
   try {
     const res = await window.hermesAvatar.synthesizeSpeech(text, voice, {
@@ -2267,21 +2576,21 @@ ttsTestBtn?.addEventListener('click', async () => {
 
     currentTestAudio = new Audio(audioSrc)
     ttsTestBtn.disabled = false
-    if (ttsTestIcon) ttsTestIcon.textContent = '⏹️'
+    if (ttsTestIcon) ttsTestIcon.innerHTML = renderIcon('square', { size: 14 })
     if (ttsTestText) ttsTestText.textContent = 'Stop'
 
     const engineLabel = res.isKokoro ? 'Kokoro-TTS (Lokal AI)' : (provider === 'kokoro' ? 'Kokoro' : 'Edge-TTS')
-    showToast('Memutar Sampel Suara 🔊', `Model: ${voice} [${engineLabel}] (${speed}x)`, 'success', '🔊', 4500)
+    showToast('Memutar Sampel Suara', `Model: ${voice} [${engineLabel}] (${speed}x)`, 'success', '🔊', 4500)
 
     currentTestAudio.onended = () => {
       currentTestAudio = null
-      if (ttsTestIcon) ttsTestIcon.textContent = '🔊'
+      if (ttsTestIcon) ttsTestIcon.innerHTML = renderIcon('volume-2', { size: 14 })
       if (ttsTestText) ttsTestText.textContent = 'Uji'
     }
 
     currentTestAudio.onerror = () => {
       currentTestAudio = null
-      if (ttsTestIcon) ttsTestIcon.textContent = '🔊'
+      if (ttsTestIcon) ttsTestIcon.innerHTML = renderIcon('volume-2', { size: 14 })
       if (ttsTestText) ttsTestText.textContent = 'Uji'
       showToast('Error Pemutaran Audio', 'Format audio tidak dapat diputar', 'error', '❌')
     }
@@ -2289,7 +2598,7 @@ ttsTestBtn?.addEventListener('click', async () => {
     await currentTestAudio.play()
   } catch (err) {
     ttsTestBtn.disabled = false
-    if (ttsTestIcon) ttsTestIcon.textContent = '🔊'
+    if (ttsTestIcon) ttsTestIcon.innerHTML = renderIcon('volume-2', { size: 14 })
     if (ttsTestText) ttsTestText.textContent = 'Uji'
     showToast('Gagal Uji Suara', err.message || err, 'error', '❌')
   }
@@ -2331,7 +2640,7 @@ function renderLlmList() {
         <div class="format-info-col">
           <div class="format-title-line" style="display:flex; align-items:center; gap:8px;">
             <span class="format-title">${escapeHtml(p.name)}</span>
-            ${isActive ? `<span class="badge ready" style="padding:2px 8px; font-size:11px;">Aktif Digunakan ✅</span>` : ''}
+            ${isActive ? `<span class="badge ready" style="padding:2px 8px; font-size:11px;">Aktif Digunakan</span>` : ''}
             ${p.model ? `<span class="format-pill-tag">${escapeHtml(p.model)}</span>` : ''}
             ${(Array.isArray(p.models) && p.models.length > 1) ? `<span class="format-count-pill off" title="Jumlah model tersimpan">${p.models.length} model</span>` : ''}
           </div>
@@ -2340,7 +2649,7 @@ function renderLlmList() {
         </div>
         <div class="format-status-col" style="gap:6px;">
           ${isActive
-            ? `<button class="mini-btn success llm-activate" data-id="${escapeHtml(p.id)}" title="Terapkan ulang konfigurasi provider ini ke Hermes" style="background:rgba(34,197,94,0.18); border-color:#22c55e; color:#4ade80;">Aktif ✅ (Terapkan Ulang)</button>`
+            ? `<button class="mini-btn success llm-activate" data-id="${escapeHtml(p.id)}" title="Terapkan ulang konfigurasi provider ini ke Hermes" style="background:rgba(34,197,94,0.18); border-color:#22c55e; color:#4ade80;">Aktif (Terapkan Ulang)</button>`
             : `<button class="mini-btn primary llm-activate" data-id="${escapeHtml(p.id)}" title="Aktifkan sebagai model utama">Aktifkan</button>`
           }
           <button class="mini-btn browse llm-view-models" data-id="${escapeHtml(p.id)}" title="Lihat semua model dari endpoint ini">Model</button>
@@ -2358,15 +2667,15 @@ function renderLlmList() {
       const id = btn.dataset.id
       const p = settings.llm.providers.find((x) => x.id === id)
       btn.disabled = true
-      const original = btn.textContent
-      btn.textContent = '⏳ Mengaktifkan…'
+      const original = btn.innerHTML
+      btn.textContent = 'Mengaktifkan…'
       try {
         await activateLlmProvider(p)
       } catch (err) {
-        statusEl.textContent = `✗ Gagal aktifkan: ${err?.message || err}`
+        statusEl.textContent = `Gagal aktifkan: ${err?.message || err}`
       } finally {
         btn.disabled = false
-        btn.textContent = original
+        btn.innerHTML = original
       }
     })
   })
@@ -2553,6 +2862,8 @@ async function activateLlmProvider(p) {
 
   updateOAuthHubStatusBadges()
   renderLlmList()
+  cachedLlmModelInfo = { ok: false, model: null, provider: null, baseUrl: '', authType: '', usesRouter: false }
+  resetLlmPingState()
   await refreshLlmActive()
   await refreshModelOptions()
   await refreshServiceStatus()
@@ -2640,7 +2951,7 @@ function renderRouterAccountCards() {
 
   grid.innerHTML = list.map((acc) => {
     const iconCls = acc.authType === 'oauth' ? 'oauth' : ''
-    const iconGlyph = acc.authType === 'oauth' ? '🔗' : '🤖'
+    const iconGlyph = renderIcon(acc.authType === 'oauth' ? 'external-link' : 'bot', { size: 15 })
     const pillCls = acc.isActive ? 'on' : ''
     const quotas = Array.isArray(acc.quotas) ? acc.quotas : []
     const totalQuotas = acc.totalQuotas || quotas.length
@@ -2718,7 +3029,7 @@ function renderRouterAccountCards() {
           </div>
         </div>
         <div class="router-acc-actions">
-          <button type="button" class="acc-mini-refresh" title="Segarkan status akun">↻</button>
+          <button type="button" class="acc-mini-refresh" title="Segarkan status akun">${renderIcon('refresh-cw', { size: 13 })}</button>
           <span class="acc-status-pill ${pillCls}" title="${acc.isActive ? 'Aktif' : 'Nonaktif'}"></span>
         </div>
       </div>
@@ -2835,7 +3146,7 @@ async function refreshProviderQuota(interactive = false) {
       const quotaBadgeEl = document.getElementById('llm-menu-badge-quota')
       if (quotaBadgeEl) {
         quotaBadgeEl.className = 'format-count-pill off'
-        quotaBadgeEl.textContent = '⚡ Cek Kuota'
+        quotaBadgeEl.textContent = 'Cek Kuota'
       }
       return
     }
@@ -2884,12 +3195,12 @@ async function refreshProviderQuota(interactive = false) {
       const pctShow = typeof res.primaryQuotaPct === 'number' ? res.primaryQuotaPct : pct
       quotaBadgeEl.className = 'format-count-pill on'
       quotaBadgeEl.textContent = accCount > 0
-        ? `🟢 ${accCount} Akun · Sisa ${pctShow}%`
-        : `🟢 Sisa ${pctShow}%`
+        ? `${accCount} Akun · Sisa ${pctShow}%`
+        : `Sisa ${pctShow}%`
     }
     updateOAuthHubStatusBadges()
     if (interactive) {
-      showToast('Status Kuota Diperbarui 📊', res.summary, 'success', '📊')
+      showToast('Status Kuota Diperbarui', res.summary, 'success', '📊')
     }
   } catch (err) {
     tierEl.textContent = 'Perlu Muat Ulang'
@@ -2903,7 +3214,7 @@ async function refreshProviderQuota(interactive = false) {
   } finally {
     if (btnEl) {
       btnEl.disabled = false
-      btnEl.textContent = 'Cek Kuota ↻'
+      btnEl.innerHTML = `<span class="btn-svg-icon">${renderIcon('refresh-cw', { size: 12 })}</span> Cek Kuota`
     }
   }
 }
@@ -3004,7 +3315,7 @@ function updateOAuthHubStatusBadges() {
     if (!el) continue
     if (isActive) {
       el.className = 'badge ready'
-      el.textContent = 'Aktif ✓'
+      el.textContent = 'Aktif'
     } else if (matches.length > 0) {
       el.className = 'badge info'
       el.textContent = 'Tersimpan'
@@ -3023,7 +3334,7 @@ function updateOAuthHubStatusBadges() {
   const oauthMenuBadge = document.getElementById('llm-menu-badge-oauth')
   if (oauthMenuBadge) {
     oauthMenuBadge.className = 'format-count-pill on'
-    oauthMenuBadge.textContent = oauthActive ? '🟢 OAuth Aktif' : '🛡️ 4 Penyedia Gratis'
+    oauthMenuBadge.textContent = oauthActive ? 'OAuth Aktif' : '4 Penyedia Gratis'
   }
 
   const hasLiveRouterAcc = (cachedQuotaData?.accounts || []).some(
@@ -3033,7 +3344,7 @@ function updateOAuthHubStatusBadges() {
   if (routerMenuBadge) {
     if (routerSavedOrActive || hasLiveRouterAcc) {
       routerMenuBadge.className = 'format-count-pill on'
-      routerMenuBadge.textContent = '🟢 Aktif (:20128)'
+      routerMenuBadge.textContent = 'Aktif (:20128)'
     } else {
       routerMenuBadge.className = 'format-count-pill off'
       routerMenuBadge.textContent = 'Siap Hubungkan'
@@ -3166,7 +3477,7 @@ function initDualTrackActions() {
   hideExpiredBtn?.addEventListener('click', () => {
     quotaHideExpired = !quotaHideExpired
     hideExpiredBtn.classList.toggle('active', quotaHideExpired)
-    hideExpiredBtn.textContent = quotaHideExpired ? '✅ Show All' : '🚫 Hide Expired'
+    hideExpiredBtn.textContent = quotaHideExpired ? 'Show All' : 'Hide Expired'
     renderRouterAccountCards()
   })
 
@@ -3199,9 +3510,9 @@ function initDualTrackActions() {
 
   oauthBtn?.addEventListener('click', async () => {
     oauthBtn.disabled = true
-    const origText = oauthBtn.textContent
-    oauthBtn.textContent = '⏳ Menunggu Login di Browser…'
-    showToast('Login OpenRouter OAuth 🔗', 'Selesaikan otorisasi di browser Anda untuk menghubungkan akun secara otomatis.', 'running', '🔗', 6000)
+    const origHtml = oauthBtn.innerHTML
+    oauthBtn.textContent = 'Menunggu Login di Browser…'
+    showToast('Login OpenRouter OAuth', 'Selesaikan otorisasi di browser Anda untuk menghubungkan akun secara otomatis.', 'running', '🔗', 6000)
     try {
       const res = await window.hermesAvatar?.startOAuthLogin?.('openrouter')
       if (!res?.ok || !res.provider) {
@@ -3209,26 +3520,26 @@ function initDualTrackActions() {
       }
       const savedProv = upsertLlmProvider(res.provider)
       await activateLlmProvider(savedProv)
-      showToast('Akun OpenRouter Terhubung! 🎉', 'Login OAuth berhasil dan langsung diaktifkan.', 'success', '✨', 5000)
+      showToast('Akun OpenRouter Terhubung', 'Login OAuth berhasil dan langsung diaktifkan.', 'success', '✨', 5000)
     } catch (err) {
-      statusEl.textContent = `✗ OAuth gagal: ${err?.message || err}`
+      statusEl.textContent = `OAuth gagal: ${err?.message || err}`
       showToast('Login OAuth Gagal', err?.message || String(err), 'error', '❌', 6000)
     } finally {
       oauthBtn.disabled = false
-      oauthBtn.textContent = origText
+      oauthBtn.innerHTML = origHtml
     }
   })
 
   geminiKeyBtn?.addEventListener('click', () => {
     document.querySelector('#llm-preset-grid [data-preset="gemini"]')?.click()
     window.hermesAvatar?.openExternalUrl?.('https://aistudio.google.com/app/apikey')
-    showToast('Google AI Studio Dibuka 🔑', 'Buat API key gratis di browser, lalu tempel di kolom API Key.', 'info', '🔑', 5000)
+    showToast('Google AI Studio Dibuka', 'Buat API key gratis di browser, lalu tempel di kolom API Key.', 'info', '🔑', 5000)
   })
 
   quickRouterBtn?.addEventListener('click', async () => {
     quickRouterBtn.disabled = true
-    const origText = quickRouterBtn.textContent
-    quickRouterBtn.textContent = '⏳ Menghubungkan 9Router…'
+    const origHtml = quickRouterBtn.innerHTML
+    quickRouterBtn.textContent = 'Menghubungkan 9Router…'
     showToast('Menghubungkan 9Router Lokal...', 'Mendeteksi service 9Router di port 20128...', 'running', '⚡')
     try {
       await window.hermesAvatar?.startRouter?.().catch(() => {})
@@ -3250,30 +3561,30 @@ function initDualTrackActions() {
       })
       await activateLlmProvider(savedProv)
       showToast(
-        '9Router Terhubung! ⚡',
+        '9Router Terhubung',
         `${allModels.length} model 9Router terdeteksi dan siap dipilih di dropdown model.`,
         'success',
         '✨',
         5000
       )
     } catch (err) {
-      statusEl.textContent = `✗ 9Router gagal terhubung: ${err?.message || err}`
+      statusEl.textContent = `9Router gagal terhubung: ${err?.message || err}`
       showToast('9Router Belum Aktif', err?.message || String(err), 'warning', '⚠️', 6000)
     } finally {
       quickRouterBtn.disabled = false
-      quickRouterBtn.textContent = origText
+      quickRouterBtn.innerHTML = origHtml
     }
   })
 
   openRouterWebBtn?.addEventListener('click', () => {
     window.hermesAvatar?.openExternalUrl?.('http://127.0.0.1:20128')
-    showToast('Dashboard 9Router Dibuka 🌐', 'Kelola akun login 9Router Anda di browser.', 'info', '🌐', 3500)
+    showToast('Dashboard 9Router Dibuka', 'Kelola akun login 9Router Anda di browser.', 'info', '🌐', 3500)
   })
 
   document.getElementById('btn-open-9router-providers')?.addEventListener('click', () => {
     window.hermesAvatar?.openExternalUrl?.('http://127.0.0.1:20128/dashboard/providers')
     showToast(
-      'Halaman Akun 9Router Dibuka 🔐',
+      'Halaman Akun 9Router Dibuka',
       'Tambahkan atau login akun OAuth (Claude, Codex, Gemini CLI, Kiro) lewat dashboard 9Router.',
       'info',
       '🔐',
@@ -3290,8 +3601,8 @@ function initDualTrackActions() {
         document.querySelector(`#llm-preset-grid [data-preset="${target}"]`)?.click()
       }
       showToast(
-        'Halaman Login Provider Dibuka 🌐',
-        'Masuk dengan akun Google/GitHub Anda, salin API Key, lalu klik "Tempel & Aktifkan ⚡" di kartu ini.',
+        'Halaman Login Provider Dibuka',
+        'Masuk dengan akun Google/GitHub Anda, salin API Key, lalu klik "Tempel & Aktifkan" di kartu ini.',
         'info',
         '🔑',
         5500
@@ -3331,8 +3642,8 @@ function initDualTrackActions() {
       if (!baseUrl || !model) return
 
       btn.disabled = true
-      const origText = btn.textContent
-      btn.textContent = '⏳ Mengaktifkan…'
+      const origHtml = btn.innerHTML
+      btn.textContent = 'Mengaktifkan…'
       try {
         const keyRes = await encryptProviderKey(rawKey, baseUrl)
         if (!keyRes.ok) return
@@ -3346,11 +3657,11 @@ function initDualTrackActions() {
         if (inlineInput) inlineInput.value = ''
         await activateLlmProvider(savedProv)
       } catch (err) {
-        statusEl.textContent = `✗ Gagal mengaktifkan ${name}: ${err?.message || err}`
+        statusEl.textContent = `Gagal mengaktifkan ${name}: ${err?.message || err}`
         showToast('Gagal Mengaktifkan Provider', err?.message || String(err), 'error', '❌', 6000)
       } finally {
         btn.disabled = false
-        btn.textContent = origText
+        btn.innerHTML = origHtml
       }
     })
   })
@@ -3369,7 +3680,7 @@ function initLlmPresets() {
       btn.classList.add('active')
 
       editingProviderId = null
-      llmAddBtn.textContent = 'Simpan & Aktifkan Provider ⚡'
+      llmAddBtn.innerHTML = `<span class="btn-svg-icon">${renderIcon('check', { size: 13 })}</span> Simpan &amp; Aktifkan Provider`
       llmName.value = btn.dataset.name || ''
       llmBaseUrl.value = btn.dataset.baseurl || ''
       llmModel.value = btn.dataset.model || ''
@@ -3400,7 +3711,7 @@ function resetProviderForm() {
   llmApiKey.value = ''
   llmApiKey.placeholder = 'Tempel API key di sini (opsional untuk lokal)...'
   llmModel.value = ''
-  llmAddBtn.textContent = 'Simpan & Aktifkan Provider ⚡'
+  llmAddBtn.innerHTML = `<span class="btn-svg-icon">${renderIcon('check', { size: 13 })}</span> Simpan &amp; Aktifkan Provider`
   document.getElementById('llm-base-url-row')?.classList.remove('force-visible')
   document.querySelectorAll('#llm-preset-grid .llm-preset-btn').forEach((b) => b.classList.remove('active'))
 }
@@ -3552,7 +3863,7 @@ llmAddBtn.addEventListener('click', async () => {
       statusEl.textContent = `✓ Tersimpan, namun gagal aktifkan: ${err?.message || err}`
     }
   } else {
-    showToast('Provider Tersimpan! 🎉', `${name} berhasil disimpan ke daftar LLM`, 'success', '💾')
+    showToast('Provider Tersimpan', `${name} berhasil disimpan ke daftar LLM`, 'success', '💾')
   }
 })
 
@@ -3583,7 +3894,7 @@ async function refreshLlmActive() {
     } else {
       const fallback = `<div class="llm-pill-badge" style="display:inline-flex; align-items:center; gap:8px; padding:4px 10px; border-radius:14px; background:rgba(239,68,68,0.12); border:1px solid rgba(239,68,68,0.3);">
         <span style="display:inline-block; width:6px; height:6px; border-radius:50%; background:#ef4444; box-shadow:0 0 6px #ef4444;"></span>
-        <span style="font-size:12.5px; font-weight:600; color:#f87171;">Belum Dipilih ⚠️</span>
+        <span style="font-size:12.5px; font-weight:600; color:#f87171;">Belum Dipilih</span>
         <span style="font-size:11px; color:var(--text-secondary); opacity:0.8;">(Pilih di LLM & Provider)</span>
       </div>`
       if (llmActiveEl) llmActiveEl.innerHTML = fallback
@@ -3720,6 +4031,28 @@ llmRefreshBtn.addEventListener('click', () => {
   refreshProviderQuota(false)
 })
 
+async function handleManualLlmPing(btnEl) {
+  if (btnEl) {
+    btnEl.disabled = true
+    btnEl.dataset.origHtml = btnEl.innerHTML
+    btnEl.textContent = 'Menguji…'
+  }
+  try {
+    await verifyActiveLlmPing({ interactive: true, force: true })
+  } finally {
+    if (btnEl) {
+      btnEl.disabled = false
+      if (btnEl.dataset.origHtml) {
+        btnEl.innerHTML = btnEl.dataset.origHtml
+        delete btnEl.dataset.origHtml
+      }
+    }
+  }
+}
+
+homeLlmPingBtn?.addEventListener('click', () => handleManualLlmPing(homeLlmPingBtn))
+llmPingActiveBtn?.addEventListener('click', () => handleManualLlmPing(llmPingActiveBtn))
+
 // --- Skill Hermes ---
 const skillList = document.getElementById('skill-list')
 const skillRefreshBtn = document.getElementById('skill-refresh-btn')
@@ -3776,7 +4109,7 @@ function renderSkills() {
       const isCore = n.toLowerCase().includes('mnemosyne')
       const coreBadge = isCore ? '<span class="skill-core-badge" style="background:#8b5cf6;color:#fff;font-size:10px;padding:2px 6px;border-radius:4px;margin-left:6px;font-weight:600;">WAJIB</span>' : ''
       const actionBtn = isCore
-        ? `<span class="skill-chip-lock" title="Skill bawaan sistem (wajib) — tidak dapat dihapus" style="opacity:0.7;font-size:11px;margin-left:4px;cursor:default;">🔒</span>`
+        ? `<span class="skill-chip-lock" title="Skill bawaan sistem (wajib) — tidak dapat dihapus" style="opacity:0.7;font-size:11px;margin-left:4px;cursor:default;display:inline-flex;align-items:center;">${renderIcon('shield', { size: 11 })}</span>`
         : `<button class="skill-chip-del" data-name="${escapeHtml(n)}" data-cat="${escapeHtml(cat)}" title="Hapus skill">×</button>`
       return `<span class="skill-chip ${isCore ? 'core-skill' : ''}" style="${isCore ? 'border-color:#8b5cf6;' : ''}">
         <span class="skill-chip-name">${escapeHtml(n)}</span>
@@ -3881,7 +4214,7 @@ skillAddBtn.addEventListener('click', async () => {
   const name = skillName.value.trim()
   const content = skillContent.value.trim()
   if (!name || !content) {
-    statusEl.textContent = '⚠️ Isi nama & isi skill (atau unggah file .md).'
+    statusEl.textContent = 'Isi nama & isi skill (atau unggah file .md).'
     showToast('Form Belum Lengkap', 'Isi nama & isi instruksi skill (.md)', 'error', '⚠️')
     return
   }
@@ -3895,7 +4228,7 @@ skillAddBtn.addEventListener('click', async () => {
     })
     if (!res.ok) throw new Error(res.error)
     statusEl.textContent = 'Skill disimpan.'
-    showToast('Skill Disimpan! ✅', `Skill ${name} berhasil dibuat`, 'success', '🧩')
+    showToast('Skill Disimpan', `Skill ${name} berhasil dibuat`, 'success', '🧩')
     skillName.value = ''
     skillCategory.value = ''
     skillContent.value = ''
@@ -3917,7 +4250,7 @@ const skillInstallBtn = document.getElementById('skill-install-btn')
 skillInstallBtn.addEventListener('click', async () => {
   const id = skillInstallId.value.trim()
   if (!id) {
-    statusEl.textContent = '⚠️ Isi Skill ID.'
+    statusEl.textContent = 'Isi Skill ID.'
     showToast('Skill ID Kosong', 'Masukkan ID skill dari Hub', 'error', '⚠️')
     return
   }
@@ -3929,7 +4262,7 @@ skillInstallBtn.addEventListener('click', async () => {
     const res = await window.hermesAvatar.installSkill(id)
     if (!res.ok) throw new Error(res.error)
     statusEl.textContent = `Skill "${id}" diinstall.`
-    showToast('Skill Terpasang! ✅', `Skill "${id}" siap digunakan`, 'success', '🎉')
+    showToast('Skill Terpasang', `Skill "${id}" siap digunakan`, 'success', '🎉')
     skillInstallId.value = ''
     reloadAndRefreshSkills()
   } catch (err) {
@@ -3991,7 +4324,8 @@ llmSwitchBtn.addEventListener('click', async () => {
       statusEl.textContent = 'Model diterapkan.'
       showToast('Model Diterapkan! ✅', `Model LLM aktif: ${value}`, 'success', '🧠')
     }
-    cachedLlmModelInfo = { ok: false, model: null, provider: null }
+    cachedLlmModelInfo = { ok: false, model: null, provider: null, baseUrl: '', authType: '', usesRouter: false }
+    resetLlmPingState()
     await refreshLlmActive()
     await refreshModelOptions()
     await refreshServiceStatus()
@@ -4037,7 +4371,7 @@ async function checkAppUpdates(interactive = false) {
     }
 
     cachedUpdateInfo = res
-    const currentVer = res.currentVersion ? (res.currentVersion.startsWith('v') ? res.currentVersion : `v${res.currentVersion}`) : 'v0.1.8'
+    const currentVer = res.currentVersion ? (res.currentVersion.startsWith('v') ? res.currentVersion : `v${res.currentVersion}`) : 'v0.1.9'
     const latestVer = res.latestVersion ? (res.latestVersion.startsWith('v') ? res.latestVersion : `v${res.latestVersion}`) : currentVer
 
     if (footerVerTag) footerVerTag.textContent = currentVer
@@ -4047,7 +4381,7 @@ async function checkAppUpdates(interactive = false) {
       if (banner) banner.classList.remove('hidden')
       if (bannerTag) bannerTag.textContent = latestVer
       const patchNote = res.isPatchUpdate && res.assetSizeMb
-        ? `⚡ Patch Ringan (${res.assetSizeMb} MB) — hanya mengunduh kode yang berubah.`
+        ? `Patch Ringan (${res.assetSizeMb} MB) — hanya mengunduh kode yang berubah.`
         : (res.assetSizeMb ? `Ukuran unduhan: ${res.assetSizeMb} MB.` : '')
       if (bannerDesc) {
         bannerDesc.textContent = patchNote
@@ -4056,23 +4390,23 @@ async function checkAppUpdates(interactive = false) {
       }
       if (footerUpdateBadge) footerUpdateBadge.style.display = 'inline-block'
       if (homeVerBadge) {
-        homeVerBadge.textContent = `Update ${latestVer} Tersedia! 🚀`
+        homeVerBadge.textContent = `Update ${latestVer} Tersedia`
         homeVerBadge.className = 'badge ready'
       }
 
       if (interactive) {
-        showToast(`Versi Baru ${latestVer} Tersedia! 🚀`, 'Klik tombol "Unduh Update" di banner untuk memperbarui.', 'success', '🎉', 5000)
+        showToast(`Versi Baru ${latestVer} Tersedia`, 'Klik tombol "Unduh Update" di banner untuk memperbarui.', 'success', '🎉', 5000)
       }
     } else {
       if (banner) banner.classList.add('hidden')
       if (footerUpdateBadge) footerUpdateBadge.style.display = 'none'
       if (homeVerBadge) {
-        homeVerBadge.textContent = `${currentVer} Terbaru ✅`
+        homeVerBadge.textContent = `${currentVer} Terbaru`
         homeVerBadge.className = 'badge ready'
       }
 
       if (interactive) {
-        showToast('Aplikasi Sudah Versi Terbaru ✅', `Anda sedang menggunakan versi ${currentVer} (paling mutakhir).`, 'success', '✨')
+        showToast('Aplikasi Sudah Versi Terbaru', `Anda sedang menggunakan versi ${currentVer} (paling mutakhir).`, 'success', '✨')
       }
     }
   } catch (err) {
@@ -4082,7 +4416,7 @@ async function checkAppUpdates(interactive = false) {
   } finally {
     if (checkBtn) {
       checkBtn.disabled = false
-      checkBtn.textContent = 'Cek Update 🔄'
+      checkBtn.innerHTML = `<span class="btn-svg-icon">${renderIcon('refresh-cw', { size: 13 })}</span> Cek Update`
     }
   }
 }
@@ -4092,7 +4426,7 @@ let updateReadyToRestart = false
 
 async function triggerOtaUpdate() {
   if (updateReadyToRestart) {
-    showToast('Memulai Ulang Aplikasi... 🔄', 'Menerapkan pembaruan versi terbaru...', 'running', '🚀')
+    showToast('Memulai Ulang Aplikasi…', 'Menerapkan pembaruan versi terbaru...', 'running', '🚀')
     setTimeout(() => {
       window.hermesAvatar?.relaunchApp?.()
     }, 400)
@@ -4122,11 +4456,11 @@ async function triggerOtaUpdate() {
 
   if (bannerBtn) {
     bannerBtn.disabled = true
-    bannerBtn.textContent = 'Mengunduh… ⏳'
+    bannerBtn.textContent = 'Mengunduh…'
   }
   if (modalBtn) {
     modalBtn.disabled = true
-    modalBtn.textContent = 'Mengunduh… ⏳'
+    modalBtn.textContent = 'Mengunduh…'
   }
 
   if (bannerProgressWrap) bannerProgressWrap.classList.remove('hidden')
@@ -4136,7 +4470,7 @@ async function triggerOtaUpdate() {
   if (modalProgressStatus) modalProgressStatus.textContent = 'Menghubungkan ke server pembaruan...'
 
   const sizeInfo = cachedUpdateInfo?.assetSizeMb ? ` (${cachedUpdateInfo.assetSizeMb} MB)` : ''
-  showToast('Mengunduh Pembaruan ⚡', `Mengunduh rilis ${cachedUpdateInfo.latestVersion}${sizeInfo}...`, 'info', '⬇')
+  showToast('Mengunduh Pembaruan', `Mengunduh rilis ${cachedUpdateInfo.latestVersion}${sizeInfo}...`, 'info', '⬇')
 
   try {
     const res = await window.hermesAvatar?.downloadAndApplyUpdate?.(cachedUpdateInfo.downloadUrl, cachedUpdateInfo.assetName)
@@ -4147,7 +4481,7 @@ async function triggerOtaUpdate() {
       if (bannerProgressBar) bannerProgressBar.style.width = '100%'
       if (modalProgressBar) modalProgressBar.style.width = '100%'
 
-      const restartMsg = 'Pembaruan selesai! Memulai ulang otomatis dalam 2 detik... 🚀'
+      const restartMsg = 'Pembaruan selesai! Memulai ulang otomatis dalam 2 detik...'
       if (bannerProgressStatus) bannerProgressStatus.textContent = restartMsg
       if (modalProgressStatus) modalProgressStatus.textContent = restartMsg
 
@@ -4156,16 +4490,16 @@ async function triggerOtaUpdate() {
 
       if (bannerBtn) {
         bannerBtn.disabled = false
-        bannerBtn.textContent = 'Memulai Ulang… 🔄'
+        bannerBtn.textContent = 'Memulai Ulang…'
         bannerBtn.style.background = '#10b981'
       }
       if (modalBtn) {
         modalBtn.disabled = false
-        modalBtn.textContent = 'Memulai Ulang… 🔄'
+        modalBtn.textContent = 'Memulai Ulang…'
         modalBtn.style.background = '#10b981'
       }
 
-      showToast('Pembaruan Selesai! 🎉', 'Memulai ulang aplikasi secara otomatis...', 'success', '✨', 5000)
+      showToast('Pembaruan Selesai', 'Memulai ulang aplikasi secara otomatis...', 'success', '✨', 5000)
       setTimeout(() => {
         window.hermesAvatar?.relaunchApp?.()
       }, 1800)
@@ -4176,11 +4510,11 @@ async function triggerOtaUpdate() {
     isUpdating = false
     if (bannerBtn) {
       bannerBtn.disabled = false
-      bannerBtn.textContent = 'Coba Lagi / Unduh Manual 📥'
+      bannerBtn.textContent = 'Coba Lagi / Unduh Manual'
     }
     if (modalBtn) {
       modalBtn.disabled = false
-      modalBtn.textContent = 'Unduh Manual di Browser 🌐'
+      modalBtn.textContent = 'Unduh Manual di Browser'
     }
     showToast('Gagal Memasang Update', `${err.message}. Membuka browser...`, 'error', '❌')
     window.hermesAvatar?.openExternalUrl?.(cachedUpdateInfo.downloadUrl || cachedUpdateInfo.releaseUrl)
@@ -4197,12 +4531,12 @@ function showUpdateModal() {
 
   if (!modal) return
 
-  const cur = cachedUpdateInfo?.currentVersion || '0.1.8'
-  const lat = cachedUpdateInfo?.latestVersion || 'v0.1.8'
+  const cur = cachedUpdateInfo?.currentVersion || '0.1.9'
+  const lat = cachedUpdateInfo?.latestVersion || 'v0.1.9'
   const date = cachedUpdateInfo?.releaseDate || 'Rilis Terbaru'
   const changelog = cachedUpdateInfo?.changelog || 'Pembaruan stabilitas dan perbaikan bug.'
   const sizeBadge = cachedUpdateInfo?.isPatchUpdate && cachedUpdateInfo?.assetSizeMb
-    ? ` · ⚡ Patch Ringan (${cachedUpdateInfo.assetSizeMb} MB)`
+    ? ` · Patch Ringan (${cachedUpdateInfo.assetSizeMb} MB)`
     : (cachedUpdateInfo?.assetSizeMb ? ` · ${cachedUpdateInfo.assetSizeMb} MB` : '')
 
   if (curVerEl) curVerEl.textContent = cur.startsWith('v') ? cur : `v${cur}`
@@ -4285,10 +4619,10 @@ function initAppUpdateChecker() {
   modalCopyCli?.addEventListener('click', () => {
     const cmd = modalCliCmd?.textContent || 'curl -fsSL https://raw.githubusercontent.com/KarmaSenzu/Hermes-Desktop-Pet/main/update.sh | bash'
     navigator.clipboard?.writeText(cmd)
-    modalCopyCli.textContent = 'Tersalin! ✅'
-    showToast('Perintah Tersalin! 📋', 'Tempel dan jalankan di Terminal untuk update kilat.', 'success', '📋')
+    modalCopyCli.innerHTML = `<span class="btn-svg-icon">${renderIcon('check', { size: 13 })}</span> Tersalin`
+    showToast('Perintah Tersalin', 'Tempel dan jalankan di Terminal untuk update kilat.', 'success', '📋')
     setTimeout(() => {
-      modalCopyCli.textContent = 'Salin 📋'
+      modalCopyCli.innerHTML = `<span class="btn-svg-icon">${renderIcon('copy', { size: 13 })}</span> Salin`
     }, 2000)
   })
 
@@ -4300,14 +4634,14 @@ function initAppUpdateChecker() {
     if (stage === 'verifying') {
       desc = 'Memverifikasi keaslian paket pembaruan...'
       if (isUpdating) {
-        if (downloadBtn) downloadBtn.textContent = 'Memverifikasi… 🔒'
-        if (modalDownload) modalDownload.textContent = 'Memverifikasi… 🔒'
+        if (downloadBtn) downloadBtn.textContent = 'Memverifikasi…'
+        if (modalDownload) modalDownload.textContent = 'Memverifikasi…'
       }
     } else if (stage === 'installing') {
       desc = 'Menyiapkan instalasi pembaruan...'
       if (isUpdating) {
-        if (downloadBtn) downloadBtn.textContent = 'Memasang… ⚙️'
-        if (modalDownload) modalDownload.textContent = 'Memasang… ⚙️'
+        if (downloadBtn) downloadBtn.textContent = 'Memasang…'
+        if (modalDownload) modalDownload.textContent = 'Memasang…'
       }
     }
 

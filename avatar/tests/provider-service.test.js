@@ -250,4 +250,61 @@ describe('provider-service', () => {
       .toBe('https://generativelanguage.googleapis.com/v1beta/models')
     expect(deriveGeminiNativeModelsUrl('bukan-url')).toBe('')
   })
+
+  it('testProviderConnection menyertakan latencyMs & rto=false saat ping HTTP 200 berhasil, serta rto=true saat timeout/504', async () => {
+    const http = await import('node:http')
+    const server = http.createServer((req, res) => {
+      if (req.url === '/ok/v1/chat/completions') {
+        res.writeHead(200, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify({ id: 'ping-ok', choices: [{ message: { content: 'pong' } }] }))
+      } else if (req.url === '/gw-timeout/v1/chat/completions') {
+        res.writeHead(504, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify({ error: { message: 'Gateway Timeout' } }))
+      } else if (req.url === '/hang/v1/chat/completions') {
+        // Sengaja tidak membalas untuk memicu RTO socket timeout
+      } else {
+        res.writeHead(404)
+        res.end('{}')
+      }
+    })
+    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+    const port = server.address().port
+    try {
+      const okRes = await testProviderConnection({
+        url: `http://127.0.0.1:${port}/ok`,
+        model: 'oauth-model',
+        apiKey: 'dummy-key',
+        timeoutMs: 2000
+      })
+      expect(okRes.ok).toBe(true)
+      expect(okRes.rto).toBe(false)
+      expect(typeof okRes.latencyMs).toBe('number')
+      expect(okRes.latencyMs).toBeGreaterThanOrEqual(0)
+
+      const gwTimeoutRes = await testProviderConnection({
+        url: `http://127.0.0.1:${port}/gw-timeout`,
+        model: 'oauth-model',
+        apiKey: 'dummy-key',
+        timeoutMs: 2000
+      })
+      expect(gwTimeoutRes.ok).toBe(false)
+      expect(gwTimeoutRes.status).toBe(504)
+      expect(gwTimeoutRes.rto).toBe(true)
+      expect(typeof gwTimeoutRes.latencyMs).toBe('number')
+
+      const rtoRes = await testProviderConnection({
+        url: `http://127.0.0.1:${port}/hang`,
+        model: 'oauth-model',
+        apiKey: 'dummy-key',
+        timeoutMs: 60
+      })
+      expect(rtoRes.ok).toBe(false)
+      expect(rtoRes.rto).toBe(true)
+      expect(rtoRes.error).toContain('RTO')
+      expect(typeof rtoRes.latencyMs).toBe('number')
+    } finally {
+      server.closeAllConnections?.()
+      await new Promise((resolve) => server.close(resolve))
+    }
+  })
 })

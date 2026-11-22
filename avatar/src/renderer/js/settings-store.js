@@ -69,12 +69,12 @@ const DEFAULT_SETTINGS = {
     enabled: true,
     intervalMinutes: 10,
     lines: [
-      'Jangan lupa minum air putih ya 💧',
-      'Postur tubuhnya ditegakkan dulu yuk, biar punggung tidak pegal 🧘',
-      'Fokus kerja hebat banget! Semangat terus ya ✨',
-      'Sudah istirahatkan mata sejenak belum? Coba lihat ke kejauhan sebentar 👀',
-      'Ada yang bisa kubantu dengan AI Hermes? Buka chat kapan saja ya 💬',
-      'Tarik napas dalam-dalam... hembuskan perlahan 🌸'
+      'Jangan lupa minum air putih ya',
+      'Postur tubuhnya ditegakkan dulu yuk, biar punggung tidak pegal',
+      'Fokus kerja hebat banget! Semangat terus ya',
+      'Sudah istirahatkan mata sejenak belum? Coba lihat ke kejauhan sebentar',
+      'Ada yang bisa kubantu dengan AI Hermes? Buka chat kapan saja ya',
+      'Tarik napas dalam-dalam... hembuskan perlahan'
     ]
   },
   storage: {

@@ -21,7 +21,7 @@ export async function updateMusicLibraryStats(musicStatsDesc) {
     musicStatsDesc.innerHTML = `
       <strong style="color:#38bdf8;">${onlineCount}</strong> Lagu Stream Web · 
       <strong style="color:#a855f7;">${localCount}</strong> File Lokal · 
-      <strong style="color:#f43f5e;">${favCount}</strong> Favorit ❤️ · 
+      <strong style="color:#f43f5e;">${favCount}</strong> Favorit · 
       Ukuran Berkas: <code>${fileSizeKb} KB</code>
     `
   } catch (err) {
@@ -43,7 +43,7 @@ export function initMusicPanel({
 
   btnRefreshMusicStats?.addEventListener('click', () => {
     updateMusicLibraryStats(musicStatsDesc)
-    showToast('Pustaka Disegarkan 🔄', 'Status penyimpanan musik berhasil diperbarui', 'success', '🔄', 2500)
+    showToast('Pustaka Disegarkan', 'Status penyimpanan musik berhasil diperbarui', 'success', '🔄', 2500)
   })
 
   btnSettingsAddStream?.addEventListener('click', async () => {
@@ -71,7 +71,7 @@ export function initMusicPanel({
         title: isYt ? 'YouTube Audio' : 'Web Stream Radio',
         artist: isYt ? 'YouTube Creator' : 'Online Stream',
         category: 'online',
-        badge: isYt ? 'YouTube ▶' : 'Live 🌐',
+        badge: isYt ? 'YouTube' : 'Live',
         duration: 0,
         type: isYt ? 'youtube' : 'stream',
         videoId,
@@ -90,12 +90,12 @@ export function initMusicPanel({
       if (settingsMusicUrl) settingsMusicUrl.value = ''
       if (settingsMusicFeedback) {
         settingsMusicFeedback.style.display = 'block'
-        settingsMusicFeedback.textContent = `✓ Berhasil disimpan: "${newTrack.title}" (${newTrack.badge})`
+        settingsMusicFeedback.textContent = `Berhasil disimpan: "${newTrack.title}" (${newTrack.badge})`
         setTimeout(() => { settingsMusicFeedback.style.display = 'none' }, 4000)
       }
 
       updateMusicLibraryStats(musicStatsDesc)
-      showToast('Tersimpan Permanen 💾', `Lagu ditambahkan ke ruang penyimpanan lokal: ${url}`, 'success', '🎵', 3500)
+      showToast('Tersimpan Permanen', `Lagu ditambahkan ke ruang penyimpanan lokal: ${url}`, 'success', '🎵', 3500)
     } catch (err) {
       showToast('Gagal Menyimpan', err?.message || String(err), 'error', '❌')
     }

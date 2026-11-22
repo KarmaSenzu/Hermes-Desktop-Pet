@@ -2,6 +2,8 @@
  * pomodoro-timer.js — Pomodoro & Focus Timer (ala YourMother)
  */
 
+import { renderIcon } from './icons.js'
+
 export function formatTimer(seconds) {
   const m = Math.floor(seconds / 60)
   const s = seconds % 60
@@ -101,18 +103,18 @@ export function initPomodoroTimer(options = {}) {
     if (isTimerRunning && !stopTimer) {
       // Masih berjalan → tetap jalan di latar belakang.
       showSpeechBubble(
-        `⏱️ Timer tetap berjalan di latar belakang (Sisa ${formatTimer(timerRemainingSeconds)}). Aku akan mengingatkan tiap 20% waktu berjalan!`,
+        `Timer tetap berjalan di latar belakang (Sisa ${formatTimer(timerRemainingSeconds)}). Aku akan mengingatkan tiap 20% waktu berjalan!`,
         4500
       )
     } else if (isPausedSession && !stopTimer) {
       // Dijeda → pertahankan sisa waktu & milestone, jangan reset.
       if (timerStartBtn) {
-        timerStartBtn.textContent = '▶ Lanjutkan'
+        timerStartBtn.innerHTML = `${renderIcon('play', { size: 14 })} <span>Lanjutkan</span>`
         timerStartBtn.classList.remove('running')
       }
       if (timerStatusText) timerStatusText.textContent = 'Sesi fokus dijeda'
       showSpeechBubble(
-        `⏸️ Sesi fokus dijeda (Sisa ${formatTimer(timerRemainingSeconds)}). Buka Timer lagi untuk melanjutkan.`,
+        `Sesi fokus dijeda (Sisa ${formatTimer(timerRemainingSeconds)}). Buka Timer lagi untuk melanjutkan.`,
         4000
       )
     } else {
@@ -124,7 +126,7 @@ export function initPomodoroTimer(options = {}) {
       isTimerRunning = false
       triggeredMilestones.clear()
       if (timerStartBtn) {
-        timerStartBtn.textContent = '▶ Mulai'
+        timerStartBtn.innerHTML = `${renderIcon('play', { size: 14 })} <span>Mulai</span>`
         timerStartBtn.classList.remove('running')
       }
       if (timerStatusText) {
@@ -187,7 +189,7 @@ export function initPomodoroTimer(options = {}) {
       timerInterval = null
       isTimerRunning = false
       if (timerStartBtn) {
-        timerStartBtn.textContent = '▶ Lanjutkan'
+        timerStartBtn.innerHTML = `${renderIcon('play', { size: 14 })} <span>Lanjutkan</span>`
         timerStartBtn.classList.remove('running')
       }
       if (timerStatusText) timerStatusText.textContent = 'Sesi fokus dijeda'
@@ -197,7 +199,7 @@ export function initPomodoroTimer(options = {}) {
     isTimerRunning = true
     closeCustomTimeBox()
     if (timerStartBtn) {
-      timerStartBtn.textContent = '⏸ Jeda'
+      timerStartBtn.innerHTML = `${renderIcon('pause', { size: 14 })} <span>Jeda</span>`
       timerStartBtn.classList.add('running')
     }
 
@@ -231,7 +233,7 @@ export function initPomodoroTimer(options = {}) {
         triggeredMilestones.add(milestone.step)
         const taskLabel = timerTask ? ` (${timerTask})` : ''
         showSpeechBubble(
-          `⏱️ Timer Fokus${taskLabel}: sudah ${milestone.elapsedPercent}% berjalan — sisa waktu ${formatTimer(timerRemainingSeconds)} (${milestone.remainingPercent}%)! 💪`,
+          `Timer Fokus${taskLabel}: sudah ${milestone.elapsedPercent}% berjalan — sisa waktu ${formatTimer(timerRemainingSeconds)} (${milestone.remainingPercent}%)`,
           5500
         )
         if (pet?.model) {
@@ -245,10 +247,10 @@ export function initPomodoroTimer(options = {}) {
         isTimerRunning = false
         triggeredMilestones.clear()
         if (timerStartBtn) {
-          timerStartBtn.textContent = '▶ Mulai Sesi Baru'
+          timerStartBtn.innerHTML = `${renderIcon('play', { size: 14 })} <span>Mulai Sesi Baru</span>`
           timerStartBtn.classList.remove('running')
         }
-        if (timerStatusText) timerStatusText.textContent = '🎉 Selesai! Saatnya istirahat'
+        if (timerStatusText) timerStatusText.textContent = 'Selesai — Saatnya istirahat'
 
         ctrl?.playEmote('happy')
         if (pet?.model) {
@@ -260,8 +262,8 @@ export function initPomodoroTimer(options = {}) {
         }
 
         const finishMsg = timerTask
-          ? `Waktu fokus untuk ${timerTask} selesai! Kerja bagus sekali. Yuk istirahat dulu sejenak 🌸`
-          : 'Waktu fokus selesai! Kerja bagus sekali. Yuk istirahat dulu sejenak 🌸'
+          ? `Waktu fokus untuk ${timerTask} selesai! Kerja bagus sekali. Yuk istirahat dulu sejenak.`
+          : 'Waktu fokus selesai! Kerja bagus sekali. Yuk istirahat dulu sejenak.'
         showSpeechBubble(finishMsg, 9000)
         speak(finishMsg, 'happy')
       }
@@ -285,7 +287,7 @@ export function initPomodoroTimer(options = {}) {
     }
 
     if (timerStartBtn) {
-      timerStartBtn.textContent = '▶ Mulai'
+      timerStartBtn.innerHTML = `${renderIcon('play', { size: 14 })} <span>Mulai</span>`
       timerStartBtn.classList.remove('running')
     }
     if (timerStatusText) timerStatusText.textContent = 'Siap untuk sesi fokus'

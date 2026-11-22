@@ -31,7 +31,8 @@ export function normalizeGeminiModel(baseUrl, modelName) {
   return clean
 }
 
-export async function testProviderConnection({ url, model, apiKey, resolveApiKeyFor }) {
+export async function testProviderConnection({ url, model, apiKey, resolveApiKeyFor, timeoutMs = 15000 }) {
+  const startedAt = Date.now()
   try {
     const target = String(url || '').trim()
     const modelName = String(model || '').trim()
@@ -66,33 +67,66 @@ export async function testProviderConnection({ url, model, apiKey, resolveApiKey
     }
     if (effectiveKey) headers['Authorization'] = `Bearer ${effectiveKey}`
 
+    const safeTimeout = Math.max(20, Number(timeoutMs) || 15000)
+
     return await new Promise((resolve) => {
-      const req = mod.request(u, { method: 'POST', headers, timeout: 15000 }, (res) => {
+      let settled = false
+      const finish = (payload) => {
+        if (!settled) {
+          settled = true
+          resolve(payload)
+        }
+      }
+
+      const req = mod.request(u, { method: 'POST', headers, timeout: safeTimeout }, (res) => {
         let data = ''
         res.on('data', (chunk) => { data += chunk })
         res.on('end', () => {
+          const latencyMs = Date.now() - startedAt
           if (res.statusCode >= 200 && res.statusCode < 300) {
-            resolve({ ok: true, status: res.statusCode, reachable: true })
+            finish({ ok: true, status: res.statusCode, reachable: true, rto: false, latencyMs })
           } else {
             let msg = `HTTP ${res.statusCode}`
             try {
               const j = JSON.parse(data)
               if (j.error?.message) msg = j.error.message
             } catch { /* ignore */ }
-            resolve({ ok: false, status: res.statusCode, error: msg })
+            const isRtoStatus = res.statusCode === 408 || res.statusCode === 504
+            finish({
+              ok: false,
+              status: res.statusCode,
+              rto: isRtoStatus,
+              latencyMs,
+              error: isRtoStatus && !/rto|time/i.test(msg) ? `RTO (${msg})` : msg
+            })
           }
         })
       })
-      req.on('error', (err) => resolve({ ok: false, error: err?.message || 'Tidak dapat terhubung' }))
+      req.on('error', (err) => {
+        const latencyMs = Date.now() - startedAt
+        const errMsg = err?.message || 'Tidak dapat terhubung'
+        const isTimeoutErr = err?.code === 'ETIMEDOUT' || /timed?\s*out/i.test(errMsg)
+        finish({
+          ok: false,
+          rto: isTimeoutErr,
+          latencyMs,
+          error: isTimeoutErr ? `RTO (Request Timed Out) — ${errMsg}` : errMsg
+        })
+      })
       req.on('timeout', () => {
         req.destroy()
-        resolve({ ok: false, error: 'Timeout' })
+        finish({
+          ok: false,
+          rto: true,
+          latencyMs: Date.now() - startedAt,
+          error: 'RTO (Request Timed Out) — model LLM tidak merespons tepat waktu'
+        })
       })
       req.write(body)
       req.end()
     })
   } catch (err) {
-    return { ok: false, error: err?.message || String(err) }
+    return { ok: false, rto: false, latencyMs: Date.now() - startedAt, error: err?.message || String(err) }
   }
 }
 
@@ -112,7 +146,7 @@ export function runHermes(args, timeout = 30000, queryIndex = -1) {
     const needShell = process.platform === 'win32' && /\.(cmd|bat)$/i.test(hermesCmd)
     const cmd = needShell ? `"${hermesCmd}"` : hermesCmd
     const finalArgs = needShell ? args.map((a, i) => (i === queryIndex ? `"${a}"` : String(a))) : args.map(String)
-    execFile(cmd, finalArgs, { timeout, shell: needShell, env: process.env }, (err, stdout, stderr) => {
+    execFile(cmd, finalArgs, { timeout, shell: needShell, windowsHide: true, env: process.env }, (err, stdout, stderr) => {
       if (err) reject(new Error(stderr?.trim() || err.message))
       else resolve(stdout?.trim() || '')
     })
@@ -164,7 +198,7 @@ let configWriteChain = Promise.resolve()
  */
 export function withConfigWriteLock(fn) {
   const run = configWriteChain.then(() => fn(), () => fn())
-  configWriteChain = run.catch(() => {})
+  configWriteChain = run.catch(() => { })
   return run
 }
 
@@ -295,7 +329,7 @@ export async function updateHermesProviderConfig({ name, baseUrl, apiKey, model 
             keyVal = rKey.key
             console.log(`[updateHermesProviderConfig] Otomatis menyematkan API Key 9Router (${rKey.name || 'Key'})`)
           }
-        } catch (_) {}
+        } catch (_) { }
       }
     }
 
@@ -535,7 +569,7 @@ export async function loadSavedLlmProviders({ secretStore, providersFile, cfgPat
   }
 
   if (importedFromYaml && providers.length > 0) {
-    await saveSavedLlmProviders({ activeId, providers, providersFile: filePath }).catch(() => {})
+    await saveSavedLlmProviders({ activeId, providers, providersFile: filePath }).catch(() => { })
   }
 
   return { ok: true, path: filePath, activeId, providers }

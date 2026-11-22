@@ -1,13 +1,12 @@
-import { DesktopPet } from './desktop-pet.js'
 import { voiceManager } from './voice-manager.js'
 import { HermesClient } from './hermes-client.js'
 import { AudioPlayer } from './audio-player.js'
 import { synthesize } from './tts.js'
-import { renderIcon } from './icons.js'
-import { toSpeechText } from './speech-normalizer.js'
+import { renderIcon, hydrateIcons } from './icons.js'
+import { toSpeechText, splitSpeechChunks } from './speech-normalizer.js'
+import { computeHeadBubblePosition, getDefaultAvatarBounds } from './bubble-position.js'
 import { MusicPlayer } from './music-player.js'
 import { tilingManager } from './tiling-manager.js'
-import * as THREE from 'three'
 import { PERF } from './perf-config.js'
 import { formatInline, parseMarkdownTables, renderMarkdown } from './markdown-renderer.js'
 import { toolLabel, parseTags, gestureToEmote, detectEmotion, summaryText } from './emotion-detector.js'
@@ -21,6 +20,7 @@ import {
   isCapabilityRequest,
   extractAssessmentChoices as extractAssessmentChoicesModule,
   bindDynamicAssessmentCards as bindDynamicAssessmentCardsModule,
+  attachDynamicAssessmentDelegation as attachDynamicAssessmentDelegationModule,
   executeSelectedCapabilities,
   createCapabilityAssessmentCard
 } from './capability-assessment.js'
@@ -43,12 +43,13 @@ import {
  */
 
 // ── Lazy-loader modul berat (Opsi B: muat sesuai jenis model saja) ──────────
-// Pixi (Live2D) dan Three.js addon loaders (VRM/MMD/FBX/GLB) sebelumnya di-import
-// statis → dua-duanya di-parse & dievaluasi saat boot walau hanya satu yang dipakai.
-// Sekarang dimuat dinamis: model Live2D hanya memuat Pixi; model 3D hanya memuat loaders 3D.
+// Pixi (Live2D) dan Three.js + addon loaders (VRM/MMD/FBX/GLB) dimuat dinamis sesuai
+// jenis model agar Live2D tidak pernah membuat WebGLRenderer Three.js (dan sebaliknya).
 let _live2dModPromise = null
 let _modelLoaderPromise = null
 let _avatarControllerPromise = null
+let _desktopPetPromise = null
+let _threePromise = null
 
 function loadLive2DModule() {
   if (!_live2dModPromise) _live2dModPromise = import('./live2d-avatar.js')
@@ -62,10 +63,17 @@ function loadAvatarControllerModule() {
   if (!_avatarControllerPromise) _avatarControllerPromise = import('./avatar-controller.js')
   return _avatarControllerPromise
 }
+function loadDesktopPetModule() {
+  if (!_desktopPetPromise) _desktopPetPromise = import('./desktop-pet.js')
+  return _desktopPetPromise
+}
+function loadThreeModule() {
+  if (!_threePromise) _threePromise = import('three')
+  return _threePromise
+}
 
 const container = document.getElementById('app')
-const pet = new DesktopPet(container)
-pet.startRenderLoop()
+let pet = null
 
 let controller = null
 let live2dPet = null
@@ -88,6 +96,15 @@ let ttsEnabled = (() => {
   return true
 })()
 
+function syncMuteUi() {
+  const muteIconEl = document.getElementById('mute-icon')
+  const muteLabelEl = document.getElementById('mute-label')
+  if (muteIconEl) muteIconEl.innerHTML = renderIcon(ttsEnabled ? 'volume-2' : 'volume-x', { size: 18 })
+  if (muteLabelEl) muteLabelEl.textContent = ttsEnabled ? 'Suara' : 'Bisu'
+}
+hydrateIcons(document)
+syncMuteUi()
+
 // Sinkronkan perubahan dari jendela Settings (event storage lintas-dokumen).
 window.addEventListener('storage', (e) => {
   if (e.key !== 'hermes-avatar-settings') return
@@ -95,10 +112,8 @@ window.addEventListener('storage', (e) => {
     const s = JSON.parse(e.newValue || '{}')
     if (s?.tts && typeof s.tts.enabled === 'boolean') {
       ttsEnabled = s.tts.enabled
-      const muteIconEl = document.getElementById('mute-icon')
-      const muteLabelEl = document.getElementById('mute-label')
-      if (muteIconEl) muteIconEl.textContent = ttsEnabled ? '🔊' : '🔇'
-      if (muteLabelEl) muteLabelEl.textContent = ttsEnabled ? 'Suara' : 'Bisu'
+      syncMuteUi()
+      if (!ttsEnabled) interruptSpeech()
     }
   } catch { /* abaikan */ }
 })
@@ -136,37 +151,59 @@ window.addEventListener('blur', () => { windowFocused = false; updatePerfMode() 
 window.hermesAvatar?.onCursorMove?.(() => updatePerfMode(true))
 setInterval(() => updatePerfMode(), 2000)
 
-// Gabungan render-loop: idle (blink/napas/motion) + vrm.update + lip sync + mmd.
-pet.onBeforeRender = (deltaMs) => {
-  controller?.update(deltaMs)
-  // three-vrm: update spring bone, lookAt, dll (delta dalam detik).
-  controller?.vrm?.update?.(deltaMs / 1000)
-  // MMD/GLB animation playback (AnimationMixer).
-  animMixer?.update(deltaMs / 1000)
-  if (audioPlayer.isPlaying && controller) {
-    controller.setMouthLevel(audioPlayer.getLevel())
+async function ensureDesktopPet() {
+  if (pet) return pet
+  const { DesktopPet } = await loadDesktopPetModule()
+  pet = new DesktopPet(container)
+
+  // Gabungan render-loop: idle (blink/napas/motion) + vrm.update + lip sync + mmd.
+  pet.onBeforeRender = (deltaMs) => {
+    controller?.update(deltaMs)
+    // three-vrm: update spring bone, lookAt, dll (delta dalam detik).
+    controller?.vrm?.update?.(deltaMs / 1000)
+    // MMD/GLB animation playback (AnimationMixer).
+    animMixer?.update(deltaMs / 1000)
+    if (audioPlayer.isPlaying && controller) {
+      controller.setMouthLevel(audioPlayer.getLevel())
+    }
   }
+
+  // --- Interaksi desktop pet (fitur "ikuti kursor" + "klik → hati") ---
+  // Kursor bergerak → arahkan kepala/mata avatar ke kursor.
+  pet.onPointerMove = (clientX, clientY, w, h) => {
+    controller?.lookAtPointer(clientX, clientY, w, h)
+  }
+
+  // Kursor keluar canvas → avatar kembali ke idle (berhenti mengikuti).
+  pet.onPointerLeave = () => {
+    controller?.clearPointerLookAt()
+  }
+
+  // Klik pada avatar → mainkan reaksi sentuhan / greeting sesuai pengaturan animasi
+  pet.onAvatarClick = () => {
+    triggerStateAnimation('greeting', 'sarangheo')
+  }
+
+  // Drag di area kosong → pindahkan window (gantikan app-region: drag).
+  pet.onDragMove = (dx, dy) => {
+    window.hermesAvatar.dragMove(dx, dy)
+  }
+
+  pet.startRenderLoop()
+  return pet
 }
 
-// --- Interaksi desktop pet (fitur "ikuti kursor" + "klik → hati") ---
-// Kursor bergerak → arahkan kepala/mata avatar ke kursor.
-pet.onPointerMove = (clientX, clientY, w, h) => {
-  controller?.lookAtPointer(clientX, clientY, w, h)
-}
-
-// Kursor keluar canvas → avatar kembali ke idle (berhenti mengikuti).
-pet.onPointerLeave = () => {
-  controller?.clearPointerLookAt()
-}
-
-// Klik pada avatar → mainkan reaksi sentuhan / greeting sesuai pengaturan animasi
-pet.onAvatarClick = () => {
-  triggerStateAnimation('greeting', 'sarangheo')
-}
-
-// Drag di area kosong → pindahkan window (gantikan app-region: drag).
-pet.onDragMove = (dx, dy) => {
-  window.hermesAvatar.dragMove(dx, dy)
+function disposeDesktopPet() {
+  if (animMixer) {
+    animMixer.stopAllAction()
+    animMixer = null
+  }
+  if (pet) {
+    pet.dispose()
+    pet = null
+  }
+  mmdRef = null
+  modelScene = null
 }
 
 // MIME type berdasarkan ekstensi file model.
@@ -189,9 +226,8 @@ window.hermesAvatar.onLoadModel(async (modelPath) => {
 
     if (isLive2D) {
       const modelUrl = await window.hermesAvatar.getModelUrl(modelPath)
-      // Hentikan render loop Three.js untuk hemat resource & cegah glitch double WebGL
-      pet.stopRenderLoop()
-      pet.renderer.domElement.style.display = 'none'
+      // Bebaskan penuh context WebGL Three.js agar tidak ada double WebGL atau VRAM terbuang
+      disposeDesktopPet()
 
       if (!live2dPet) {
         const { Live2DAvatar } = await loadLive2DModule()
@@ -212,21 +248,23 @@ window.hermesAvatar.onLoadModel(async (modelPath) => {
         chatSheet?.classList.add('no-transition')
         timerPanel?.classList.add('no-transition')
         musicPanel?.classList.add('no-transition')
+        screenModal?.classList.add('no-transition')
         tilingManager.tile()
     updatePerfMode(true)
-        updateSpeechBubblePosition()
+        updateAllBubblePositions()
       }
 
       live2dPet.onDragEnd = () => {
         chatSheet?.classList.remove('no-transition')
         timerPanel?.classList.remove('no-transition')
         musicPanel?.classList.remove('no-transition')
+        screenModal?.classList.remove('no-transition')
       }
 
       live2dPet.onScaleChange = () => {
         tilingManager.tile()
     updatePerfMode(true)
-        updateSpeechBubblePosition()
+        updateAllBubblePositions()
       }
 
       // Sinkronisasi gerakan mulut (lipsync) Live2D dengan output suara audio
@@ -240,20 +278,23 @@ window.hermesAvatar.onLoadModel(async (modelPath) => {
 
       // Putar sapaan awal saat aplikasi dibuka + tampilkan balon dialog
       voiceManager.playStateVoice('welcome')
-      showSpeechBubble('Halo! Selamat datang di Hermes Desktop Pet 👋', 5000)
+      showSpeechBubble('Halo! Selamat datang di Hermes Desktop Pet', 5000)
+      requestAnimationFrame(() => updateAllBubblePositions())
 
       const exprNames = controller.availableExpressions()
-      log('avatar', `Model Live2D dimuat. Ekspresi: ${exprNames.length}. Halo! 👋`)
+      log('avatar', `Model Live2D dimuat. Ekspresi: ${exprNames.length}. Siap membantu.`)
       showInitialBriefingOnce()
       return
     }
 
-    // Model 3D (VRM / GLB / MMD / FBX)
-    pet.startRenderLoop()
-    pet.renderer.domElement.style.display = 'block'
-    if (live2dPet?.view) {
-      live2dPet.view.style.display = 'none'
+    // Model 3D (VRM / GLB / MMD / FBX) — hancurkan context Live2D jika sebelumnya aktif
+    if (live2dPet) {
+      live2dPet.destroy()
+      live2dPet = null
     }
+    const activePet = await ensureDesktopPet()
+    activePet.startRenderLoop()
+    activePet.renderer.domElement.style.display = 'block'
 
     const result = await window.hermesAvatar.readModel(modelPath)
     if (!result.ok) throw new Error(result.error)
@@ -285,7 +326,7 @@ window.hermesAvatar.onLoadModel(async (modelPath) => {
       vrm = loaded.vrm
     }
 
-    pet.setModel(scene)
+    activePet.setModel(scene)
     modelScene = scene
     const { AvatarController } = await loadAvatarControllerModule()
     controller = new AvatarController(vrm)
@@ -298,7 +339,7 @@ window.hermesAvatar.onLoadModel(async (modelPath) => {
     const exprNames = controller.availableExpressions()
     log('avatar', `Ekspresi tersedia: ${exprNames.join(', ') || '(tidak ada)'}`)
 
-    log('avatar', 'Model dimuat. Halo! 👋')
+    log('avatar', 'Model dimuat. Siap membantu.')
     showInitialBriefingOnce()
   } catch (err) {
     log('avatar', `Gagal memuat model: ${err.message}`)
@@ -352,29 +393,69 @@ const speechBubble = document.getElementById('speech-bubble')
 const speechBubbleText = document.getElementById('speech-bubble-text')
 let speechBubbleTimer = null
 
-function updateSpeechBubblePosition() {
-  if (!speechBubble || speechBubble.hidden || !live2dPet?.model) return
+function getCurrentAvatarBounds() {
+  const bounds = live2dPet?.model ? live2dPet._getAvatarBounds() : null
+  if (bounds) return bounds
+  return getDefaultAvatarBounds(window.innerWidth, window.innerHeight)
+}
 
-  const bounds = live2dPet._getAvatarBounds()
+function updateSpeechBubblePosition() {
+  if (!speechBubble || speechBubble.hidden) return
+
+  const bounds = getCurrentAvatarBounds()
   if (!bounds) return
 
   const bubbleW = speechBubble.offsetWidth || 220
   const bubbleH = speechBubble.offsetHeight || 60
-  const screenW = window.innerWidth
-  const screenH = window.innerHeight
-
-  let left = bounds.centerX - (bubbleW / 2)
-  let top = bounds.top - bubbleH - 16
-
-  if (top < 16) {
-    top = bounds.top + 30
-  }
-
-  left = Math.max(16, Math.min(screenW - bubbleW - 16, left))
-  top = Math.max(16, Math.min(screenH - bubbleH - 16, top))
+  const { left, top } = computeHeadBubblePosition({
+    bounds,
+    bubbleW,
+    bubbleH,
+    screenW: window.innerWidth,
+    screenH: window.innerHeight,
+    margin: 16,
+    headGap: 16
+  })
 
   speechBubble.style.left = `${left}px`
   speechBubble.style.top = `${top}px`
+}
+
+function updateStatusBubblePosition() {
+  if (!statusBubble || statusBubble.hidden) return
+
+  const bounds = getCurrentAvatarBounds()
+  if (!bounds) return
+
+  const bubbleW = statusBubble.offsetWidth || 200
+  const bubbleH = statusBubble.offsetHeight || 34
+  let avoidRect = null
+  if (speechBubble && !speechBubble.hidden) {
+    const rect = speechBubble.getBoundingClientRect()
+    if (rect.width > 0 && rect.height > 0) {
+      avoidRect = rect
+    }
+  }
+
+  const { left, top } = computeHeadBubblePosition({
+    bounds,
+    bubbleW,
+    bubbleH,
+    screenW: window.innerWidth,
+    screenH: window.innerHeight,
+    margin: 16,
+    headGap: 12,
+    avoidRect,
+    stackGap: 8
+  })
+
+  statusBubble.style.left = `${left}px`
+  statusBubble.style.top = `${top}px`
+}
+
+function updateAllBubblePositions() {
+  updateSpeechBubblePosition()
+  updateStatusBubblePosition()
 }
 
 function showSpeechBubble(text, duration = 6000) {
@@ -387,8 +468,9 @@ function showSpeechBubble(text, duration = 6000) {
 
   speechBubbleText.textContent = text
   speechBubble.hidden = false
+  syncBackgroundChatIndicators()
   requestAnimationFrame(() => {
-    updateSpeechBubblePosition()
+    updateAllBubblePositions()
   })
 
   if (speechBubbleTimer) {
@@ -399,7 +481,7 @@ function showSpeechBubble(text, duration = 6000) {
   if (duration > 0) {
     speechBubbleTimer = setTimeout(() => {
       updatePerfMode()
-    hideSpeechBubble()
+      hideSpeechBubble()
     }, duration)
   }
 }
@@ -411,6 +493,8 @@ function hideSpeechBubble() {
     clearTimeout(speechBubbleTimer)
     speechBubbleTimer = null
   }
+  syncBackgroundChatIndicators()
+  updateStatusBubblePosition()
 }
 
 speechBubble?.addEventListener('click', () => {
@@ -445,8 +529,9 @@ const timerPresetCustomBtn = document.getElementById('timer-preset-custom-btn')
 const timerOutfitToggle = document.getElementById('timer-outfit-toggle')
 
 // --- Inisialisasi Tiling Window Manager (Auto-Layout / Auto-Adjust ala TWM) ---
+const screenCaptureModalEl = document.getElementById('screen-capture-modal')
 tilingManager.init({
-  avatarGetter: () => live2dPet?._getAvatarBounds(),
+  avatarGetter: () => getCurrentAvatarBounds(),
   hudElement: companionHud
 })
 tilingManager.register('timer', timerPanel, {
@@ -460,6 +545,16 @@ tilingManager.register('music', musicPanel, {
   baseHeight: 440,
   minWidth: 290,
   type: 'tool'
+})
+tilingManager.register('vision', screenCaptureModalEl, {
+  baseWidth: 340,
+  baseHeight: 330,
+  minWidth: 300,
+  type: 'tool',
+  getDimensions: () => ({
+    width: screenCaptureModalEl?.offsetWidth || 340,
+    height: screenCaptureModalEl?.offsetHeight || 330
+  })
 })
 tilingManager.register('chat', chatSheet, {
   baseWidth: 380,
@@ -571,7 +666,7 @@ window.addEventListener('hermes:request-music-research', (e) => {
     input.value = prompt
     input.focus()
   }
-  showSpeechBubble('Mencarikan musik relaksasi di internet untukmu 🔍', 4000)
+  showSpeechBubble('Mencarikan musik relaksasi di internet untukmu…', 4000)
   form?.dispatchEvent(new Event('submit'))
 })
 
@@ -616,6 +711,7 @@ let activeVisionQuestion = ''
 function hideScreenCaptureModal() {
   if (screenModal) {
     screenModal.setAttribute('hidden', '')
+    tilingManager.tile()
   }
 }
 
@@ -626,6 +722,7 @@ async function loadOpenWindowsForModal() {
     const res = await window.hermesAvatar?.captureScreen?.({ listSourcesOnly: true })
     if (!res?.ok || !Array.isArray(res.windows) || res.windows.length === 0) {
       screenWindowsList.innerHTML = '<div class="screen-window-empty">Tidak ada jendela aplikasi lain terdeteksi.</div>'
+      requestAnimationFrame(() => tilingManager.tile())
       return
     }
 
@@ -644,7 +741,8 @@ async function loadOpenWindowsForModal() {
         item.appendChild(thumb)
       } else {
         const iconSpan = document.createElement('span')
-        iconSpan.textContent = '🪟'
+        iconSpan.className = 'btn-svg-icon'
+        iconSpan.innerHTML = renderIcon('monitor', { size: 18 })
         item.appendChild(iconSpan)
       }
 
@@ -664,8 +762,10 @@ async function loadOpenWindowsForModal() {
 
       screenWindowsList.appendChild(item)
     }
+    requestAnimationFrame(() => tilingManager.tile())
   } catch (err) {
     screenWindowsList.innerHTML = `<div class="screen-window-empty">Gagal memuat jendela: ${err?.message || err}</div>`
+    requestAnimationFrame(() => tilingManager.tile())
   }
 }
 
@@ -679,7 +779,20 @@ function showScreenCaptureModal(initialQuestion = '') {
   screenModal.removeAttribute('hidden')
   window.hermesAvatar?.setIgnoreMouse?.(false)
   if (live2dPet) live2dPet.ignoringMouse = false
+  requestAnimationFrame(() => tilingManager.tile())
   loadOpenWindowsForModal()
+}
+
+let activeSnipCleanup = null
+
+function waitForOverlayPaintClear() {
+  return new Promise((resolve) => {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        setTimeout(resolve, 60)
+      })
+    })
+  })
 }
 
 function startScreenSnip(initialQuestion = '') {
@@ -688,32 +801,66 @@ function startScreenSnip(initialQuestion = '') {
     return
   }
 
+  activeSnipCleanup?.()
   hideScreenCaptureModal()
   snipOverlay.removeAttribute('hidden')
   snipSelectionBox.setAttribute('hidden', '')
   window.hermesAvatar?.setIgnoreMouse?.(false)
+  window.hermesAvatar?.setChatFocus?.(true)
   if (live2dPet) live2dPet.ignoringMouse = false
 
   let isDragging = false
   let startX = 0
   let startY = 0
 
+  const clampPoint = (e) => {
+    const vw = window.innerWidth || 1
+    const vh = window.innerHeight || 1
+    return {
+      x: Math.max(0, Math.min(vw, e.clientX)),
+      y: Math.max(0, Math.min(vh, e.clientY)),
+      vw,
+      vh
+    }
+  }
+
   const cleanup = () => {
+    if (activeSnipCleanup === cleanup) {
+      activeSnipCleanup = null
+    }
     snipOverlay.setAttribute('hidden', '')
     snipSelectionBox.setAttribute('hidden', '')
     snipOverlay.removeEventListener('mousedown', onMouseDown)
+    snipOverlay.removeEventListener('contextmenu', onContextMenu)
     window.removeEventListener('mousemove', onMouseMove)
     window.removeEventListener('mouseup', onMouseUp)
     window.removeEventListener('keydown', onKeyDown)
     window.hermesAvatar?.setIgnoreMouse?.(true, true)
     if (live2dPet) live2dPet.ignoringMouse = true
   }
+  activeSnipCleanup = cleanup
+
+  const onContextMenu = (e) => {
+    e.preventDefault()
+    e.stopPropagation()
+    cleanup()
+    showSpeechBubble('Mode potong layar dibatalkan.', 2500)
+  }
 
   const onMouseDown = (e) => {
+    e.preventDefault()
+    e.stopPropagation()
+    if (e.button === 2) {
+      cleanup()
+      showSpeechBubble('Mode potong layar dibatalkan.', 2500)
+      return
+    }
     if (e.button !== 0) return
+
+    const pt = clampPoint(e)
     isDragging = true
-    startX = e.clientX
-    startY = e.clientY
+    startX = pt.x
+    startY = pt.y
     snipSelectionBox.style.left = `${startX}px`
     snipSelectionBox.style.top = `${startY}px`
     snipSelectionBox.style.width = '0px'
@@ -724,12 +871,11 @@ function startScreenSnip(initialQuestion = '') {
 
   const onMouseMove = (e) => {
     if (!isDragging) return
-    const curX = e.clientX
-    const curY = e.clientY
-    const left = Math.min(startX, curX)
-    const top = Math.min(startY, curY)
-    const width = Math.abs(curX - startX)
-    const height = Math.abs(curY - startY)
+    const pt = clampPoint(e)
+    const left = Math.min(startX, pt.x)
+    const top = Math.min(startY, pt.y)
+    const width = Math.abs(pt.x - startX)
+    const height = Math.abs(pt.y - startY)
 
     snipSelectionBox.style.left = `${left}px`
     snipSelectionBox.style.top = `${top}px`
@@ -741,37 +887,45 @@ function startScreenSnip(initialQuestion = '') {
   const onMouseUp = async (e) => {
     if (!isDragging) return
     isDragging = false
-    const curX = e.clientX
-    const curY = e.clientY
-    const left = Math.min(startX, curX)
-    const top = Math.min(startY, curY)
-    const width = Math.abs(curX - startX)
-    const height = Math.abs(curY - startY)
+    const pt = clampPoint(e)
+    const left = Math.min(startX, pt.x)
+    const top = Math.min(startY, pt.y)
+    const width = Math.abs(pt.x - startX)
+    const height = Math.abs(pt.y - startY)
 
     cleanup()
 
-    if (width >= 20 && height >= 20) {
+    if (width >= 15 && height >= 15) {
+      await waitForOverlayPaintClear()
       const dpr = window.devicePixelRatio || 1
       const cropRect = {
         x: Math.round(left * dpr),
         y: Math.round(top * dpr),
         width: Math.round(width * dpr),
-        height: Math.round(height * dpr)
+        height: Math.round(height * dpr),
+        cssX: left,
+        cssY: top,
+        cssWidth: width,
+        cssHeight: height,
+        viewportWidth: pt.vw,
+        viewportHeight: pt.vh
       }
       await executeCaptureAndDisplay({ mode: 'area', cropRect, initialQuestion })
     } else {
-      showSpeechBubble('Seleksi terlalu kecil, tangkapan dibatalkan ✂️', 2500)
+      showSpeechBubble('Seleksi terlalu kecil, tangkapan dibatalkan.', 2500)
     }
   }
 
   const onKeyDown = (e) => {
     if (e.key === 'Escape') {
+      e.preventDefault()
       cleanup()
-      showSpeechBubble('Mode potong layar dibatalkan ✂️', 2500)
+      showSpeechBubble('Mode potong layar dibatalkan.', 2500)
     }
   }
 
   snipOverlay.addEventListener('mousedown', onMouseDown)
+  snipOverlay.addEventListener('contextmenu', onContextMenu)
   window.addEventListener('mousemove', onMouseMove)
   window.addEventListener('mouseup', onMouseUp)
   window.addEventListener('keydown', onKeyDown)
@@ -782,8 +936,8 @@ async function executeCaptureAndDisplay({ mode = 'fullscreen', sourceId, cropRec
     const res = await window.hermesAvatar?.captureScreen?.({ mode, sourceId, cropRect })
     if (!res?.ok) {
       openChatIfHidden()
-      log('avatar', `⚠️ Gagal menangkap layar: ${res?.error || 'Screen capture tidak tersedia.'}`)
-      showSpeechBubble('Gagal menangkap layar ⚠️', 3500)
+      log('avatar', `Gagal menangkap layar: ${res?.error || 'Screen capture tidak tersedia.'}`)
+      showSpeechBubble('Gagal menangkap layar.', 3500)
       return
     }
 
@@ -796,20 +950,20 @@ async function executeCaptureAndDisplay({ mode = 'fullscreen', sourceId, cropRec
       initialQuestion,
       label: res.label || (mode === 'area' ? 'Area Kotak' : mode === 'window' ? 'Jendela' : 'Layar Penuh'),
       onRetake: () => triggerScreenVision(initialQuestion),
-      onCancel: () => showSpeechBubble('Tangkapan layar dibatalkan 🗑️', 2500),
+      onCancel: () => showSpeechBubble('Tangkapan layar dibatalkan.', 2500),
       onSubmitPrompt: async ({ filePath, openWindows, question }) => {
         openChatIfHidden()
         const winCtx = openWindows?.length ? ` Jendela terbuka: ${openWindows.slice(0, 6).join(', ')}.` : ''
         const pathCtx = filePath ? ` File tangkapan layar tersimpan di: "${filePath}". Jika tool baca file/gambar tersedia, periksa berkas ini.` : ''
         const finalPrompt = `${question}\n\n[Konteks Screen Vision]${pathCtx}${winCtx}`
-        await handleUserChat(finalPrompt, `📸 ${question}`, { skipFastWidget: true })
+        await handleUserChat(finalPrompt, `[Screen Vision] ${question}`, { skipFastWidget: true })
       },
     })
-    showSpeechBubble('Layar tertangkap! Pilih atau ketik pertanyaanmu 📸', 4000)
+    showSpeechBubble('Layar tertangkap! Pilih atau ketik pertanyaanmu.', 4000)
     speak('Layar sudah kutangkap. Apa yang ingin kamu tanyakan tentang tampilan ini?', 'happy')
   } catch (err) {
     openChatIfHidden()
-    log('avatar', `⚠️ Gagal menangkap layar: ${err?.message || err}`)
+    log('avatar', `Gagal menangkap layar: ${err?.message || err}`)
   }
 }
 
@@ -821,8 +975,9 @@ screenModalCloseBtn?.addEventListener('click', hideScreenCaptureModal)
 snipModeAreaBtn?.addEventListener('click', () => {
   startScreenSnip(activeVisionQuestion)
 })
-snipModeFullscreenBtn?.addEventListener('click', () => {
+snipModeFullscreenBtn?.addEventListener('click', async () => {
   hideScreenCaptureModal()
+  await waitForOverlayPaintClear()
   executeCaptureAndDisplay({ mode: 'fullscreen', initialQuestion: activeVisionQuestion })
 })
 screenRefreshWindowsBtn?.addEventListener('click', () => {
@@ -852,22 +1007,22 @@ async function tryFastWidgetCommand(text) {
         speak,
         onCaptureScreen: () => triggerScreenVision(),
       })
-      showSpeechBubble('Ini briefing harian untukmu! ✨', 4000)
+      showSpeechBubble('Ini briefing harian untukmu.', 4000)
       speak('Ini ringkasan harian untukmu. Mau mulai fokus atau pilih musik?', 'happy')
       return true
     }
     case 'timer-stop': {
       pomodoroTimer.stopAndResetTimer()
-      log('avatar', '⏹️ Sesi fokus / timer dihentikan dan di-reset.')
-      showSpeechBubble('Timer fokus dihentikan ⏹️', 3500)
+      log('avatar', 'Sesi fokus / timer dihentikan dan di-reset.')
+      showSpeechBubble('Timer fokus dihentikan.', 3500)
       speak('Baik, timer fokus sudah saya hentikan.', 'neutral')
       return true
     }
     case 'timer-start-direct': {
       const taskName = cmd.task || 'Fokus Kerja'
       pomodoroTimer.startFocusWithConfig({ minutes: cmd.minutes, task: taskName })
-      log('avatar', `⏱️ Memulai sesi fokus **${cmd.minutes} menit** untuk: **${taskName}**.`)
-      showSpeechBubble(`Fokus ${cmd.minutes}m: ${taskName} ⏱️`, 4500)
+      log('avatar', `Memulai sesi fokus **${cmd.minutes} menit** untuk: **${taskName}**.`)
+      showSpeechBubble(`Fokus ${cmd.minutes}m: ${taskName}`, 4500)
       speak(`Siap! Aku mulai sesi fokus ${cmd.minutes} menit untuk ${taskName}.`, 'happy')
       return true
     }
@@ -880,12 +1035,12 @@ async function tryFastWidgetCommand(text) {
         showSpeechBubble,
         speak,
         onStartFocus: ({ minutes, task }) => {
-          log('avatar', `⏱️ Sesi fokus **${minutes} menit** dimulai untuk: **${task}**.`)
-          showSpeechBubble(`Fokus ${minutes}m: ${task} ⏱️`, 4000)
+          log('avatar', `Sesi fokus **${minutes} menit** dimulai untuk: **${task}**.`)
+          showSpeechBubble(`Fokus ${minutes}m: ${task}`, 4000)
           speak(`Sesi fokus ${minutes} menit untuk ${task} dimulai sekarang.`, 'happy')
         },
       })
-      showSpeechBubble('Mau mulai fokus buat apa kali ini? ⏱️', 4000)
+      showSpeechBubble('Mau mulai fokus buat apa kali ini?', 4000)
       speak('Mau mulai fokus untuk tugas apa dan berapa menit?', 'happy')
       return true
     }
@@ -897,57 +1052,57 @@ async function tryFastWidgetCommand(text) {
         showSpeechBubble,
         speak,
       })
-      showSpeechBubble('Pilih playlist atau lagu yang mau diputar 🎵', 4000)
+      showSpeechBubble('Pilih playlist atau lagu yang mau diputar.', 4000)
       speak('Ingin memutar playlist atau lagu yang mana? Silakan pilih dari daftarmu.', 'happy')
       return true
     }
     case 'music-play-specific': {
       const track = musicPlayer.findAndPlayTrack(cmd.query)
       if (track) {
-        log('avatar', `🎵 Memutar **${track.title}** (${track.artist || 'Music'}).`)
-        showSpeechBubble(`Memutar "${track.title}" 🎵`, 4500)
+        log('avatar', `Memutar **${track.title}** (${track.artist || 'Music'}).`)
+        showSpeechBubble(`Memutar "${track.title}"`, 4500)
         speak(`Baik, aku putarkan ${track.title}.`, 'happy')
         return true
       }
       openChatIfHidden()
-      log('avatar', `🎵 Lagu/playlist "${cmd.query}" belum ditemukan persis. Pilih dari koleksimu di bawah ini:`)
+      log('avatar', `Lagu/playlist "${cmd.query}" belum ditemukan persis. Pilih dari koleksimu di bawah ini:`)
       renderMusicPlaylistPickerCard({
         chatLog,
         musicPlayer,
         showSpeechBubble,
         speak,
       })
-      showSpeechBubble('Pilih lagu atau playlist yang tersedia ya 🎵', 4000)
+      showSpeechBubble('Pilih lagu atau playlist yang tersedia ya.', 4000)
       speak('Lagu yang kamu sebut belum ketemu persis, yuk pilih dari daftar playlistmu.', 'neutral')
       return true
     }
     case 'music-next': {
       musicPlayer.next()
       const label = musicPlayer.getCurrentTrack()?.title || 'berikutnya'
-      log('avatar', `⏭️ Pindah ke lagu **${label}**.`)
-      showSpeechBubble(`⏭️ ${label}`, 3000)
+      log('avatar', `Pindah ke lagu **${label}**.`)
+      showSpeechBubble(`Lagu berikutnya: ${label}`, 3000)
       return true
     }
     case 'music-prev': {
       musicPlayer.prev()
       const label = musicPlayer.getCurrentTrack()?.title || 'sebelumnya'
-      log('avatar', `⏮️ Kembali ke lagu **${label}**.`)
-      showSpeechBubble(`⏮️ ${label}`, 3000)
+      log('avatar', `Kembali ke lagu **${label}**.`)
+      showSpeechBubble(`Lagu sebelumnya: ${label}`, 3000)
       return true
     }
     case 'music-pause': {
       if (musicPlayer.isPlaying) {
         musicPlayer.pause()
       }
-      log('avatar', '⏸️ Musik dijeda.')
-      showSpeechBubble('Musik dijeda ⏸️', 3000)
+      log('avatar', 'Musik dijeda.')
+      showSpeechBubble('Musik dijeda.', 3000)
       speak('Musik sudah saya jeda.', 'neutral')
       return true
     }
     case 'music-volume': {
       musicPlayer.setVolume(cmd.level / 100)
-      log('avatar', `🔊 Volume musik diatur ke **${cmd.level}%**.`)
-      showSpeechBubble(`Volume musik: ${cmd.level}% 🔊`, 3000)
+      log('avatar', `Volume musik diatur ke **${cmd.level}%**.`)
+      showSpeechBubble(`Volume musik: ${cmd.level}%`, 3000)
       return true
     }
     default:
@@ -977,7 +1132,7 @@ async function tryAutoFailoverProvider(errorText) {
   )
 
   if (!candidate) {
-    log('avatar', '⚠️ Kuota/limit provider aktif tercapai, tetapi belum ada provider cadangan lain yang valid di Pengaturan LLM.')
+    log('avatar', 'Kuota/limit provider aktif tercapai, tetapi belum ada provider cadangan lain yang valid di Pengaturan LLM.')
     return false
   }
 
@@ -995,14 +1150,14 @@ async function tryAutoFailoverProvider(errorText) {
         parsed.llm = { ...llm, activeId: res.provider.id }
         localStorage.setItem('hermes-avatar-settings', JSON.stringify(parsed))
       }
-      log('avatar', `🔄 **Auto-Failover Provider:** Kuota/limit provider sebelumnya tercapai. Dialihkan otomatis ke **${res.provider.name}** (\`${res.provider.model}\`). Silakan kirim ulang pesanmu.`)
-      showSpeechBubble(`Dialihkan ke cadangan: ${res.provider.name} 🔄`, 5500)
+      log('avatar', `**Auto-Failover Provider:** Kuota/limit provider sebelumnya tercapai. Dialihkan otomatis ke **${res.provider.name}** (\`${res.provider.model}\`). Silakan kirim ulang pesanmu.`)
+      showSpeechBubble(`Dialihkan ke cadangan: ${res.provider.name}`, 5500)
       speak(`Kuota provider aktif habis. Aku sudah alihkan otomatis ke ${res.provider.name}.`, 'neutral')
       return true
     }
-    log('avatar', `⚠️ Auto-failover ke provider cadangan gagal: ${res?.error || 'kesalahan tidak diketahui'}`)
+    log('avatar', `Auto-failover ke provider cadangan gagal: ${res?.error || 'kesalahan tidak diketahui'}`)
   } catch (err) {
-    log('avatar', `⚠️ Auto-failover gagal: ${err?.message || err}`)
+    log('avatar', `Auto-failover gagal: ${err?.message || err}`)
   }
   return false
 }
@@ -1078,7 +1233,7 @@ document.addEventListener('drop', async (e) => {
       await handleUserChat(finalPrompt, `${label}: ${dropped.map((f) => f.name).join(', ')}`, { skipFastWidget: true })
     },
   })
-  showSpeechBubble('File diterima! Mau diapakan file ini? 📂', 4000)
+  showSpeechBubble('File diterima! Mau diapakan file ini?', 4000)
   speak('File diterima. Silakan pilih aksi yang ingin kulakukan.', 'happy')
 })
 
@@ -1097,18 +1252,64 @@ window.addEventListener('mousedown', (e) => {
   }
 })
 
+let hasUnreadBackgroundReply = false
+let activeProgressLabel = ''
+let currentStatusText = ''
+
+function syncBackgroundChatIndicators() {
+  const isChatHidden = !chatSheet || chatSheet.classList.contains('hidden')
+  const isWorking = Boolean(busy || isStreamingResponse)
+  const showWorking = isChatHidden && isWorking
+  const showUnread = isChatHidden && !isWorking && hasUnreadBackgroundReply
+
+  if (commentToggle) {
+    commentToggle.classList.toggle('is-working', showWorking)
+    commentToggle.classList.toggle('has-unread', showUnread)
+  }
+  if (statusBubble) {
+    const showActiveStatus = Boolean(currentStatusText) && !(currentStatusText === 'Speaking' && speechBubble && !speechBubble.hidden)
+    statusBubble.classList.toggle('is-working', showWorking || (isWorking && showActiveStatus))
+    statusBubble.classList.toggle('has-unread', showUnread)
+
+    if (showWorking) {
+      statusBubble.textContent = `${activeProgressLabel || currentStatusText || 'Hermes sedang menjawab…'} · Klik buka chat`
+      statusBubble.hidden = false
+      requestAnimationFrame(() => updateStatusBubblePosition())
+    } else if (showUnread) {
+      statusBubble.textContent = 'Jawaban siap — klik untuk baca'
+      statusBubble.hidden = false
+      requestAnimationFrame(() => updateStatusBubblePosition())
+    } else if (showActiveStatus) {
+      statusBubble.textContent = currentStatusText
+      statusBubble.hidden = false
+      requestAnimationFrame(() => updateStatusBubblePosition())
+    } else {
+      statusBubble.hidden = true
+      statusBubble.textContent = ''
+    }
+  }
+}
+
 // --- Toggle chat: klik ikon → sembunyikan/tampilkan chat ---
 function toggleChat() {
   if (!chatSheet) return
   const isHidden = chatSheet.classList.contains('hidden')
   if (isHidden) {
+    hasUnreadBackgroundReply = false
     chatSheet.classList.add('no-transition')
     chatSheet.classList.remove('hidden')
+    if ((busy || isStreamingResponse) && !streamingLine && !toolProgressEl && activeProgressLabel) {
+      updateToolProgress(activeProgressLabel)
+    }
+    syncBackgroundChatIndicators()
+
     // Posisikan window chat tepat di samping tubuh avatar secara instan & akurat
     updateChatPosition()
     void chatSheet.offsetWidth
     requestAnimationFrame(() => {
       updateChatPosition()
+      // Pastikan log menggulir ke bawah bila ada progres/jawaban masuk saat panel sempat ditutup
+      if (chatLog) chatLog.scrollTop = chatLog.scrollHeight
       chatSheet.classList.remove('no-transition')
     })
 
@@ -1117,7 +1318,7 @@ function toggleChat() {
     if (live2dPet) live2dPet.ignoringMouse = false
 
     setTimeout(() => {
-      input?.focus()
+      if (!busy) input?.focus()
     }, 50)
   } else {
     chatSheet.classList.add('hidden')
@@ -1128,11 +1329,24 @@ function toggleChat() {
     window.hermesAvatar?.setIgnoreMouse?.(true, true)
     if (live2dPet) live2dPet.ignoringMouse = true
 
+    // Tetap biarkan sesi & streaming Hermes berjalan di latar belakang bila sedang menjawab
+    if (busy || isStreamingResponse) {
+      showSpeechBubble('Tetap memproses jawaban di latar belakang…', 3500)
+    }
+    syncBackgroundChatIndicators()
+
     // Auto-Adjust: Jendela yang tersisa otomatis bergeser mengisi ruang kosong
     tilingManager.tile()
     updatePerfMode(true)
   }
 }
+
+statusBubble?.addEventListener('click', (e) => {
+  if (chatSheet?.classList.contains('hidden')) {
+    e.stopPropagation()
+    toggleChat()
+  }
+})
 
 commentToggle?.addEventListener('click', (e) => {
   e.stopPropagation()
@@ -1253,7 +1467,7 @@ chatSizeToggleBtn?.addEventListener('click', (e) => {
   chatModeIndex = (chatModeIndex + 1) % CHAT_MODES.length
   const nextMode = CHAT_MODES[chatModeIndex]
   applyChatMode(nextMode, true)
-  showSpeechBubble(`Ukuran Chat: ${nextMode.toUpperCase()} ⛶`, 1800)
+  showSpeechBubble(`Ukuran Chat: ${nextMode.toUpperCase()}`, 1800)
 })
 
 // Handle drag resize bebas pada sudut chat
@@ -1338,10 +1552,10 @@ function finalizeActiveNotulenCard(markdown) {
     e.stopPropagation()
     try {
       await navigator.clipboard.writeText(markdown)
-      const orig = copyBtn.textContent
-      copyBtn.textContent = '✓ Tersalin!'
-      showSpeechBubble('Notulen berhasil disalin ke clipboard! 📋', 3000)
-      setTimeout(() => { copyBtn.textContent = orig }, 2500)
+      const origHtml = copyBtn.innerHTML
+      copyBtn.innerHTML = `${renderIcon('check', { size: 13 })} Tersalin`
+      showSpeechBubble('Notulen berhasil disalin ke clipboard.', 3000)
+      setTimeout(() => { copyBtn.innerHTML = origHtml }, 2500)
     } catch (err) {
       console.error('Gagal salin notulen:', err)
     }
@@ -1364,10 +1578,10 @@ function finalizeActiveNotulenCard(markdown) {
       document.body.removeChild(a)
       URL.revokeObjectURL(url)
 
-      const orig = fileBtn.textContent
-      fileBtn.textContent = '✓ Tersimpan!'
-      showSpeechBubble(`Notulen diunduh sebagai ${filename} 💾`, 3500)
-      setTimeout(() => { fileBtn.textContent = orig }, 2500)
+      const origHtml = fileBtn.innerHTML
+      fileBtn.innerHTML = `${renderIcon('check', { size: 13 })} Tersimpan`
+      showSpeechBubble(`Notulen diunduh sebagai ${filename}`, 3500)
+      setTimeout(() => { fileBtn.innerHTML = origHtml }, 2500)
     } catch (err) {
       console.error('Gagal simpan file notulen:', err)
     }
@@ -1376,28 +1590,28 @@ function finalizeActiveNotulenCard(markdown) {
   memBtn?.addEventListener('click', async (e) => {
     e.stopPropagation()
     if (!hermesReady) {
-      showSpeechBubble('Hermes belum terhubung untuk simpan memori ⚠️', 3000)
+      showSpeechBubble('Hermes belum terhubung untuk simpan memori.', 3000)
       return
     }
-    const orig = memBtn.textContent
+    const origHtml = memBtn.innerHTML
     memBtn.disabled = true
-    memBtn.textContent = '🧠 Menyimpan...'
+    memBtn.textContent = 'Menyimpan…'
     try {
       const memPrompt = `[Instruksi Sistem Mnemosyne: Simpan ringkasan notulen berikut ke dalam memori jangka panjang]:\n${markdown}`
       await hermes.submitPrompt(memPrompt)
-      memBtn.textContent = '✓ Tersimpan di Mnemosyne!'
+      memBtn.innerHTML = `${renderIcon('check', { size: 13 })} Tersimpan di Mnemosyne`
       controller?.setExpression('happy')
-      showSpeechBubble('Notulen tersimpan permanen di memori Mnemosyne! 🧠', 4000)
+      showSpeechBubble('Notulen tersimpan permanen di memori Mnemosyne.', 4000)
       speak('Notulen percakapan berhasil disimpan ke memori jangka panjang Mnemosyne.', 'happy')
       setTimeout(() => {
         memBtn.disabled = false
-        memBtn.textContent = orig
+        memBtn.innerHTML = origHtml
       }, 3500)
     } catch (err) {
       memBtn.disabled = false
-      memBtn.textContent = '⚠️ Gagal Simpan'
+      memBtn.textContent = 'Gagal Simpan'
       showSpeechBubble(`Gagal simpan ke Mnemosyne: ${err.message}`, 3500)
-      setTimeout(() => { memBtn.textContent = orig }, 3000)
+      setTimeout(() => { memBtn.innerHTML = origHtml }, 3000)
     }
   })
 }
@@ -1415,15 +1629,15 @@ async function generateExecutiveSummary() {
   )
 
   if (meaningfulMessages.length < 2) {
-    showSpeechBubble('Percakapan belum cukup untuk dibuatkan notulen. Mari diskusi dulu! 💬', 4000)
-    log('avatar', '⚠️ *Percakapan belum cukup untuk dibuatkan notulen. Mari mengobrol terlebih dahulu!* 💬')
+    showSpeechBubble('Percakapan belum cukup untuk dibuatkan notulen. Mari diskusi dulu.', 4000)
+    log('avatar', '*Percakapan belum cukup untuk dibuatkan notulen. Mari mengobrol terlebih dahulu.*')
     speak('Percakapan kita belum cukup banyak untuk dibuatkan notulen.', 'neutral')
     return
   }
 
   if (!hermesReady) {
-    showSpeechBubble('Hermes belum terhubung ⚠️', 3000)
-    log('avatar', '⚠️ *Hermes belum terhubung ke sistem.*')
+    showSpeechBubble('Hermes belum terhubung.', 3000)
+    log('avatar', '*Hermes belum terhubung ke sistem.*')
     return
   }
 
@@ -1443,8 +1657,8 @@ async function generateExecutiveSummary() {
   activeNotulenCard.className = 'avatar notulen-chat-card'
   activeNotulenCard.innerHTML = `
     <div class="notulen-card-header">
-      <div class="notulen-badge">📋 NOTULEN PERCAKAPAN EKSEKUTIF</div>
-      <span class="notulen-timestamp">📅 ${dateFormatted}, ${timeFormatted} WIB</span>
+      <div class="notulen-badge"><span class="btn-svg-icon">${renderIcon('clipboard-list', { size: 13 })}</span> NOTULEN PERCAKAPAN EKSEKUTIF</div>
+      <span class="notulen-timestamp">${dateFormatted}, ${timeFormatted} WIB</span>
     </div>
     <div class="notulen-card-body markdown-body">
       <div class="summary-loading">
@@ -1453,9 +1667,9 @@ async function generateExecutiveSummary() {
       </div>
     </div>
     <div class="notulen-card-actions" style="display: none;">
-      <button type="button" class="notulen-card-btn notulen-copy-btn" title="Salin ke clipboard">📋 Salin Markdown</button>
-      <button type="button" class="notulen-card-btn notulen-file-btn" title="Unduh file .md">💾 Simpan (.md)</button>
-      <button type="button" class="notulen-card-btn notulen-mem-btn primary" title="Simpan permanen ke Mnemosyne">🧠 Simpan ke Mnemosyne</button>
+      <button type="button" class="notulen-card-btn notulen-copy-btn" title="Salin ke clipboard">${renderIcon('copy', { size: 13 })} Salin Markdown</button>
+      <button type="button" class="notulen-card-btn notulen-file-btn" title="Unduh file .md">${renderIcon('download', { size: 13 })} Simpan (.md)</button>
+      <button type="button" class="notulen-card-btn notulen-mem-btn primary" title="Simpan permanen ke Mnemosyne">${renderIcon('brain', { size: 13 })} Simpan ke Mnemosyne</button>
     </div>
   `
   chatLog.appendChild(activeNotulenCard)
@@ -1464,8 +1678,8 @@ async function generateExecutiveSummary() {
   activeNotulenBody = activeNotulenCard.querySelector('.notulen-card-body')
 
   controller?.setExpression('thinking')
-  setStatus('Menyusun Notulen 📋')
-  showSpeechBubble('Menyusun notulen eksekutif di chat... 📋', 4000)
+  setStatus('Menyusun Notulen')
+  showSpeechBubble('Menyusun notulen eksekutif di chat…', 4000)
   speak('Saya sedang menganalisis percakapan kita dan menyusun notulen langsung di chat.', 'neutral')
 
   // Buat transkrip teks percakapan
@@ -1489,24 +1703,24 @@ Instruksi Khusus:
 3. Ekstraksi Keputusan & Action Items: Pisahkan mana ide utama, keputusan yang dicapai, dan tugas tindak lanjut.
 4. Gunakan format Markdown yang presisi dengan struktur persis seperti di bawah:
 
-# 📋 Executive Summary: Sesi Diskusi Hermes AI
+# Executive Summary: Sesi Diskusi Hermes AI
 
 > **Ringkasan Eksekutif:**
 > [Tuliskan 2-3 kalimat ringkas intisari percakapan, topik utama yang dibahas, dan kesimpulan akhir tanpa basa-basi]
 
-### 💡 Poin-Poin Kunci & Diskusi Utama (Key Takeaways)
+### Poin-Poin Kunci & Diskusi Utama (Key Takeaways)
 - **[Topik/Poin 1]:** Penjelasan padat dan jelas.
 - **[Topik/Poin 2]:** Penjelasan padat dan jelas.
 
-### 🎯 Keputusan yang Disepakati (Decisions Made)
+### Keputusan yang Disepakati (Decisions Made)
 - [Keputusan konkret 1]
 - [Keputusan konkret 2]
 
-### ✅ Action Items & Tindak Lanjut
+### Action Items & Tindak Lanjut
 - [ ] [Langkah konkret berikutnya 1]
 - [ ] [Langkah konkret berikutnya 2]
 
-### 📝 Catatan Teknis / Konteks Tambahan
+### Catatan Teknis / Konteks Tambahan
 [Cantumkan detail teknis, command, path, konfigurasi, atau referensi penting yang disebut dalam sesi. Jika tidak ada, tulis "Sesi diskusi umum."]
 
 Pedoman: Jangan tambahkan tag emosi seperti [emotion:...] atau [affect:...]. Langsung tuliskan output Markdown.`
@@ -1522,7 +1736,7 @@ Pedoman: Jangan tambahkan tag emosi seperti [emotion:...] atau [affect:...]. Lan
     isGeneratingSummary = false
     setInputLocked(false)
     if (activeNotulenBody) {
-      activeNotulenBody.innerHTML = `<p style="color: #f87171;">⚠️ Gagal meminta ringkasan: ${escapeHtml(err.message)}</p>`
+      activeNotulenBody.innerHTML = `<p style="color: #f87171;">Gagal meminta ringkasan: ${escapeHtml(err.message)}</p>`
     }
   }
 }
@@ -1551,6 +1765,13 @@ function bindDynamicAssessmentCards(container) {
     handleUserChat
   })
 }
+
+attachDynamicAssessmentDelegationModule(chatLog, {
+  getController: () => controller,
+  showSpeechBubble,
+  speak,
+  handleUserChat
+})
 
 function showCapabilityAssessmentCard() {
   activeAssessmentCard = createCapabilityAssessmentCard({
@@ -1583,7 +1804,7 @@ window.addEventListener('resize', () => {
   if (!chatSheet?.classList.contains('hidden')) {
     updateChatPosition()
   }
-  updateSpeechBubblePosition()
+  updateAllBubblePositions()
 })
 
 // --- Mute / Unmute Suara TTS ala YourMother (MotherMute) ---
@@ -1593,8 +1814,8 @@ const muteLabel = document.getElementById('mute-label')
 
 muteBtn?.addEventListener('click', () => {
   ttsEnabled = !ttsEnabled
-  if (muteIcon) muteIcon.textContent = ttsEnabled ? '🔊' : '🔇'
-  if (muteLabel) muteLabel.textContent = ttsEnabled ? 'Suara' : 'Bisu'
+  syncMuteUi()
+  if (!ttsEnabled) interruptSpeech()
   // Persisten: tulis balik ke pengaturan bersama (tanpa menghapus kunci lain).
   try {
     const raw = localStorage.getItem('hermes-avatar-settings')
@@ -1603,9 +1824,9 @@ muteBtn?.addEventListener('click', () => {
     localStorage.setItem('hermes-avatar-settings', JSON.stringify(s))
   } catch { /* abaikan */ }
   if (live2dPet?.model) {
-    live2dPet.spawnHeart(live2dPet.model.x, live2dPet.model.y - 120, ttsEnabled ? '🔊' : '🔇')
+    live2dPet.spawnHeart(live2dPet.model.x, live2dPet.model.y - 120)
   }
-  showSpeechBubble(ttsEnabled ? 'Suara diaktifkan 🔊' : 'Suara dibisukan 🔇', 2500)
+  showSpeechBubble(ttsEnabled ? 'Suara diaktifkan.' : 'Suara dibisukan.', 2500)
 })
 
 // --- Kontrol Zoom / Skala & Reset Posisi ---
@@ -1620,6 +1841,8 @@ document.getElementById('zoom-out-btn')?.addEventListener('click', () => {
 document.getElementById('reset-pos-btn')?.addEventListener('click', () => {
   live2dPet?.resetPosition()
   live2dPet?.resetZoom()
+  tilingManager.tile()
+  requestAnimationFrame(() => updateAllBubblePositions())
 })
 
 // --- Buka Window Settings dari HUD ---
@@ -1672,6 +1895,7 @@ async function playCustomEmote(anim) {
         return
       }
 
+      const THREE = await loadThreeModule()
       if (animMixer) { animMixer.stopAllAction(); animMixer = null }
       animMixer = new THREE.AnimationMixer(mmdRef.mesh)
       const action = animMixer.clipAction(clip)
@@ -1704,6 +1928,7 @@ async function playCustomEmote(anim) {
         return
       }
 
+      const THREE = await loadThreeModule()
       if (animMixer) { animMixer.stopAllAction(); animMixer = null }
       animMixer = new THREE.AnimationMixer(modelScene)
       const action = animMixer.clipAction(clips[0])
@@ -1722,12 +1947,12 @@ async function playCustomEmote(anim) {
 
 // --- Idle Chatter Berkala ala YourMother (motherSpeakFrequency) & Pengaturan Dinamis ---
 const DEFAULT_IDLE_CHATTER_LINES = [
-  'Jangan lupa minum air putih ya 💧',
-  'Postur tubuhnya ditegakkan dulu yuk, biar punggung tidak pegal 🧘',
-  'Fokus kerja hebat banget! Semangat terus ya ✨',
-  'Sudah istirahatkan mata sejenak belum? Coba lihat ke kejauhan sebentar 👀',
-  'Ada yang bisa kubantu dengan AI Hermes? Buka chat kapan saja ya 💬',
-  'Tarik napas dalam-dalam... hembuskan perlahan 🌸'
+  'Jangan lupa minum air putih ya',
+  'Postur tubuhnya ditegakkan dulu yuk, biar punggung tidak pegal',
+  'Fokus kerja hebat banget! Semangat terus ya',
+  'Sudah istirahatkan mata sejenak belum? Coba lihat ke kejauhan sebentar',
+  'Ada yang bisa kubantu dengan AI Hermes? Buka chat kapan saja ya',
+  'Tarik napas dalam-dalam... hembuskan perlahan'
 ]
 
 function getIdleReminderConfig() {
@@ -1799,14 +2024,12 @@ window.hermesAvatar?.onTriggerIdleChatter?.((line) => {
 
 scheduleNextIdleChatter()
 
-// Escape juga menutup chat (sembunyikan), bukan tutup window.
+// Escape juga menutup chat (sembunyikan), bukan menghentikan proses atau menutup window.
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
-    if (!chatSheet.classList.contains('hidden')) {
-      chatSheet.classList.add('hidden')
-      // Jangan set commentToggle.textContent di sini — itu menghapus span emoji/label
-      // di dalam tombol secara permanen. Emoji default memang sudah 💬.
-      window.hermesAvatar?.setChatFocus?.(false)
+    if (snipOverlay && !snipOverlay.hasAttribute('hidden')) return
+    if (chatSheet && !chatSheet.classList.contains('hidden')) {
+      toggleChat()
     }
   }
 })
@@ -1819,9 +2042,10 @@ function setInputLocked(locked) {
   input.disabled = locked
   sendBtn.disabled = locked
   micBtn.disabled = locked
-  input.placeholder = locked ? '⏳ Hermes sedang bekerja…' : 'Ketik pesan...'
+  input.placeholder = locked ? 'Hermes sedang bekerja…' : 'Ketik pesan...'
   form.classList.toggle('is-busy', locked)
-  if (!locked) input.focus()
+  if (!locked && !chatSheet?.classList.contains('hidden')) input.focus()
+  syncBackgroundChatIndicators()
 }
 
 // --- Bubble status di atas avatar (thinking/processing/speaking/idle) ---
@@ -1829,20 +2053,8 @@ function setInputLocked(locked) {
 const IDLE_BUBBLE = '· · ·'
 
 function setStatus(text) {
-  if (statusBubble) {
-    if (!text) {
-      // Idle: tampilkan bubble netral.
-      statusBubble.hidden = false
-      statusBubble.textContent = IDLE_BUBBLE
-    } else {
-      statusBubble.hidden = false
-      statusBubble.textContent = text
-    }
-  }
-
-  if (text && text !== IDLE_BUBBLE && !isSpeaking) {
-    showSpeechBubble(text, 4000)
-  }
+  currentStatusText = (text && text !== IDLE_BUBBLE) ? String(text).trim() : ''
+  syncBackgroundChatIndicators()
 }
 
 // --- Sanitasi teks jawaban: bersihkan tag internal & format ANSI (tetap jaga newline & markdown) ---
@@ -1913,7 +2125,7 @@ async function initHermes() {
     await hermes.connect()
     await hermes.createSession('Avatar chat')
     hermesReady = true
-    log('avatar', 'Terhubung ke Hermes. Siap! 👋')
+    log('avatar', 'Terhubung ke Hermes. Siap!')
     if (queuedResumeSessionId) {
       const targetSid = queuedResumeSessionId
       queuedResumeSessionId = null
@@ -1931,6 +2143,7 @@ async function initHermes() {
     // Jawaban final.
     hermes.on('message.complete', (evt) => {
       isStreamingResponse = false
+      activeProgressLabel = ''
       updatePerfMode()
       removeToolProgress()
       // Jika ini adalah respon pembuatan notulen eksekutif:
@@ -1944,11 +2157,12 @@ async function initHermes() {
         finalizeActiveNotulenCard(currentSummaryMarkdown)
         activeNotulenCard = null
         activeNotulenBody = null
+        if (chatSheet?.classList.contains('hidden')) hasUnreadBackgroundReply = true
         setInputLocked(false)
         controller?.setExpression('happy')
-        setStatus('Notulen Siap 📋')
-        showSpeechBubble('Notulen eksekutif selesai disusun di chat! 📋', 4500)
-        speak('Notulen percakapan sudah selesai saya susun langsung di tampilan chat.', 'happy')
+        setStatus('Notulen Siap')
+        showSpeechBubble('Notulen eksekutif selesai disusun di chat.', 4500)
+        speak('Notulen percakapan sudah selesai saya susun langsung di tampilan chat.', 'happy', { flushProgress: true })
         return
       }
 
@@ -1963,6 +2177,7 @@ async function initHermes() {
         const body = streamingLine.querySelector('.chat-body')
         if (body) {
           body.innerHTML = renderMarkdown(text)
+          bindDynamicAssessmentCards(streamingLine)
         }
         streamingLine = null
         sessionChatHistory.push({
@@ -1975,6 +2190,9 @@ async function initHermes() {
       }
 
       accumulatedDeltaText = ''
+      if (chatSheet?.classList.contains('hidden') && text) {
+        hasUnreadBackgroundReply = true
+      }
 
       // Hermes selesai bekerja → buka kembali kolom chat.
       setInputLocked(false)
@@ -1993,14 +2211,14 @@ async function initHermes() {
       // displayText = teks lengkap (Markdown) → tampil di chat log.
       // speechText = teks natural untuk TTS (tanpa markdown, ringkas kalimat).
       const vs = getVoiceSettings()
-      const speechText = toSpeechText(rawText, { maxChars: vs.verbosity === 'full' ? 1500 : 500 })
+      const speechText = toSpeechText(rawText, { maxChars: vs.verbosity === 'full' ? 1800 : 500 })
       lastSummary = speechText ? summaryText(speechText) : ''
-      setStatus(lastSummary)
-      console.log('[speech] ttsEnabled=', ttsEnabled, 'len=', speechText?.length, 'verbosity=', vs.verbosity)
+      setStatus('')
+      console.log('[speech] ttsEnabled=', ttsEnabled, 'provider=', vs.provider, 'voice=', vs.voice, 'len=', speechText?.length, 'verbosity=', vs.verbosity)
 
-      // TTS + lip sync: baca speechText (bukan Markdown).
+      // TTS + lip sync: baca speechText (flush status progress supaya jawaban langsung dibacakan).
       if (ttsEnabled && speechText.trim()) {
-        speak(speechText, emotion)
+        speak(speechText, emotion, { flushProgress: true })
       } else {
         // Jika TTS mati/kosong, tampilkan ekspresi ramah lalu otomatis kembali netral setelah 5 detik
         setTimeout(() => {
@@ -2011,9 +2229,12 @@ async function initHermes() {
 
     // Streaming delta (teks muncul saat Hermes mengetik / menyusun jawaban).
     hermes.on('message.delta', (evt) => {
+      const wasStreamingText = activeProgressLabel === 'Menulis jawaban…'
       isStreamingResponse = true
+      activeProgressLabel = 'Menulis jawaban…'
       updatePerfMode(true)
       removeToolProgress()
+      if (!wasStreamingText) syncBackgroundChatIndicators()
       if (controller?.currentEmotion !== 'composing') {
         controller?.setExpression('composing')
       }
@@ -2051,6 +2272,8 @@ async function initHermes() {
     // Turn dimulai → thinking (sesuai gaya aktif) + kunci input + bubble + bicara progress.
     hermes.on('message.start', () => {
       isStreamingResponse = true
+      hasUnreadBackgroundReply = false
+      activeProgressLabel = 'Memproses…'
       updatePerfMode(true)
       removeToolProgress()
       accumulatedDeltaText = ''
@@ -2064,6 +2287,7 @@ async function initHermes() {
 
     // Thinking presisi (reasoning stream) → pasang gaya berpikir aktif.
     hermes.on('thinking.delta', () => {
+      activeProgressLabel = 'Berpikir…'
       triggerStateAnimation('thinking', 'glasses')
       setStatus('Berpikir…')
     })
@@ -2072,6 +2296,7 @@ async function initHermes() {
     hermes.on('tool.start', (evt) => {
       const tool = evt?.payload?.name || evt?.payload?.tool || 'tool'
       const label = toolLabel(tool)
+      activeProgressLabel = label
       triggerStateAnimation('thinking', 'glasses')
       updateToolProgress(label)
       setStatus(label)
@@ -2079,6 +2304,7 @@ async function initHermes() {
 
     // Tool selesai → "Menyusun jawaban…" + ganti ekspresi sesuai gaya memproses aktif.
     hermes.on('tool.complete', () => {
+      activeProgressLabel = 'Menyusun jawaban…'
       updateToolProgress('Menyusun jawaban…')
       setStatus('Menyusun jawaban…')
       sayProgress('Menyusun jawaban')
@@ -2088,6 +2314,7 @@ async function initHermes() {
     // Turn error/berhenti → pastikan input tidak terkunci selamanya.
     hermes.on('error', async (evt) => {
       isStreamingResponse = false
+      activeProgressLabel = ''
       updatePerfMode()
       removeToolProgress()
       setInputLocked(false)
@@ -2097,7 +2324,7 @@ async function initHermes() {
       if (isGeneratingSummary) {
         isGeneratingSummary = false
         if (activeNotulenBody) {
-          activeNotulenBody.innerHTML = `<p style="color: #f87171;">⚠️ Terjadi kesalahan saat menyusun notulen.</p>`
+          activeNotulenBody.innerHTML = `<p style="color: #f87171;">Terjadi kesalahan saat menyusun notulen.</p>`
         }
         activeNotulenCard = null
         activeNotulenBody = null
@@ -2109,6 +2336,7 @@ async function initHermes() {
     })
     hermes.on('turn.complete', () => {
       isStreamingResponse = false
+      activeProgressLabel = ''
       updatePerfMode()
       removeToolProgress()
       setInputLocked(false)
@@ -2126,23 +2354,38 @@ async function initHermes() {
     hermes.on('voice.status', (evt) => {
       const st = evt?.payload?.status || evt?.payload?.state
       console.log('[hermes voice.status]', st)
-      if (st === 'recording') {
+      if (st === 'recording' || st === 'listening') {
         recording = true
+        setConversationState('listening')
         micBtn?.classList.add('recording')
-        if (micBtn) micBtn.textContent = '⏹️'
-        showSpeechBubble('Mendengarkan suara Anda... 🎙️', 4000)
+        if (micBtn) micBtn.innerHTML = renderIcon('square', { size: 15 })
+        showSpeechBubble('Mendengarkan suara Anda…', 4000)
       } else if (st === 'transcribing') {
-        showSpeechBubble('Menerjemahkan suara (Whisper)... ⏳', 3000)
+        setConversationState('transcribing')
+        showSpeechBubble('Menerjemahkan suara (Whisper)…', 3000)
       } else if (st === 'idle' || st === 'off') {
         recording = false
         micBtn?.classList.remove('recording')
-        if (micBtn) micBtn.textContent = '🎤'
+        if (micBtn) micBtn.innerHTML = renderIcon('mic', { size: 15 })
+        if (conversationState === 'listening' || conversationState === 'transcribing') {
+          setConversationState('idle')
+        }
       }
     })
 
     // Hasil transkripsi suara → cek fast-path atau kirim ke Hermes sebagai teks + ekspresi berpikir.
     hermes.on('voice.transcript', async (evt) => {
       const text = evt?.payload?.text ?? ''
+      if (evt?.payload?.no_speech_limit || !text.trim()) {
+        recording = false
+        micBtn?.classList.remove('recording')
+        if (micBtn) micBtn.innerHTML = renderIcon('mic', { size: 15 })
+        if (conversationState === 'listening' || conversationState === 'transcribing') {
+          setConversationState('idle')
+        }
+        showSpeechBubble('Suara tidak terdengar jelas, coba bicara lebih dekat ke mikrofon.', 3500)
+        return
+      }
       if (text.trim()) {
         log('user', text)
 
@@ -2161,7 +2404,9 @@ async function initHermes() {
         // Cek apakah perintah memilih opsi demonstrasi assessment (misal: "coba 1 dan 3")
         const assessmentChoices = extractAssessmentChoices(text)
         if (assessmentChoices) {
-          await executeSelectedCapabilities(assessmentChoices)
+          if (!assessmentChoices.includes('dynamic-handled')) {
+            await executeSelectedCapabilities(assessmentChoices)
+          }
           return
         }
 
@@ -2194,16 +2439,17 @@ async function initHermes() {
     hermes.on('connection.lost', (info) => {
       hermesReady = false
       isStreamingResponse = false
+      activeProgressLabel = ''
       removeToolProgress()
       setInputLocked(false)
       setStatus('')
       if (info?.intentional) return
-      log('avatar', '⚠️ Koneksi ke Hermes terputus. Mencoba menghubungkan ulang…')
+      log('avatar', 'Koneksi ke Hermes terputus. Mencoba menghubungkan ulang…')
       scheduleHermesReconnect()
     })
   } catch (err) {
     hermesReady = false
-    log('avatar', `⚠️ Gagal hubung Hermes: ${err.message}`)
+    log('avatar', `Gagal hubung Hermes: ${err.message}`)
     scheduleHermesReconnect()
   }
 }
@@ -2214,7 +2460,7 @@ let hermesReconnectTimer = null
 function scheduleHermesReconnect() {
   if (hermesReconnectTimer) return
   if (hermesReconnectAttempts >= 8) {
-    log('avatar', '⚠️ Gagal menghubungkan ulang ke Hermes setelah beberapa percobaan. Buka Settings untuk restart Hermes.')
+    log('avatar', 'Gagal menghubungkan ulang ke Hermes setelah beberapa percobaan. Buka Settings untuk restart Hermes.')
     return
   }
   hermesReconnectAttempts++
@@ -2229,7 +2475,7 @@ function scheduleHermesReconnect() {
       await initHermes()
       if (hermesReady) {
         hermesReconnectAttempts = 0
-        log('avatar', '✅ Kembali terhubung ke Hermes.')
+        log('avatar', 'Kembali terhubung ke Hermes.')
       } else {
         scheduleHermesReconnect()
       }
@@ -2244,9 +2490,11 @@ initHermes()
 // Bubble idle tampil sejak awal (sebelum ada event).
 setStatus('')
 
-// --- TTS + lip sync (dengan antrian audio) ---
+// --- TTS + lip sync (dengan antrian audio & prefetch per kalimat) ---
 const speechQueue = []
 let isSpeaking = false
+let activeSpeechItem = null
+let speechGeneration = 0
 
 // --- State machine percakapan suara ---
 // idle | listening | transcribing | thinking | speaking | interrupted | error
@@ -2260,6 +2508,9 @@ function setConversationState(state) {
 
 // Interupsi: hentikan audio + batalkan antrian TTS (barge-in).
 function interruptSpeech() {
+  speechGeneration++
+  if (activeSpeechItem) activeSpeechItem.cancelled = true
+  activeSpeechItem = null
   audioPlayer.stop()
   speechQueue.length = 0
   updatePerfMode()
@@ -2280,52 +2531,131 @@ function withTimeout(promise, ms) {
 async function processSpeechQueue() {
   if (isSpeaking) return
   isSpeaking = true
+  const runGen = speechGeneration
+  let hadSpokenAnswer = false
+  let hadInterrupted = false
+  let prefetched = null
+
   updatePerfMode(true)
   musicPlayer?.duck(true)
+
+  const synthItem = (targetItem) => {
+    const vs = getVoiceSettings()
+    return withTimeout(
+      synthesize(targetItem.text, vs.voice, {
+        provider: vs.provider,
+        kokoroEndpoint: vs.kokoroEndpoint,
+        speed: vs.speed,
+        intonation: vs.intonation
+      }),
+      35000
+    )
+  }
+
   try {
     while (speechQueue.length > 0) {
+      if (runGen !== speechGeneration) {
+        hadInterrupted = true
+        break
+      }
       const item = speechQueue.shift()
       const { text, emotion, isProgress } = item
 
-      // Skip teks kosong / terlalu panjang (hindari TTS hang).
-      if (!text || !text.trim()) continue
-      if (text.length > 1000) continue // sangat panjang → skip TTS
+      if (!text || !text.trim() || item.cancelled) continue
+
+      activeSpeechItem = item
+      if (!isProgress) hadSpokenAnswer = true
 
       if (isProgress) setStatus('Speaking')
       setConversationState('speaking')
       if (text) showSpeechBubble(text, 12000)
+
       try {
-        const vs = getVoiceSettings()
-        const { buffer } = await withTimeout(
-          synthesize(text, vs.voice, {
-            provider: vs.provider,
-            kokoroEndpoint: vs.kokoroEndpoint,
-            speed: vs.speed,
-            intonation: vs.intonation
-          }),
-          15000
-        )
+        let res
+        if (prefetched && prefetched.item === item) {
+          res = await prefetched.promise
+        } else {
+          res = await synthItem(item)
+        }
+        prefetched = null
+
+        if (item.cancelled || runGen !== speechGeneration) {
+          if (runGen !== speechGeneration) hadInterrupted = true
+          continue
+        }
+
+        // Prefetch chunk berikutnya saat chunk sekarang mulai diputar
+        const nextItem = speechQueue[0]
+        if (nextItem && !nextItem.isProgress && !nextItem.cancelled && nextItem.text?.trim()) {
+          prefetched = { item: nextItem, promise: synthItem(nextItem) }
+          prefetched.promise.catch(() => {})
+        }
+
         if (emotion) controller?.setExpression(emotion)
-        await audioPlayer.play(buffer)
+        await audioPlayer.play(res.buffer)
       } catch (err) {
+        prefetched = null
         console.error('[TTS error]', err?.message || err)
+        if (!isProgress && speechQueue.length === 0) {
+          showSpeechBubble(`Suara TTS gagal: ${err?.message || 'periksa pengaturan suara'}`, 3500)
+        }
+      } finally {
+        activeSpeechItem = null
+      }
+
+      if (runGen !== speechGeneration) {
+        hadInterrupted = true
+        break
       }
       controller?.setMouthLevel(0)
       controller?.setExpression('neutral')
     }
   } finally {
+    activeSpeechItem = null
     isSpeaking = false
     musicPlayer?.duck(false)
     updatePerfMode()
     hideSpeechBubble()
-    // Kembalikan bubble ke ringkasan terakhir (jika ada) atau idle.
-    setStatus(lastSummary || '')
+    // Kembalikan status ke idle setelah selesai berbicara.
+    setStatus('')
     if (conversationState === 'speaking') setConversationState('idle')
+
+    if (!hadInterrupted && runGen === speechGeneration && hadSpokenAnswer) {
+      const vs = getVoiceSettings()
+      if (vs.continuous && hermesReady && !busy && !recording) {
+        setTimeout(() => {
+          if (!recording && !busy && !isSpeaking && hermesReady) {
+            toggleMic()
+          }
+        }, 500)
+      }
+    }
   }
 }
 
-function speak(text, emotion = 'neutral', { isProgress = false } = {}) {
-  speechQueue.push({ text, emotion, isProgress })
+function speak(text, emotion = 'neutral', { isProgress = false, flushProgress = false } = {}) {
+  if (!ttsEnabled) return
+  const cleaned = String(text || '').trim()
+  if (!cleaned) return
+
+  if (flushProgress) {
+    for (let i = speechQueue.length - 1; i >= 0; i--) {
+      if (speechQueue[i].isProgress) speechQueue.splice(i, 1)
+    }
+    if (activeSpeechItem?.isProgress) {
+      activeSpeechItem.cancelled = true
+      audioPlayer.stop()
+    }
+  }
+
+  if (isProgress) {
+    speechQueue.push({ text: cleaned, emotion, isProgress: true, cancelled: false })
+  } else {
+    const chunks = splitSpeechChunks(cleaned, { maxChunkChars: 200, maxTotalChars: 1800 })
+    for (const chunk of chunks) {
+      speechQueue.push({ text: chunk, emotion, isProgress: false, cancelled: false })
+    }
+  }
   processSpeechQueue()
 }
 
@@ -2684,7 +3014,7 @@ let recording = false
 async function toggleMic() {
   if (!hermesReady) {
     log('avatar', '(offline) Hermes belum terhubung.')
-    showSpeechBubble('Hermes belum terhubung ⚠️', 2500)
+    showSpeechBubble('Hermes belum terhubung.', 2500)
     return
   }
 
@@ -2696,25 +3026,32 @@ async function toggleMic() {
         interruptSpeech()
       }
       await hermes.voiceToggle('on')
-      await hermes.voiceRecord('start')
+      const recRes = await hermes.voiceRecord('start')
+      if (recRes?.status === 'busy') {
+        recording = false
+        micBtn?.classList.remove('recording')
+        if (micBtn) micBtn.innerHTML = renderIcon('mic', { size: 15 })
+        showSpeechBubble('Masih memproses rekaman sebelumnya, tunggu sebentar…', 2500)
+        return
+      }
       recording = true
       setConversationState('listening')
-      micBtn.textContent = '⏹️'
+      micBtn.innerHTML = renderIcon('square', { size: 15 })
       micBtn.classList.add('recording')
-      showSpeechBubble('Mendengarkan suara Anda... 🎙️', 4000)
+      showSpeechBubble('Mendengarkan suara Anda…', 4000)
     } else {
       await hermes.voiceRecord('stop')
       recording = false
       setConversationState('transcribing')
-      micBtn.textContent = '🎤'
+      micBtn.innerHTML = renderIcon('mic', { size: 15 })
       micBtn.classList.remove('recording')
-      showSpeechBubble('Menerjemahkan suara... ⏳', 3000)
+      showSpeechBubble('Menerjemahkan suara…', 3000)
     }
   } catch (err) {
     log('avatar', `Mic gagal: ${err.message}`)
     showSpeechBubble(`Mic error: ${err.message}`, 3000)
     recording = false
-    micBtn.textContent = '🎤'
+    micBtn.innerHTML = renderIcon('mic', { size: 15 })
     micBtn.classList.remove('recording')
   }
 }
@@ -2750,7 +3087,7 @@ window.hermesAvatar.onWebPrompt?.((data) => {
 
   // Emosi avatar: curious
   controller?.setExpression('curious')
-  showSpeechBubble('Menerima permintaan dari browser web companion. Konfirmasi pengiriman? 🌐', 4000)
+  showSpeechBubble('Menerima permintaan dari browser web companion. Konfirmasi pengiriman?', 4000)
 
   // 2. Buat kartu konfirmasi menggunakan createElement + textContent (tanpa innerHTML dengan data mentah)
   const card = document.createElement('div')
@@ -2761,7 +3098,7 @@ window.hermesAvatar.onWebPrompt?.((data) => {
 
   const badge = document.createElement('div')
   badge.className = 'assessment-badge'
-  badge.textContent = '🌐 WEB COMPANION PROMPT'
+  badge.innerHTML = `<span class="btn-svg-icon">${renderIcon('globe', { size: 13 })}</span> WEB COMPANION PROMPT`
 
   const pill = document.createElement('span')
   pill.className = 'assessment-type-pill'
@@ -2779,7 +3116,7 @@ window.hermesAvatar.onWebPrompt?.((data) => {
   const sourceLabel = document.createElement('span')
   sourceLabel.style.color = '#94a3b8'
   sourceLabel.style.fontWeight = '600'
-  sourceLabel.textContent = '📄 Sumber: '
+  sourceLabel.textContent = 'Sumber: '
   sourceDiv.appendChild(sourceLabel)
 
   if (url && (url.startsWith('http://') || url.startsWith('https://'))) {
@@ -2829,7 +3166,7 @@ window.hermesAvatar.onWebPrompt?.((data) => {
   questionLabel.style.fontSize = '11px'
   questionLabel.style.color = '#94a3b8'
   questionLabel.style.marginBottom = '2px'
-  questionLabel.textContent = '❓ Pertanyaan:'
+  questionLabel.textContent = 'Pertanyaan:'
 
   const questionContent = document.createElement('div')
   questionContent.textContent = question
@@ -2845,13 +3182,13 @@ window.hermesAvatar.onWebPrompt?.((data) => {
   const btnSend = document.createElement('button')
   btnSend.type = 'button'
   btnSend.className = 'assessment-execute-btn'
-  btnSend.textContent = '🚀 Kirim ke Hermes'
+  btnSend.innerHTML = `<span class="btn-svg-icon">${renderIcon('send', { size: 13 })}</span> Kirim ke Hermes`
 
   const btnCancel = document.createElement('button')
   btnCancel.type = 'button'
   btnCancel.className = 'assessment-preset-chip'
   btnCancel.style.padding = '7px 14px'
-  btnCancel.textContent = '❌ Batal'
+  btnCancel.innerHTML = `<span class="btn-svg-icon">${renderIcon('x', { size: 13 })}</span> Batal`
 
   footer.appendChild(btnSend)
   footer.appendChild(btnCancel)
@@ -2883,7 +3220,7 @@ window.hermesAvatar.onWebPrompt?.((data) => {
       st.className = 'assessment-status-text'
       st.textContent = 'Hermes belum aktif, tidak ada yang dikirim.'
       footer.replaceChildren(st)
-      log('avatar', '⚠️ **Hermes AI Daemon belum aktif di background.** Silakan periksa status koneksi di menu Pengaturan.')
+      log('avatar', '**Hermes AI Daemon belum aktif di background.** Silakan periksa status koneksi di menu Pengaturan.')
       speak('Hermes belum terhubung, silakan nyalakan service di pengaturan.', 'neutral')
       return
     }
@@ -3000,8 +3337,8 @@ async function createFreshChatSession() {
     if (chatLog) chatLog.innerHTML = ''
     chatHistoryDrawer?.setAttribute('hidden', '')
     chatHistoryToggleBtn?.classList.remove('active')
-    log('avatar', '✨ Sesi percakapan baru dimulai.')
-    showSpeechBubble('Sesi obrolan baru siap! ✨', 3000)
+    log('avatar', 'Sesi percakapan baru dimulai.')
+    showSpeechBubble('Sesi obrolan baru siap.', 3000)
   } catch (err) {
     log('avatar', `Gagal membuat sesi baru: ${err?.message || err}`)
   }
@@ -3024,7 +3361,7 @@ async function resumeHermesSessionById(sessionId) {
 
   // Indikasi visual memuat
   if (chatLog) {
-    chatLog.innerHTML = '<div style="color: #94a3b8; font-size: 12px; padding: 12px; text-align: center;">Memuat riwayat sesi… ⏳</div>'
+    chatLog.innerHTML = '<div style="color: #94a3b8; font-size: 12px; padding: 12px; text-align: center;">Memuat riwayat sesi…</div>'
   }
 
   try {
@@ -3103,7 +3440,7 @@ async function resumeHermesSessionById(sessionId) {
     }
 
     if (renderedCount === 0) {
-      log('avatar', `🗂️ Sesi \`${sid}\` dilanjutkan (belum ada pesan percakapan tersimpan).`)
+      log('avatar', `Sesi \`${sid}\` dilanjutkan (belum ada pesan percakapan tersimpan).`)
     }
 
     if (chatLog) {
@@ -3111,7 +3448,7 @@ async function resumeHermesSessionById(sessionId) {
     }
 
     const title = sessionMeta?.title || sid.slice(0, 8)
-    showSpeechBubble(`Sesi "${title}" dilanjutkan! 💬`, 3500)
+    showSpeechBubble(`Sesi "${title}" dilanjutkan.`, 3500)
   } catch (err) {
     console.error('[resumeHermesSessionById] Gagal melanjutkan sesi:', err)
     if (chatLog) chatLog.innerHTML = ''
@@ -3196,7 +3533,7 @@ async function refreshChatHistoryList(query = '') {
     delBtn.type = 'button'
     delBtn.className = 'chat-history-del'
     delBtn.title = 'Hapus sesi'
-    delBtn.textContent = '🗑'
+    delBtn.innerHTML = renderIcon('trash-2', { size: 13 })
     delBtn.addEventListener('click', async (ev) => {
       ev.stopPropagation()
       if (!hermesReady || !hermes) return
@@ -3208,7 +3545,7 @@ async function refreshChatHistoryList(query = '') {
           await hermes.createSession('Avatar chat')
           sessionChatHistory.length = 0
           if (chatLog) chatLog.innerHTML = ''
-          log('avatar', '🗑️ Sesi aktif dihapus — sesi percakapan baru dimulai.')
+          log('avatar', 'Sesi aktif dihapus — sesi percakapan baru dimulai.')
         }
       } catch (err) {
         delBtn.disabled = false
@@ -3289,7 +3626,7 @@ window.hermesAvatar?.onSessionDeleted?.(async (data) => {
     await hermes.createSession('Avatar chat').catch(() => {})
     sessionChatHistory.length = 0
     if (chatLog) chatLog.innerHTML = ''
-    log('avatar', '🗑️ Sesi aktif telah dihapus dari Settings — sesi percakapan baru dimulai.')
+    log('avatar', 'Sesi aktif telah dihapus dari Settings — sesi percakapan baru dimulai.')
   }
 })
 
@@ -3303,10 +3640,11 @@ window.hermesAvatar?.onCronNotification?.((parsed) => {
   card.className = 'avatar cron-alert-card'
   const tag = document.createElement('span')
   tag.className = 'sender-tag'
-  tag.textContent = `⏰ Jadwal Cron: ${title}`
+  tag.textContent = `Jadwal Cron: ${title}`
   const body = document.createElement('div')
   body.className = 'chat-body markdown-body'
   body.innerHTML = renderMarkdown(rawBody)
+  bindDynamicAssessmentCards(card)
   card.appendChild(tag)
   card.appendChild(body)
   chatLog?.appendChild(card)
@@ -3320,7 +3658,7 @@ window.hermesAvatar?.onCronNotification?.((parsed) => {
 
   const vs = getVoiceSettings()
   const speechText = toSpeechText(`${title}. ${rawBody}`, { maxChars: vs.verbosity === 'full' ? 800 : 280 })
-  const bubbleText = `⏰ ${title}: ${summaryText(speechText || rawBody)}`
+  const bubbleText = `${title}: ${summaryText(speechText || rawBody)}`
   showSpeechBubble(bubbleText, 9000)
   controller?.setExpression(parsed.isFailed ? 'concerned' : 'happy')
   if (ttsEnabled && speechText.trim()) {

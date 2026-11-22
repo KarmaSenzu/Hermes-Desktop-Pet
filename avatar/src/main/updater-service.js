@@ -241,7 +241,7 @@ export function buildWindowsUpdateBatch(opts = {}) {
 }
 
 export async function checkAppUpdate() {
-  const currentVersion = app.getVersion() || '0.1.8'
+  const currentVersion = app.getVersion() || '0.1.9'
 
   try {
     const apiUrl = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/releases/latest`
@@ -403,7 +403,7 @@ export async function downloadAndApplyUpdate(event, _downloadUrl, assetName) {
       await checkAppUpdate()
     }
 
-    const currentVersion = app.getVersion() || '0.1.8'
+    const currentVersion = app.getVersion() || '0.1.9'
     if (!lastRelease?.tag || !isNewerVersion(lastRelease.tag, currentVersion)) {
       return { ok: false, error: 'Versi rilis tidak lebih baru dari versi terpasang' }
     }

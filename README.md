@@ -9,10 +9,10 @@
 
 **Pendamping AI Visual Interaktif (Live2D & 3D WebGL) yang Hidup di Atas Layar Kerja Anda**
 
-[![Version](https://img.shields.io/badge/Version-v0.1.8-0284c7.svg?style=for-the-badge)](https://github.com/KarmaSenzu/Hermes-Desktop-Pet/releases/latest)
+[![Version](https://img.shields.io/badge/Version-v0.1.9-0284c7.svg?style=for-the-badge)](https://github.com/KarmaSenzu/Hermes-Desktop-Pet/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge)](LICENSE)
 [![CI Pipeline](https://github.com/KarmaSenzu/Hermes-Desktop-Pet/actions/workflows/ci.yml/badge.svg)](https://github.com/KarmaSenzu/Hermes-Desktop-Pet/actions/workflows/ci.yml)
-[![Vitest Suite](https://img.shields.io/badge/Tests-124%20Passed%20(20%20Suites)-10b981.svg?style=for-the-badge)](#7-panduan-instalasi-installation--setup)
+[![Vitest Suite](https://img.shields.io/badge/Tests-190%2B%20Passed%20(27%20Suites)-10b981.svg?style=for-the-badge)](#7-panduan-instalasi-installation--setup)
 
 [![Electron](https://img.shields.io/badge/Electron-45.1.0-47848F.svg?logo=electron&logoColor=white)](https://www.electronjs.org/)
 [![Node.js](https://img.shields.io/badge/Node.js-%3E%3D24.0.0%20LTS-339933.svg?logo=node.js&logoColor=white)](https://nodejs.org/)
@@ -164,11 +164,17 @@ flowchart LR
 
 <a id="-unduh-rilis-siap-pakai"></a>
 
-| Sistem Operasi | Arsitektur | Paket Rilis Resmi | Pembaruan Cepat (Terminal) |
-| :--- | :--- | :---: | :--- |
-| 🍏 **macOS** | Apple Silicon (ARM64) & Intel | [**Download `.dmg` / `.zip`**](https://github.com/KarmaSenzu/Hermes-Desktop-Pet/releases/latest) | `curl -fsSL https://raw.githubusercontent.com/KarmaSenzu/Hermes-Desktop-Pet/main/update.sh \| bash` |
-| 🪟 **Windows 10/11** | 64-bit (NSIS Setup / Portable) | [**Download `.exe` / `.zip`**](https://github.com/KarmaSenzu/Hermes-Desktop-Pet/releases/latest) | `irm https://raw.githubusercontent.com/KarmaSenzu/Hermes-Desktop-Pet/main/update.ps1 \| iex` |
-| 🐧 **Linux** | x86_64 (Universal) | [**Download `.AppImage` / `.tar.gz`**](https://github.com/KarmaSenzu/Hermes-Desktop-Pet/releases/latest) | `curl -fsSL https://raw.githubusercontent.com/KarmaSenzu/Hermes-Desktop-Pet/main/update.sh \| bash` |
+| Sistem Operasi | Kegunaan | Nama Asset Rilis | Pembaruan Cepat (Terminal) |
+| :--- | :--- | :--- | :--- |
+| **Windows 10 / 11 (64-bit)** | Installer Setup (Disarankan) | `WINDOWS-Installer-Hermes-Desktop-Pet-v0.1.9-x64.exe` | `irm https://raw.githubusercontent.com/KarmaSenzu/Hermes-Desktop-Pet/main/update.ps1 \| iex` |
+| **Windows 10 / 11 (64-bit)** | Portabel (Tanpa Install) | `WINDOWS-Portable-Hermes-Desktop-Pet-v0.1.9-x64.zip` | — |
+| **macOS Apple Silicon (M1–M4)** | Installer DMG (Disarankan) | `MACOS-M-Series-Hermes-Desktop-Pet-v0.1.9-arm64.dmg` | `curl -fsSL https://raw.githubusercontent.com/KarmaSenzu/Hermes-Desktop-Pet/main/update.sh \| bash` |
+| **macOS Apple Silicon (M1–M4)** | Arsip Aplikasi (`.app`) | `MACOS-M-Series-Hermes-Desktop-Pet-v0.1.9-arm64.zip` | — |
+| **Linux (`x86_64`)** | AppImage Universal | `LINUX-Hermes-Desktop-Pet-v0.1.9-x86_64.AppImage` | `curl -fsSL https://raw.githubusercontent.com/KarmaSenzu/Hermes-Desktop-Pet/main/update.sh \| bash` |
+| **Linux (`x86_64`)** | Arsip Portabel (`.tar.gz`) | `LINUX-Hermes-Desktop-Pet-v0.1.9-x86_64.tar.gz` | — |
+| **Pembaruan Ringan (OTA)** | Patch Internal Aplikasi | `OTA-Patch-Hermes-Desktop-Pet-v0.1.9.zip` | Lewat menu **Home → Cek Update** |
+
+[**Buka Halaman Rilis Resmi GitHub**](https://github.com/KarmaSenzu/Hermes-Desktop-Pet/releases/latest)
 
 > **Pemasangan Satu Baris (macOS & Linux):**
 > ```bash
@@ -214,7 +220,7 @@ hermes serve
 # Verifikasi kesiapan Node.js, dependensi, model Live2D, 7 Core Skills, dan port layanan
 npm run doctor
 
-# Jalankan seluruh rangkaian unit test (20 suite / 124 tes)
+# Jalankan seluruh rangkaian unit test (27 suite / 190+ tes)
 npm test
 ```
 

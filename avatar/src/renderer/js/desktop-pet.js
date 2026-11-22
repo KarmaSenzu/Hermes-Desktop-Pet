@@ -97,7 +97,7 @@ export class DesktopPet {
       lastPos = { x: e.screenX, y: e.screenY }
     })
 
-    const onMouseMove = (e) => {
+    this._onWindowMouseMove = (e) => {
       if (!dragging) return
       // Delta per-frame (perbedaan dari posisi terakhir), bukan kumulatif.
       const dx = e.screenX - lastPos.x
@@ -107,12 +107,12 @@ export class DesktopPet {
       if (this.onDragMove) this.onDragMove(dx, dy)
     }
 
-    const onMouseUp = () => {
+    this._onWindowMouseUp = () => {
       dragging = false
     }
 
-    window.addEventListener('mousemove', onMouseMove)
-    window.addEventListener('mouseup', onMouseUp)
+    window.addEventListener('mousemove', this._onWindowMouseMove)
+    window.addEventListener('mouseup', this._onWindowMouseUp)
   }
 
   /** Raycast dari koordinat client → apakah mengenai model avatar. */
@@ -350,5 +350,64 @@ export class DesktopPet {
       cancelAnimationFrame(this._animFrameId)
       this._animFrameId = null
     }
+  }
+
+  /**
+   * Hentikan render loop dan bebaskan seluruh resource WebGL/Three.js,
+   * termasuk konteks GPU dan canvas dari DOM agar tidak memakan VRAM/RAM saat tidak aktif.
+   */
+  dispose() {
+    this.stopRenderLoop()
+
+    if (this._onResize) {
+      window.removeEventListener('resize', this._onResize)
+      this._onResize = null
+    }
+    if (this._onWindowMouseMove) {
+      window.removeEventListener('mousemove', this._onWindowMouseMove)
+      this._onWindowMouseMove = null
+    }
+    if (this._onWindowMouseUp) {
+      window.removeEventListener('mouseup', this._onWindowMouseUp)
+      this._onWindowMouseUp = null
+    }
+
+    for (const h of this.hearts) {
+      this.scene?.remove(h.sprite)
+      h.sprite?.material?.dispose?.()
+    }
+    this.hearts = []
+    this._heartTexture?.dispose?.()
+    this._heartTexture = null
+
+    if (this.currentModel) {
+      this.currentModel.traverse?.((obj) => {
+        if (obj.geometry && typeof obj.geometry.dispose === 'function') {
+          obj.geometry.dispose()
+        }
+        const mats = Array.isArray(obj.material) ? obj.material : (obj.material ? [obj.material] : [])
+        for (const m of mats) {
+          if (m?.map && typeof m.map.dispose === 'function') m.map.dispose()
+          if (m && typeof m.dispose === 'function') m.dispose()
+        }
+      })
+      this.scene?.remove(this.currentModel)
+      this.currentModel = null
+    }
+
+    const domEl = this.renderer?.domElement
+    try {
+      this.renderer?.dispose?.()
+      this.renderer?.forceContextLoss?.()
+    } catch {
+      /* abaikan error pelepasan context */
+    }
+    if (domEl?.parentNode) {
+      domEl.parentNode.removeChild(domEl)
+    }
+
+    this.renderer = null
+    this.scene = null
+    this.camera = null
   }
 }

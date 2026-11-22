@@ -3,6 +3,7 @@
  */
 
 import { escapeHtml } from './utils.js'
+import { renderIcon } from './icons.js'
 
 export function formatInline(text) {
   if (!text) return ''
@@ -104,7 +105,7 @@ export function renderMarkdown(md) {
     const cardHtml = `
 <div class="assessment-card dynamic-assessment-card" data-assessment-id="${cardId}">
   <div class="assessment-card-header">
-    <div class="assessment-badge">🎯 ${escapeHtml((title || 'AI Assessment & Rekomendasi').toUpperCase())}</div>
+    <div class="assessment-badge"><span class="btn-svg-icon">${renderIcon('sparkles', { size: 12 })}</span> ${escapeHtml((title || 'AI Assessment & Rekomendasi').toUpperCase())}</div>
     <span class="assessment-type-pill">Multi-Select Aktif</span>
   </div>
   <div class="assessment-prompt-text">
@@ -123,10 +124,10 @@ export function renderMarkdown(md) {
   </div>
   <div class="assessment-quick-presets">
     <span style="font-size: 10px; color: #94a3b8; align-self: center;">Preset:</span>
-    <button type="button" class="assessment-preset-chip" data-preset="all">🔥 Pilih Semua</button>
+    <button type="button" class="assessment-preset-chip" data-preset="all"><span class="btn-svg-icon">${renderIcon('list-checks', { size: 12 })}</span> Pilih Semua</button>
   </div>
   <div class="assessment-footer">
-    <button type="button" class="assessment-execute-btn" disabled>⚡ Eksekusi Pilihan (0 Dipilih)</button>
+    <button type="button" class="assessment-execute-btn" disabled><span class="btn-svg-icon">${renderIcon('zap', { size: 12 })}</span> Eksekusi Pilihan (0 Dipilih)</button>
     <span class="assessment-status-text">Centang opsi lalu klik tombol eksekusi</span>
   </div>
 </div>`

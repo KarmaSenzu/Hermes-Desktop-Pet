@@ -2,7 +2,8 @@ import { app, BrowserWindow, ipcMain, protocol, dialog, screen, safeStorage, she
 import { join, resolve, extname, isAbsolute, basename, dirname } from 'path'
 import { homedir } from 'os'
 import { readFile, writeFile, mkdir, rm } from 'fs/promises'
-import { existsSync, statSync, readdirSync, cpSync, mkdirSync, readFileSync, writeFileSync, openSync, readSync, closeSync } from 'fs'
+import { existsSync, statSync, readdirSync, cpSync, mkdirSync, readFileSync, writeFileSync, openSync, readSync, closeSync, createReadStream } from 'fs'
+import { Readable } from 'node:stream'
 
 
 import { execFile, spawn } from 'child_process'
@@ -97,17 +98,95 @@ import {
   archiveScreenCapture,
   archiveDroppedFile
 } from './storage-service.js'
+import { resolveSafeCropRect, pickMatchingScreenSource } from './screen-capture-utils.js'
 
 const secretStore = createSecretStore(safeStorage)
 
+const PROVIDER_SLUG_BASE_URLS = {
+  openrouter: 'https://openrouter.ai/api/v1',
+  gemini: 'https://generativelanguage.googleapis.com/v1beta/openai',
+  google: 'https://generativelanguage.googleapis.com/v1beta/openai',
+  groq: 'https://api.groq.com/openai/v1',
+  mistral: 'https://api.mistral.ai/v1',
+  deepseek: 'https://api.deepseek.com/v1',
+  openai: 'https://api.openai.com/v1',
+  '9router': 'http://127.0.0.1:20128/v1',
+  ollama: 'http://127.0.0.1:11434/v1'
+}
+
+function normalizeProviderUrl(u) {
+  return String(u || '').trim().replace(/\/+$/, '').toLowerCase()
+}
+
+function inferProviderBaseUrlFromSlug(providerName) {
+  const s = String(providerName || '').trim().toLowerCase()
+  if (!s) return ''
+  for (const [slug, url] of Object.entries(PROVIDER_SLUG_BASE_URLS)) {
+    if (s.includes(slug)) return url
+  }
+  return ''
+}
+
+async function findConfiguredApiKeyInHermesYaml(targetUrl) {
+  const normTarget = normalizeProviderUrl(targetUrl)
+  if (!normTarget) return ''
+
+  try {
+    const cfgPath = resolveHermesConfigPath()
+    if (cfgPath && existsSync(cfgPath)) {
+      const cfgRaw = await readFile(cfgPath, 'utf8')
+      const doc = YAML.parse(cfgRaw) || {}
+
+      const m = doc?.model && typeof doc.model === 'object' ? doc.model : null
+      if (m && normalizeProviderUrl(m.base_url) === normTarget) {
+        const directKey = String(m.api_key || '').trim()
+        if (directKey && directKey !== 'no-key-required') return directKey
+        if (m.provider && doc.providers?.[m.provider]?.api_key) {
+          const provKey = String(doc.providers[m.provider].api_key).trim()
+          if (provKey && provKey !== 'no-key-required') return provKey
+        }
+      }
+
+      const provEntries = doc?.providers && typeof doc.providers === 'object' ? Object.values(doc.providers) : []
+      const customEntries = Array.isArray(doc?.custom_providers) ? doc.custom_providers : []
+      for (const entry of [...provEntries, ...customEntries]) {
+        if (!entry || typeof entry !== 'object') continue
+        const entryUrl = normalizeProviderUrl(entry.base_url || entry.baseUrl)
+        const entryKey = String(entry.api_key || '').trim()
+        if (entryUrl === normTarget && entryKey && entryKey !== 'no-key-required') {
+          return entryKey
+        }
+      }
+    }
+  } catch { /* fallback env below */ }
+
+  if (
+    process.env.OPENAI_BASE_URL &&
+    normalizeProviderUrl(process.env.OPENAI_BASE_URL) === normTarget &&
+    process.env.OPENAI_API_KEY &&
+    process.env.OPENAI_API_KEY !== 'no-key-required'
+  ) {
+    return String(process.env.OPENAI_API_KEY).trim()
+  }
+
+  return ''
+}
+
 async function resolveApiKeyFor(sealed, url) {
+  const rawSealed = String(sealed ?? '').trim()
   const r = secretStore.open(sealed, url)
   if (r.ok && r.key) return r.key
-  if (!r.ok && !(r.legacy && isLocalRouterUrl(url))) throw new Error(r.error) // legacy + router lokal: lanjut ke otomatis
+  if (rawSealed.startsWith('v2:') && !r.ok) throw new Error(r.error)
+
   if (isLocalRouterUrl(url)) {
     const k = await resolveRouterApiKey()
     return k?.ok && k?.key ? k.key : ''
   }
+
+  const fromYaml = await findConfiguredApiKeyInHermesYaml(url)
+  if (fromYaml) return fromYaml
+
+  if (!r.ok) throw new Error(r.error)
   return ''
 }
 
@@ -1043,7 +1122,7 @@ async function checkKokoroPipInstalled(pyCmd, force = false) {
   if (!pyCmd) return false
   try {
     await new Promise((res, rej) => {
-      execFile(pyCmd, ['-c', 'import kokoro_onnx, soundfile; print("ok")'], { timeout: 3500, env: process.env }, (err, stdout) => {
+      execFile(pyCmd, ['-c', 'import kokoro_onnx, soundfile; print("ok")'], { timeout: 3500, windowsHide: true, env: process.env }, (err, stdout) => {
         if (!err && stdout && stdout.includes('ok')) return res(true)
         rej(err || new Error('Module import failed'))
       })
@@ -1163,7 +1242,7 @@ secureHandle('avatar:install-kokoro-deps', async () => {
     const pyCmd = pyInfo.cmd
 
     const runPip = (extraArgs = []) => new Promise((res, rej) => {
-      execFile(pyCmd, ['-m', 'pip', 'install', 'kokoro-onnx', 'soundfile', ...extraArgs], { timeout: 180000, env: process.env }, (err, stdout, stderr) => {
+      execFile(pyCmd, ['-m', 'pip', 'install', 'kokoro-onnx', 'soundfile', ...extraArgs], { timeout: 180000, windowsHide: true, env: process.env }, (err, stdout, stderr) => {
         if (err) return rej(new Error(stderr || stdout || err.message))
         res(stdout || 'Berhasil terpasang')
       })
@@ -1199,7 +1278,7 @@ secureHandle('avatar:uninstall-kokoro-deps', async () => {
     const pyCmd = pyInfo.cmd
 
     const runUninstall = (extraArgs = []) => new Promise((res, rej) => {
-      execFile(pyCmd, ['-m', 'pip', 'uninstall', '-y', 'kokoro-onnx', 'soundfile', ...extraArgs], { timeout: 60000, env: process.env }, (err, stdout, stderr) => {
+      execFile(pyCmd, ['-m', 'pip', 'uninstall', '-y', 'kokoro-onnx', 'soundfile', ...extraArgs], { timeout: 60000, windowsHide: true, env: process.env }, (err, stdout, stderr) => {
         if (err) return rej(new Error(stderr || stdout || err.message))
         res(stdout || 'Berhasil dicopot')
       })
@@ -1755,10 +1834,53 @@ secureHandle('avatar:capture-screen', async (_event, options = {}) => {
       return { ok: true, windows }
     }
 
-    const primaryDisplay = screen.getPrimaryDisplay()
-    const scaleFactor = primaryDisplay?.scaleFactor || 1
-    const screenWidth = Math.round((primaryDisplay?.bounds?.width || 1920) * scaleFactor)
-    const screenHeight = Math.round((primaryDisplay?.bounds?.height || 1080) * scaleFactor)
+    const targetDisplay = (avatarWindow && !avatarWindow.isDestroyed())
+      ? screen.getDisplayMatching(avatarWindow.getBounds())
+      : screen.getPrimaryDisplay()
+    const scaleFactor = targetDisplay?.scaleFactor || 1
+    const screenWidth = Math.max(1, Math.round((targetDisplay?.bounds?.width || 1920) * scaleFactor))
+    const screenHeight = Math.max(1, Math.round((targetDisplay?.bounds?.height || 1080) * scaleFactor))
+    const targetDisplayId = targetDisplay?.id
+
+    const captureScreenWithRetry = async (displayId, targetW, targetH) => {
+      const attempt = async (w, h) => {
+        const sources = await desktopCapturer.getSources({
+          types: ['screen'],
+          thumbnailSize: { width: w, height: h }
+        })
+        const src = pickMatchingScreenSource(sources, displayId)
+        return (src?.thumbnail && !src.thumbnail.isEmpty()) ? src.thumbnail : null
+      }
+
+      let img = await attempt(targetW, targetH)
+      if (!img) {
+        await new Promise((r) => setTimeout(r, 120))
+        img = await attempt(targetW, targetH)
+      }
+      if (!img && (targetW > 1920 || targetH > 1080)) {
+        const ratio = Math.min(1920 / targetW, 1080 / targetH)
+        const fbW = Math.max(1, Math.round(targetW * ratio))
+        const fbH = Math.max(1, Math.round(targetH * ratio))
+        img = await attempt(fbW, fbH)
+      }
+      return img
+    }
+
+    const collectOpenWindowNames = async () => {
+      try {
+        const winSources = await desktopCapturer.getSources({
+          types: ['window'],
+          thumbnailSize: { width: 0, height: 0 }
+        })
+        return winSources
+          .filter((s) => s.name && !/hermes avatar/i.test(s.name))
+          .map((s) => String(s.name).trim())
+          .filter(Boolean)
+          .slice(0, 8)
+      } catch {
+        return []
+      }
+    }
 
     let selectedImg = null
     let captureLabel = 'Layar Penuh'
@@ -1780,49 +1902,28 @@ secureHandle('avatar:capture-screen', async (_event, options = {}) => {
         .map((s) => s.name.trim())
         .slice(0, 8)
     } else if (mode === 'area' && cropRect && typeof cropRect === 'object') {
-      const sources = await desktopCapturer.getSources({
-        types: ['screen', 'window'],
-        thumbnailSize: { width: screenWidth, height: screenHeight }
-      })
-      const screenSource = sources.find((s) => String(s.id || '').startsWith('screen:')) || sources[0]
-      if (!screenSource || screenSource.thumbnail.isEmpty()) {
+      const fullImg = await captureScreenWithRetry(targetDisplayId, screenWidth, screenHeight)
+      if (!fullImg || fullImg.isEmpty()) {
         return { ok: false, error: 'Gagal menangkap layar untuk pemotongan area.' }
       }
-      const fullImg = screenSource.thumbnail
       const fullSize = fullImg.getSize()
+      const safeRect = resolveSafeCropRect(cropRect, fullSize)
+      if (!safeRect) {
+        return { ok: false, error: 'Koordinat area tangkapan layar tidak valid.' }
+      }
 
-      // Validasi batas koordinat crop
-      let rx = Math.max(0, Math.min(Math.round(cropRect.x || 0), fullSize.width - 20))
-      let ry = Math.max(0, Math.min(Math.round(cropRect.y || 0), fullSize.height - 20))
-      let rw = Math.max(20, Math.min(Math.round(cropRect.width || fullSize.width), fullSize.width - rx))
-      let rh = Math.max(20, Math.min(Math.round(cropRect.height || fullSize.height), fullSize.height - ry))
-
-      selectedImg = fullImg.crop({ x: rx, y: ry, width: rw, height: rh })
-      captureLabel = `Area Kotak (${rw}×${rh} px)`
-
-      openWindows = sources
-        .filter((s) => String(s.id || '').startsWith('window:') && s.name && !/hermes avatar/i.test(s.name))
-        .map((s) => String(s.name).trim())
-        .filter(Boolean)
-        .slice(0, 8)
+      selectedImg = fullImg.crop(safeRect)
+      captureLabel = `Area Kotak (${safeRect.width}×${safeRect.height} px)`
+      openWindows = await collectOpenWindowNames()
     } else {
       // Default: Layar Penuh
-      const sources = await desktopCapturer.getSources({
-        types: ['screen', 'window'],
-        thumbnailSize: { width: screenWidth, height: screenHeight }
-      })
-      const screenSource = sources.find((s) => String(s.id || '').startsWith('screen:')) || sources[0]
-      if (!screenSource || screenSource.thumbnail.isEmpty()) {
+      const fullImg = await captureScreenWithRetry(targetDisplayId, screenWidth, screenHeight)
+      if (!fullImg || fullImg.isEmpty()) {
         return { ok: false, error: 'Gagal menangkap thumbnail layar penuh.' }
       }
-      selectedImg = screenSource.thumbnail
+      selectedImg = fullImg
       captureLabel = 'Layar Penuh'
-
-      openWindows = sources
-        .filter((s) => String(s.id || '').startsWith('window:') && s.name && !/hermes avatar/i.test(s.name))
-        .map((s) => String(s.name).trim())
-        .filter(Boolean)
-        .slice(0, 8)
+      openWindows = await collectOpenWindowNames()
     }
 
     if (!selectedImg || selectedImg.isEmpty()) {
@@ -1956,6 +2057,8 @@ secureHandle('avatar:get-current-model', async () => {
   try {
     let currentModel = null
     let currentProvider = null
+    let currentBaseUrl = null
+    let currentAuthType = ''
 
     if (isGatewayConnected()) {
       try {
@@ -1963,11 +2066,12 @@ secureHandle('avatar:get-current-model', async () => {
         if (res && res.model && res.model !== '—' && res.model !== 'none') {
           currentModel = res.model
           currentProvider = res.provider || null
+          if (res.base_url) currentBaseUrl = String(res.base_url).trim()
         }
       } catch (_) { }
     }
 
-    // Baca config.yaml untuk fallback model atau memperjelas provider (bila unknown/custom)
+    // Baca config.yaml untuk fallback model, base_url, atau memperjelas provider (bila unknown/custom)
     const cfgPath = resolveHermesConfigPath()
     if (existsSync(cfgPath)) {
       try {
@@ -1976,28 +2080,61 @@ secureHandle('avatar:get-current-model', async () => {
         if (!currentModel && doc?.model?.default) {
           currentModel = String(doc.model.default).trim()
         }
+        if (!currentBaseUrl && doc?.model?.base_url) {
+          currentBaseUrl = String(doc.model.base_url).trim()
+        }
+
+        const provEntries = [
+          ...(doc?.providers && typeof doc.providers === 'object' ? Object.values(doc.providers) : []),
+          ...(Array.isArray(doc?.custom_providers) ? doc.custom_providers : [])
+        ].filter((p) => p && typeof p === 'object')
+
+        const matchedProv = provEntries.find(
+          (p) => (currentBaseUrl && normalizeProviderUrl(p.base_url || p.baseUrl) === normalizeProviderUrl(currentBaseUrl)) ||
+            (currentModel && (p.default_model === currentModel || p.model === currentModel))
+        )
+
+        if (!currentBaseUrl && matchedProv) {
+          currentBaseUrl = String(matchedProv.base_url || matchedProv.baseUrl || '').trim() || null
+        }
+
         if (!currentProvider || currentProvider === 'unknown' || currentProvider === 'custom' || currentProvider === 'default') {
-          if (doc?.providers && typeof doc.providers === 'object') {
-            for (const p of Object.values(doc.providers)) {
-              if (p && (p.default_model === currentModel || p.model === currentModel)) {
-                currentProvider = p.name || currentProvider
-                break
-              }
-            }
+          if (matchedProv?.name) {
+            currentProvider = String(matchedProv.name).trim()
           }
-          if (!currentProvider && doc?.model?.provider) {
+          if ((!currentProvider || currentProvider === 'custom') && doc?.model?.provider) {
             currentProvider = String(doc.model.provider).trim()
           }
         }
       } catch (_) {}
     }
 
-    if (currentModel && currentModel !== '—' && currentModel !== 'none' && currentModel !== 'Tidak ada model') {
-      return { ok: true, model: currentModel, provider: currentProvider || 'default' }
+    if (!currentBaseUrl && currentProvider) {
+      currentBaseUrl = inferProviderBaseUrlFromSlug(currentProvider) || null
     }
-    return { ok: false, model: null, error: 'Belum ada model LLM yang dipilih' }
+
+    const usesRouter = Boolean(currentBaseUrl && isLocalRouterUrl(currentBaseUrl))
+    if (usesRouter) {
+      currentAuthType = '9router'
+    } else if (/oauth/i.test(String(currentProvider || '')) || normalizeProviderUrl(currentBaseUrl).includes('openrouter.ai')) {
+      currentAuthType = 'oauth'
+    } else if (currentBaseUrl) {
+      currentAuthType = 'apikey'
+    }
+
+    if (currentModel && currentModel !== '—' && currentModel !== 'none' && currentModel !== 'Tidak ada model') {
+      return {
+        ok: true,
+        model: currentModel,
+        provider: currentProvider || 'default',
+        baseUrl: currentBaseUrl || '',
+        authType: currentAuthType,
+        usesRouter
+      }
+    }
+    return { ok: false, model: null, baseUrl: '', authType: '', usesRouter: false, error: 'Belum ada model LLM yang dipilih' }
   } catch (err) {
-    return { ok: false, model: null, error: err?.message || String(err) }
+    return { ok: false, model: null, baseUrl: '', authType: '', usesRouter: false, error: err?.message || String(err) }
   }
 })
 
@@ -2468,12 +2605,13 @@ function registerModelProtocol() {
       }
 
       const mime = MIME_MAP[ext] || 'application/octet-stream'
-
-      const data = await readFile(filePath)
-      return new Response(data, {
+      const { size } = statSync(filePath)
+      const body = request.method === 'HEAD' ? null : Readable.toWeb(createReadStream(filePath))
+      return new Response(body, {
         status: 200,
         headers: {
           'Content-Type': mime,
+          'Content-Length': String(size),
           ...corsHeaders
         }
       })

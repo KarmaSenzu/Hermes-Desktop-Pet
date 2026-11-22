@@ -46,6 +46,12 @@ describe('updater-service', () => {
     expect(isValidAssetName('Hermes Desktop Pet-0.1.5-win-x64.zip')).toBe(true)
     expect(isValidAssetName('Hermes-0.1.5.dmg')).toBe(true)
     expect(isValidAssetName('Hermes-0.1.5.AppImage')).toBe(true)
+    expect(isValidAssetName('WINDOWS-Installer-Hermes-Desktop-Pet-v0.1.9-x64.exe')).toBe(true)
+    expect(isValidAssetName('WINDOWS-Portable-Hermes-Desktop-Pet-v0.1.9-x64.zip')).toBe(true)
+    expect(isValidAssetName('MACOS-M-Series-Hermes-Desktop-Pet-v0.1.9-arm64.dmg')).toBe(true)
+    expect(isValidAssetName('MACOS-M-Series-Hermes-Desktop-Pet-v0.1.9-arm64.zip')).toBe(true)
+    expect(isValidAssetName('LINUX-Hermes-Desktop-Pet-v0.1.9-x86_64.AppImage')).toBe(true)
+    expect(isValidAssetName('OTA-Patch-Hermes-Desktop-Pet-v0.1.9.zip')).toBe(true)
 
     expect(isValidAssetName('..\\evil.exe')).toBe(false)
     expect(isValidAssetName('../evil.exe')).toBe(false)
@@ -97,12 +103,16 @@ describe('updater-service', () => {
       '### Checksums (SHA-256)',
       `${hashA}  Hermes-Setup.exe`,
       `${hashB} *Hermes-Win.zip`,
-      `OtherAsset.exe: sha256:${'c'.repeat(64)}`
+      `OtherAsset.exe: sha256:${'c'.repeat(64)}`,
+      `${hashA}  WINDOWS-Installer-Hermes-Desktop-Pet-v0.1.9-x64.exe`,
+      `${hashB}  OTA-Patch-Hermes-Desktop-Pet-v0.1.9.zip`
     ].join('\n')
 
     expect(extractSha256FromReleaseBody(body, 'Hermes-Setup.exe')).toBe(`sha256:${hashA}`)
     expect(extractSha256FromReleaseBody(body, 'Hermes-Win.zip')).toBe(`sha256:${hashB}`)
     expect(extractSha256FromReleaseBody(body, 'OtherAsset.exe')).toBe(`sha256:${'c'.repeat(64)}`)
+    expect(extractSha256FromReleaseBody(body, 'WINDOWS-Installer-Hermes-Desktop-Pet-v0.1.9-x64.exe')).toBe(`sha256:${hashA}`)
+    expect(extractSha256FromReleaseBody(body, 'OTA-Patch-Hermes-Desktop-Pet-v0.1.9.zip')).toBe(`sha256:${hashB}`)
     expect(extractSha256FromReleaseBody(body, 'Win.zip')).toBeNull()
     expect(extractSha256FromReleaseBody(body, 'Missing.exe')).toBeNull()
     expect(extractSha256FromReleaseBody(null, 'Hermes-Setup.exe')).toBeNull()

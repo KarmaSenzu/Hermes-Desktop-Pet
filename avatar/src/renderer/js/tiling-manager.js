@@ -117,8 +117,6 @@ export class TilingWindowManager {
 
     if (openItems.length === 0) return
 
-    const timerItem = openItems.find((i) => i.id === 'timer')
-    const musicItem = openItems.find((i) => i.id === 'music')
     const chatItem = openItems.find((i) => i.id === 'chat')
     const tools = openItems.filter((i) => i.type === 'tool')
 
@@ -159,8 +157,6 @@ export class TilingWindowManager {
         hudH,
         avatarBounds,
         avatarTop,
-        timerItem,
-        musicItem,
         chatItem,
         MARGIN,
         PAD
@@ -180,8 +176,6 @@ export class TilingWindowManager {
         hudH,
         avatarBounds,
         avatarTop,
-        timerItem,
-        musicItem,
         chatItem,
         MARGIN,
         PAD
@@ -197,55 +191,80 @@ export class TilingWindowManager {
       this.positionItem(chatItem, chatLeft, screenH, hudTop, hudH, avatarBounds, avatarTop)
 
       // Tools di sisi kiri avatar
-      if (tools.length === 1) {
-        const tool = tools[0]
-        const toolLeft = Math.max(MARGIN, leftFlankRightEdge - tool.currentWidth)
-        this.positionItem(tool, toolLeft, screenH, hudTop, hudH, avatarBounds, avatarTop)
-      } else {
-        const toolsW = (timerItem?.currentWidth || 310) + (musicItem?.currentWidth || 325) + PAD
-        if (leftFlankWidth >= toolsW) {
-          const tLeft = leftFlankRightEdge - (timerItem?.currentWidth || 310)
-          const mLeft = tLeft - PAD - (musicItem?.currentWidth || 325)
-          if (timerItem) this.positionItem(timerItem, tLeft, screenH, hudTop, hudH, avatarBounds, avatarTop)
-          if (musicItem) this.positionItem(musicItem, mLeft, screenH, hudTop, hudH, avatarBounds, avatarTop)
-        } else {
-          this.stackToolsVertically(tools, leftFlankRightEdge, screenH, hudTop, hudH, avatarBounds, avatarTop, MARGIN)
+      const orderedTools = this.orderItems(tools, false)
+      const toolsW = orderedTools.reduce((acc, t) => acc + t.currentWidth, 0) + (orderedTools.length - 1) * PAD
+      if (leftFlankWidth >= toolsW) {
+        let curRight = leftFlankRightEdge
+        for (const tool of orderedTools) {
+          const toolLeft = Math.max(MARGIN, curRight - tool.currentWidth)
+          this.positionItem(tool, toolLeft, screenH, hudTop, hudH, avatarBounds, avatarTop)
+          curRight = toolLeft - PAD
         }
+      } else {
+        this.stackToolsVertically(orderedTools, leftFlankRightEdge, screenH, hudTop, hudH, avatarBounds, avatarTop, MARGIN, PAD)
       }
       return
     }
 
-    // Jika hanya tools (Timer + Musik) tanpa Chat
-    if (openItems.length === 2 && !chatItem) {
-      const totalW = openItems[0].currentWidth + openItems[1].currentWidth + PAD
+    // Jika hanya tools (Timer / Vision / Musik) tanpa Chat
+    if (openItems.length >= 2 && !chatItem) {
+      const ordered = this.orderItems(openItems, false)
+      const totalW = ordered.reduce((acc, i) => acc + i.currentWidth, 0) + (ordered.length - 1) * PAD
       if (leftFlankWidth >= totalW) {
-        const left0 = leftFlankRightEdge - openItems[0].currentWidth
-        const left1 = left0 - PAD - openItems[1].currentWidth
-        this.positionItem(openItems[0], left0, screenH, hudTop, hudH, avatarBounds, avatarTop)
-        this.positionItem(openItems[1], left1, screenH, hudTop, hudH, avatarBounds, avatarTop)
+        let curRight = leftFlankRightEdge
+        for (const item of ordered) {
+          const left = Math.max(MARGIN, curRight - item.currentWidth)
+          this.positionItem(item, left, screenH, hudTop, hudH, avatarBounds, avatarTop)
+          curRight = left - PAD
+        }
+      } else if (ordered.length === 2) {
+        const left0 = Math.max(MARGIN, leftFlankRightEdge - ordered[0].currentWidth)
+        const left1 = Math.min(screenW - ordered[1].currentWidth - MARGIN, rightFlankLeftEdge)
+        this.positionItem(ordered[0], left0, screenH, hudTop, hudH, avatarBounds, avatarTop)
+        this.positionItem(ordered[1], left1, screenH, hudTop, hudH, avatarBounds, avatarTop)
       } else {
-        const left0 = Math.max(MARGIN, leftFlankRightEdge - openItems[0].currentWidth)
-        const left1 = Math.min(screenW - openItems[1].currentWidth - MARGIN, rightFlankLeftEdge)
-        this.positionItem(openItems[0], left0, screenH, hudTop, hudH, avatarBounds, avatarTop)
-        this.positionItem(openItems[1], left1, screenH, hudTop, hudH, avatarBounds, avatarTop)
+        const rightTool = ordered[ordered.length - 1]
+        const leftTools = ordered.slice(0, -1)
+        const leftW = leftTools.reduce((acc, t) => acc + t.currentWidth, 0) + (leftTools.length - 1) * PAD
+        if (rightFlankWidth >= rightTool.currentWidth) {
+          this.positionItem(rightTool, Math.min(screenW - rightTool.currentWidth - MARGIN, rightFlankLeftEdge), screenH, hudTop, hudH, avatarBounds, avatarTop)
+          if (leftFlankWidth >= leftW) {
+            let curRight = leftFlankRightEdge
+            for (const t of leftTools) {
+              const tLeft = Math.max(MARGIN, curRight - t.currentWidth)
+              this.positionItem(t, tLeft, screenH, hudTop, hudH, avatarBounds, avatarTop)
+              curRight = tLeft - PAD
+            }
+          } else {
+            this.stackToolsVertically(leftTools, leftFlankRightEdge, screenH, hudTop, hudH, avatarBounds, avatarTop, MARGIN, PAD)
+          }
+        } else {
+          this.stackToolsVertically(ordered, leftFlankRightEdge, screenH, hudTop, hudH, avatarBounds, avatarTop, MARGIN, PAD)
+        }
       }
       return
     }
   }
 
-  tileAllToLeft(openItems, ctx) {
-    const { leftFlankRightEdge, leftFlankWidth, screenH, hudTop, hudH, avatarBounds, avatarTop, timerItem, musicItem, chatItem, MARGIN, PAD } = ctx
-
-    // Urutan prioritas dari dekat tubuh avatar menuju tepi kiri layar:
-    // Dekat Avatar/HUD -> Timer -> Musik -> Chat AI (paling kiri)
+  orderItems(openItems, includeChat = true) {
+    const priority = ['timer', 'vision', 'music', ...(includeChat ? ['chat'] : [])]
     const ordered = []
-    if (timerItem) ordered.push(timerItem)
-    if (musicItem) ordered.push(musicItem)
-    if (chatItem) ordered.push(chatItem)
+    for (const id of priority) {
+      const found = openItems.find((i) => i.id === id)
+      if (found) ordered.push(found)
+    }
     for (const item of openItems) {
       if (!ordered.includes(item)) ordered.push(item)
     }
+    return ordered
+  }
 
+  tileAllToLeft(openItems, ctx) {
+    const { leftFlankRightEdge, leftFlankWidth, screenH, hudTop, hudH, avatarBounds, avatarTop, chatItem, MARGIN, PAD } = ctx
+
+    // Urutan prioritas dari dekat tubuh avatar menuju tepi kiri layar:
+    // Dekat Avatar/HUD -> Timer -> Tangkap Layar -> Musik -> Chat AI (paling kiri)
+    const ordered = this.orderItems(openItems, true)
     const totalW = ordered.reduce((acc, i) => acc + i.currentWidth, 0) + (ordered.length - 1) * PAD
 
     // Kasus A: Muat bersanding horizontal di sisi kiri
@@ -259,18 +278,11 @@ export class TilingWindowManager {
       return
     }
 
-    // Kasus B: Ruang kiri sempit (misal resolusi compact) -> Tumpuk Timer & Musik vertikal di kolom 1, Chat di kolom 2
-    if (timerItem && musicItem && chatItem) {
-      const toolW = Math.max(timerItem.currentWidth, musicItem.currentWidth)
-      const col1Right = leftFlankRightEdge
-      const col1Left = Math.max(MARGIN, col1Right - toolW)
-
-      const timerTop = Math.max(MARGIN, avatarTop)
-      const musicTop = timerTop + timerItem.currentHeight + 10
-      this.applyWindowPosition(timerItem.element, col1Left, timerTop)
-      this.applyWindowPosition(musicItem.element, col1Left, Math.min(screenH - musicItem.currentHeight - MARGIN, musicTop))
-
-      const chatLeft = Math.max(MARGIN, col1Left - PAD - chatItem.currentWidth)
+    // Kasus B: Ruang kiri sempit -> Tumpuk panel tool secara vertikal lalu Chat di kolom sebelahnya
+    const nonChat = ordered.filter((i) => i.id !== 'chat')
+    if (nonChat.length >= 2 && chatItem) {
+      const usedLeftEdge = this.stackToolsVertically(nonChat, leftFlankRightEdge, screenH, hudTop, hudH, avatarBounds, avatarTop, MARGIN, PAD)
+      const chatLeft = Math.max(MARGIN, usedLeftEdge - PAD - chatItem.currentWidth)
       const chatTop = Math.max(MARGIN, Math.min(screenH - chatItem.currentHeight - MARGIN, avatarTop))
       this.applyWindowPosition(chatItem.element, chatLeft, chatTop)
       return
@@ -286,18 +298,11 @@ export class TilingWindowManager {
   }
 
   tileAllToRight(openItems, ctx) {
-    const { rightFlankLeftEdge, rightFlankWidth, screenW, screenH, hudTop, hudH, avatarBounds, avatarTop, timerItem, musicItem, chatItem, MARGIN, PAD } = ctx
+    const { rightFlankLeftEdge, rightFlankWidth, screenW, screenH, hudTop, hudH, avatarBounds, avatarTop, chatItem, MARGIN, PAD } = ctx
 
     // Urutan prioritas dari dekat tubuh avatar menuju tepi kanan layar:
-    // Dekat Avatar -> Timer -> Musik -> Chat AI (paling kanan)
-    const ordered = []
-    if (timerItem) ordered.push(timerItem)
-    if (musicItem) ordered.push(musicItem)
-    if (chatItem) ordered.push(chatItem)
-    for (const item of openItems) {
-      if (!ordered.includes(item)) ordered.push(item)
-    }
-
+    // Dekat Avatar -> Timer -> Tangkap Layar -> Musik -> Chat AI (paling kanan)
+    const ordered = this.orderItems(openItems, true)
     const totalW = ordered.reduce((acc, i) => acc + i.currentWidth, 0) + (ordered.length - 1) * PAD
 
     // Kasus A: Muat bersanding horizontal di sisi kanan
@@ -310,17 +315,28 @@ export class TilingWindowManager {
       return
     }
 
-    // Kasus B: Ruang kanan sempit -> Tumpuk Timer & Musik vertikal di kolom 1, Chat di kolom 2
-    if (timerItem && musicItem && chatItem) {
-      const toolW = Math.max(timerItem.currentWidth, musicItem.currentWidth)
+    // Kasus B: Ruang kanan sempit -> Tumpuk 2 tool pertama vertikal di kolom 1, sisanya + Chat di kolom sebelah
+    const nonChat = ordered.filter((i) => i.id !== 'chat')
+    if (nonChat.length >= 2 && chatItem) {
+      const primary = nonChat.slice(0, 2)
+      const overflow = nonChat.slice(2)
+      const toolW = primary.reduce((max, t) => Math.max(max, t.currentWidth), 0)
       const col1Left = rightFlankLeftEdge
 
-      const timerTop = Math.max(MARGIN, avatarTop)
-      const musicTop = timerTop + timerItem.currentHeight + 10
-      this.applyWindowPosition(timerItem.element, col1Left, timerTop)
-      this.applyWindowPosition(musicItem.element, col1Left, Math.min(screenH - musicItem.currentHeight - MARGIN, musicTop))
+      let curTop = Math.max(MARGIN, avatarTop)
+      for (const tool of primary) {
+        const clampedTop = Math.max(MARGIN, Math.min(screenH - tool.currentHeight - MARGIN, curTop))
+        this.applyWindowPosition(tool.element, col1Left, clampedTop)
+        curTop = clampedTop + tool.currentHeight + 10
+      }
 
-      const chatLeft = Math.min(screenW - chatItem.currentWidth - MARGIN, col1Left + toolW + PAD)
+      let nextLeft = col1Left + toolW + PAD
+      for (const extra of overflow) {
+        this.positionItem(extra, Math.min(screenW - extra.currentWidth - MARGIN, nextLeft), screenH, hudTop, hudH, avatarBounds, avatarTop)
+        nextLeft += extra.currentWidth + PAD
+      }
+
+      const chatLeft = Math.min(screenW - chatItem.currentWidth - MARGIN, nextLeft)
       const chatTop = Math.max(MARGIN, Math.min(screenH - chatItem.currentHeight - MARGIN, avatarTop))
       this.applyWindowPosition(chatItem.element, chatLeft, chatTop)
       return
@@ -334,24 +350,29 @@ export class TilingWindowManager {
     }
   }
 
-  stackToolsVertically(tools, leftFlankRightEdge, screenH, hudTop, hudH, avatarBounds, avatarTop, MARGIN) {
-    const timer = tools.find((t) => t.id === 'timer')
-    const music = tools.find((t) => t.id === 'music')
-    if (timer && music) {
-      const maxW = Math.max(timer.currentWidth, music.currentWidth)
-      const left = Math.max(MARGIN, leftFlankRightEdge - maxW)
-      const timerTop = Math.max(MARGIN, avatarTop)
-      const musicTop = Math.min(screenH - music.currentHeight - MARGIN, timerTop + timer.currentHeight + 10)
-      this.applyWindowPosition(timer.element, left, timerTop)
-      this.applyWindowPosition(music.element, left, musicTop)
-    } else {
-      let curTop = Math.max(MARGIN, avatarTop)
-      for (const t of tools) {
-        const left = Math.max(MARGIN, leftFlankRightEdge - t.currentWidth)
-        this.applyWindowPosition(t.element, left, curTop)
-        curTop = Math.min(screenH - t.currentHeight - MARGIN, curTop + t.currentHeight + 10)
-      }
+  stackToolsVertically(tools, leftFlankRightEdge, screenH, hudTop, hudH, avatarBounds, avatarTop, MARGIN, PAD = 14) {
+    if (!tools || tools.length === 0) return leftFlankRightEdge
+    const primary = tools.slice(0, 2)
+    const overflow = tools.slice(2)
+
+    const maxW = primary.reduce((max, t) => Math.max(max, t.currentWidth), 0)
+    const col1Left = Math.max(MARGIN, leftFlankRightEdge - maxW)
+    let curTop = Math.max(MARGIN, avatarTop)
+
+    for (const t of primary) {
+      const clampedTop = Math.max(MARGIN, Math.min(screenH - t.currentHeight - MARGIN, curTop))
+      this.applyWindowPosition(t.element, col1Left, clampedTop)
+      curTop = clampedTop + t.currentHeight + 10
     }
+
+    let leftmostEdge = col1Left
+    for (const extra of overflow) {
+      const extraLeft = Math.max(MARGIN, leftmostEdge - PAD - extra.currentWidth)
+      this.positionItem(extra, extraLeft, screenH, hudTop, hudH, avatarBounds, avatarTop)
+      leftmostEdge = extraLeft
+    }
+
+    return leftmostEdge
   }
 
   positionItem(item, left, screenH, hudTop, hudH, avatarBounds, avatarTop) {
@@ -365,6 +386,8 @@ export class TilingWindowManager {
           : avatarBounds
             ? avatarBounds.centerY - item.currentHeight / 2
             : 120
+    } else if (item.id === 'vision') {
+      top = avatarTop ? avatarTop + 15 : 110
     } else if (item.id === 'music') {
       top = avatarTop ? avatarTop + 10 : 100
     } else {

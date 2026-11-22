@@ -93,6 +93,81 @@ export function toSpeechText(markdown, { maxChars = 500 } = {}) {
 }
 
 /**
+ * Memecah teks panjang menjadi potongan kalimat pendek agar sintesis TTS
+ * (terutama Kokoro lokal) merespons cepat per kalimat dan tidak terkena timeout
+ * maupun batas panjang >1000 karakter.
+ */
+export function splitSpeechChunks(text, { maxChunkChars = 200, maxTotalChars = 1800 } = {}) {
+  if (!text) return []
+  const cleaned = String(text).replace(/\s+/g, ' ').trim()
+  if (!cleaned) return []
+
+  const clipped = truncateToSentence(cleaned, maxTotalChars)
+  const rawSentences = clipped.match(/[^.!?…]+(?:[.!?…]+|$)/g)
+    ?.map((s) => s.trim())
+    .filter(Boolean) || [clipped]
+
+  const parts = []
+  for (const sentence of rawSentences) {
+    if (sentence.length <= maxChunkChars) {
+      parts.push(sentence)
+      continue
+    }
+
+    // Kalimat tunggal panjang: pecah lagi di batas koma/klausa lalu spasi kata.
+    const clauses = sentence.split(/(?<=[,;:])\s+/).filter(Boolean)
+    let buf = ''
+    for (const clause of clauses) {
+      if (clause.length <= maxChunkChars) {
+        if (!buf) {
+          buf = clause
+        } else if (buf.length + 1 + clause.length <= maxChunkChars) {
+          buf += ' ' + clause
+        } else {
+          parts.push(buf)
+          buf = clause
+        }
+      } else {
+        if (buf) {
+          parts.push(buf)
+          buf = ''
+        }
+        const words = clause.split(/\s+/).filter(Boolean)
+        let wBuf = ''
+        for (const w of words) {
+          if (!wBuf) {
+            wBuf = w
+          } else if (wBuf.length + 1 + w.length <= maxChunkChars) {
+            wBuf += ' ' + w
+          } else {
+            parts.push(wBuf)
+            wBuf = w
+          }
+        }
+        if (wBuf) parts.push(wBuf)
+      }
+    }
+    if (buf) parts.push(buf)
+  }
+
+  const chunks = []
+  let current = ''
+  for (const p of parts) {
+    if (!current) {
+      current = p
+    } else if (current.length + 1 + p.length <= maxChunkChars) {
+      current += ' ' + p
+    } else {
+      chunks.push(current)
+      current = p
+    }
+  }
+  if (current) chunks.push(current)
+
+  return chunks
+}
+
+/**
  * Potong teks ke ~maxChars, tapi berhenti di akhir kalimat (titik/!/?).
  */
 function truncateToSentence(text, maxChars) {

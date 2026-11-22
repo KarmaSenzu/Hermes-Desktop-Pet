@@ -33,10 +33,10 @@ const AVATAR_STATES = [
     desc: 'Gestur dan ekspresi saat avatar menganalisis atau bernalar',
     defaultOption: 'glasses',
     builtins: [
-      { id: 'glasses', label: '👓 Kacamata Fokus (Default Bawaan)' },
-      { id: 'ponder', label: '🤔 Merenung Serius & Tenang' },
-      { id: 'curious', label: '🧐 Menatap Penasaran' },
-      { id: 'neutral', label: '😐 Netral Tanpa Kacamata' }
+      { id: 'glasses', label: 'Kacamata Fokus (Default Bawaan)' },
+      { id: 'ponder', label: 'Merenung Serius & Tenang' },
+      { id: 'curious', label: 'Menatap Penasaran' },
+      { id: 'neutral', label: 'Netral Tanpa Kacamata' }
     ]
   },
   {
@@ -47,10 +47,10 @@ const AVATAR_STATES = [
     desc: 'Aksesoris dan gestur avatar saat jam kerja atau timer berjalan',
     defaultOption: 'watch_suit',
     builtins: [
-      { id: 'watch_suit', label: '⌚ Jas & Jam Tangan Disiplin (Default)' },
-      { id: 'watch_only', label: '⏱️ Cek Jam Tangan Saja (Kasual)' },
-      { id: 'glasses_only', label: '👓 Kacamata Belajar Tanpa Jam' },
-      { id: 'casual', label: '🌸 Pakaian Santai Bebas' }
+      { id: 'watch_suit', label: 'Jas & Jam Tangan Disiplin (Default)' },
+      { id: 'watch_only', label: 'Cek Jam Tangan Saja (Kasual)' },
+      { id: 'glasses_only', label: 'Kacamata Belajar Tanpa Jam' },
+      { id: 'casual', label: 'Pakaian Santai Bebas' }
     ]
   },
   {
@@ -61,9 +61,9 @@ const AVATAR_STATES = [
     desc: 'Visual saat meracik kalimat jawaban dan menjalankan tool AI',
     defaultOption: 'charterer',
     builtins: [
-      { id: 'charterer', label: '🧻 Roll Rambut Cepat (Default Bawaan)' },
-      { id: 'focus', label: '💻 Fokus Konsentrasi Tinggi' },
-      { id: 'relaxed', label: '☕ Santai Menunggu' }
+      { id: 'charterer', label: 'Roll Rambut Cepat (Default Bawaan)' },
+      { id: 'focus', label: 'Fokus Konsentrasi Tinggi' },
+      { id: 'relaxed', label: 'Santai Menunggu' }
     ]
   },
   {
@@ -74,9 +74,9 @@ const AVATAR_STATES = [
     desc: 'Reaksi avatar saat pertama menyapa atau ketika diklik/disentuh',
     defaultOption: 'sarangheo',
     builtins: [
-      { id: 'sarangheo', label: '💖 Tangan Sarangheo (Love & Blush - Default)' },
-      { id: 'bounce', label: '✨ Melompat Ringan (Bounce)' },
-      { id: 'wave', label: '👋 Melambaikan Tangan (Wave)' }
+      { id: 'sarangheo', label: 'Tangan Sarangheo (Love & Blush - Default)' },
+      { id: 'bounce', label: 'Melompat Ringan (Bounce)' },
+      { id: 'wave', label: 'Melambaikan Tangan (Wave)' }
     ]
   },
   {
@@ -87,8 +87,8 @@ const AVATAR_STATES = [
     desc: 'Pose dan postur tubuh avatar ketika tidak sedang bergerak',
     defaultOption: 'a-pose',
     builtins: [
-      { id: 'a-pose', label: '🧍 A-Pose (Tangan di Samping Natural - Default)' },
-      { id: 't-pose', label: '✝️ T-Pose (Tangan Terentang)' }
+      { id: 'a-pose', label: 'A-Pose (Tangan di Samping Natural - Default)' },
+      { id: 't-pose', label: 'T-Pose (Tangan Terentang)' }
     ]
   }
 ]
@@ -116,7 +116,7 @@ function getStateLabel(def, activeVal) {
   if (activeVal && activeVal.startsWith('custom:')) {
     const id = activeVal.replace('custom:', '')
     const anim = (settings.animations || []).find((a) => a.id === id)
-    return anim ? `🎬 ${anim.name}` : 'Kustom'
+    return anim ? anim.name : 'Kustom'
   }
   return 'Aktif'
 }
@@ -126,7 +126,7 @@ function customOptionsForState(targetState, activeVal) {
   if (!list.length) return ''
   const opts = list.map((a) => {
     const isSelected = activeVal === `custom:${a.id}` ? 'selected' : ''
-    return `<option value="custom:${escapeHtml(a.id)}" ${isSelected}>🎬 ${escapeHtml(a.name)} (.${escapeHtml(a.format)})</option>`
+    return `<option value="custom:${escapeHtml(a.id)}" ${isSelected}>${escapeHtml(a.name)} (.${escapeHtml(a.format)})</option>`
   }).join('')
   return `<optgroup label="Animasi Kustom Terpasang">${opts}</optgroup>`
 }
@@ -162,7 +162,7 @@ async function previewPhraseVoice(text) {
     const intonation = settings.tts?.intonation || 'sweet'
     const kokoroEndpoint = settings.tts?.kokoroEndpoint || 'http://127.0.0.1:8880'
 
-    showToast('Memproses Suara... 🎙️', text, 'running', '🎙️', 2500)
+    showToast('Memproses Suara…', text, 'running', '🎙️', 2500)
     const res = await window.hermesAvatar?.synthesizeSpeech?.(text, voice, {
       provider,
       speed,
@@ -174,7 +174,7 @@ async function previewPhraseVoice(text) {
       if (audioSrc) {
         currentPhraseAudio = new Audio(audioSrc)
         currentPhraseAudio.play()
-        showToast('Memutar Suara Pengingat 🔊', text, 'success', '🔊', 3000)
+        showToast('Memutar Suara Pengingat', text, 'success', '🔊', 3000)
       }
     }
   } catch (err) {
@@ -189,25 +189,25 @@ function renderAnimMenu() {
   animMenu.innerHTML = ANIM_MENU.map((m) => {
     let countBadge = ''
     if (m.id === 'state-mapping') {
-      countBadge = `<span class="format-count-pill on">⚡ 5 Status Aktif</span>`
+      countBadge = `<span class="format-count-pill on">5 Status Aktif</span>`
     } else if (m.id === 'idle-reminder') {
       const cfg = settings.idleReminder || {}
       const isEn = cfg.enabled !== false
       const count = (cfg.lines || []).length
       countBadge = isEn
-        ? `<span class="format-count-pill on">🔔 ${cfg.intervalMinutes || 10}m (${count} Kalimat)</span>`
+        ? `<span class="format-count-pill on">${cfg.intervalMinutes || 10}m (${count} Kalimat)</span>`
         : `<span class="format-count-pill off">Nonaktif</span>`
     } else if (m.id === 'add') {
       countBadge = `<span class="format-count-pill off">+ Unggah</span>`
     } else if (m.id === 'pose-saved') {
       countBadge = animCount > 0
-        ? `<span class="format-count-pill on">🟢 ${animCount} File</span>`
+        ? `<span class="format-count-pill on">${animCount} File</span>`
         : `<span class="format-count-pill off">0 File</span>`
     } else if (m.id === 'emote') {
       const total = BUILTIN_EMOTES.length + customEmotes().length
       countBadge = `<span class="format-count-pill on">${total} Emote</span>`
     } else if (m.id === 'pose-default') {
-      countBadge = `<span class="format-count-pill on">⚡ ${defaultPose}</span>`
+      countBadge = `<span class="format-count-pill on">${defaultPose}</span>`
     }
 
     return `<div class="format-item" data-sub="${m.id}">
@@ -262,7 +262,7 @@ function openAnimDetail(sub) {
                 </optgroup>
                 ${customOptionsForState(def.key, activeVal)}
               </select>
-              <button type="button" class="mini-btn use btn-test-state" data-state="${def.key}" title="Uji coba gaya ini langsung di avatar">⚡ Uji</button>
+              <button type="button" class="mini-btn use btn-test-state" data-state="${def.key}" title="Uji coba gaya ini langsung di avatar"><span class="btn-svg-icon">${renderIcon('play', { size: 12 })}</span> Uji</button>
             </div>
           </div>`
         }).join('')}
@@ -283,7 +283,7 @@ function openAnimDetail(sub) {
           saveSettings(settings)
           if (badge) badge.textContent = getStateLabel(def, val)
           previewStateAnimation(def.key, val)
-          showToast('Gaya Avatar Diperbarui! ✨', `${def.label}: ${sel.options[sel.selectedIndex].text}`, 'success', '✨')
+          showToast('Gaya Avatar Diperbarui', `${def.label}: ${sel.options[sel.selectedIndex].text}`, 'success', '✨')
         }
       }
     })
@@ -295,7 +295,7 @@ function openAnimDetail(sub) {
         const val = sel?.value
         const def = AVATAR_STATES.find((s) => s.key === stateKey)
         previewStateAnimation(stateKey, val)
-        showToast('Menguji Gerakan Avatar ⚡', `Memainkan sampel ${def?.label || stateKey}`, 'info', '⚡', 2500)
+        showToast('Menguji Gerakan Avatar', `Memainkan sampel ${def?.label || stateKey}`, 'info', '⚡', 2500)
       })
     })
 
@@ -344,12 +344,12 @@ function openAnimDetail(sub) {
           </div>
           <div class="row-control">
             <select id="anim-target-state" class="mac-select">
-              <option value="thinking">🧠 Berpikir (Thinking / Reasoning)</option>
-              <option value="watch">⌚ Megang Jam (Timer & Fokus)</option>
-              <option value="processing">⚡ Memproses (Menyusun Respon)</option>
-              <option value="greeting">💖 Menyapa & Sentuhan (Greeting / Love)</option>
-              <option value="idle">🧍 Postur Diam (Idle Standby)</option>
-              <option value="custom">🎬 Animasi Kustom Umum</option>
+              <option value="thinking">Berpikir (Thinking / Reasoning)</option>
+              <option value="watch">Megang Jam (Timer &amp; Fokus)</option>
+              <option value="processing">Memproses (Menyusun Respon)</option>
+              <option value="greeting">Menyapa &amp; Sentuhan (Greeting / Love)</option>
+              <option value="idle">Postur Diam (Idle Standby)</option>
+              <option value="custom">Animasi Kustom Umum</option>
             </select>
           </div>
         </div>
@@ -416,7 +416,7 @@ function openAnimDetail(sub) {
               <option value="a-pose" ${curPose === 'a-pose' ? 'selected' : ''}>A-pose (tangan di samping natural)</option>
               <option value="t-pose" ${curPose === 't-pose' ? 'selected' : ''}>T-pose (tangan terentang)</option>
             </select>
-            <button type="button" class="mini-btn use" id="pose-test-btn" title="Uji coba pose ini">⚡ Uji</button>
+            <button type="button" class="mini-btn use" id="pose-test-btn" title="Uji coba pose ini"><span class="btn-svg-icon">${renderIcon('play', { size: 12 })}</span> Uji</button>
           </div>
         </div>
       </div>`
@@ -428,11 +428,11 @@ function openAnimDetail(sub) {
       settings.stateAnimations.idle = sel.value
       saveSettings(settings)
       previewStateAnimation('idle', sel.value)
-      showToast('Pose Default Disimpan! 🎬', `Pose aktif: ${sel.options[sel.selectedIndex].text}`, 'success', '🎬')
+      showToast('Pose Default Disimpan', `Pose aktif: ${sel.options[sel.selectedIndex].text}`, 'success', '🎬')
     }
     testBtn.onclick = () => {
       previewStateAnimation('idle', sel.value)
-      showToast('Menguji Postur Diam ⚡', `Pose: ${sel.options[sel.selectedIndex].text}`, 'info', '⚡')
+      showToast('Menguji Postur Diam', `Pose: ${sel.options[sel.selectedIndex].text}`, 'info', '⚡')
     }
 
   } else if (sub === 'idle-reminder') {
@@ -440,20 +440,20 @@ function openAnimDetail(sub) {
       enabled: true,
       intervalMinutes: 10,
       lines: [
-        'Jangan lupa minum air putih ya 💧',
-        'Postur tubuhnya ditegakkan dulu yuk, biar punggung tidak pegal 🧘',
-        'Fokus kerja hebat banget! Semangat terus ya ✨',
-        'Sudah istirahatkan mata sejenak belum? Coba lihat ke kejauhan sebentar 👀',
-        'Ada yang bisa kubantu dengan AI Hermes? Buka chat kapan saja ya 💬',
-        'Tarik napas dalam-dalam... hembuskan perlahan 🌸'
+        'Jangan lupa minum air putih ya',
+        'Postur tubuhnya ditegakkan dulu yuk, biar punggung tidak pegal',
+        'Fokus kerja hebat banget! Semangat terus ya',
+        'Sudah istirahatkan mata sejenak belum? Coba lihat ke kejauhan sebentar',
+        'Ada yang bisa kubantu dengan AI Hermes? Buka chat kapan saja ya',
+        'Tarik napas dalam-dalam... hembuskan perlahan'
       ]
     }
 
     const intervals = [
-      { val: 1, label: '1 Menit (Tes Cepat ⚡)' },
+      { val: 1, label: '1 Menit (Tes Cepat)' },
       { val: 3, label: '3 Menit (Sering)' },
       { val: 5, label: '5 Menit' },
-      { val: 10, label: '10 Menit (Bawaan Ideal ⭐)' },
+      { val: 10, label: '10 Menit (Bawaan Ideal)' },
       { val: 15, label: '15 Menit' },
       { val: 20, label: '20 Menit' },
       { val: 30, label: '30 Menit (Santai)' },
@@ -504,15 +504,15 @@ function openAnimDetail(sub) {
         </p>
 
         <div style="display:flex; gap:8px; margin-bottom:14px;">
-          <input id="idle-rem-new-input" type="text" class="mac-input" style="flex:1;" placeholder="Ketik kalimat pengingat baru... (cth. Luruskan kaki dan rilekskan bahu 🧘)" />
+          <input id="idle-rem-new-input" type="text" class="mac-input" style="flex:1;" placeholder="Ketik kalimat pengingat baru... (cth. Luruskan kaki dan rilekskan bahu)" />
           <button id="idle-rem-add-btn" class="mini-btn primary" style="height:34px; padding:0 14px;">+ Tambah</button>
         </div>
 
         <div id="idle-rem-list" class="anim-list"></div>
 
         <div style="display:flex; justify-content:space-between; align-items:center; margin-top:16px; padding-top:12px; border-top:1px solid rgba(255,255,255,0.06);">
-          <button id="idle-rem-reset-btn" class="mini-btn browse" title="Kembalikan ke 6 kalimat pengingat bawaan">🔄 Reset ke Bawaan</button>
-          <button id="idle-rem-test-btn" class="mini-btn use" title="Langsung tampilkan salah satu kalimat di avatar sekarang">⚡ Uji di Avatar Sekarang</button>
+          <button id="idle-rem-reset-btn" class="mini-btn browse" title="Kembalikan ke 6 kalimat pengingat bawaan"><span class="btn-svg-icon">${renderIcon('refresh-cw', { size: 12 })}</span> Reset ke Bawaan</button>
+          <button id="idle-rem-test-btn" class="mini-btn use" title="Langsung tampilkan salah satu kalimat di avatar sekarang"><span class="btn-svg-icon">${renderIcon('play', { size: 12 })}</span> Uji di Avatar Sekarang</button>
         </div>
       </div>
     `
@@ -535,12 +535,12 @@ function openAnimDetail(sub) {
       listEl.innerHTML = lines.map((line, idx) => `
         <div class="app-item" style="padding:8px 12px;">
           <div class="app-item-main" style="gap:10px;">
-            <span style="font-size:16px;">💬</span>
+            <span class="btn-svg-icon">${renderIcon('message-circle', { size: 15 })}</span>
             <span style="font-size:13px; line-height:1.4;">${escapeHtml(line)}</span>
           </div>
           <div style="display:flex; gap:6px; flex-shrink:0;">
-            <button type="button" class="mini-btn browse btn-test-phrase" data-idx="${idx}" title="Uji suara kalimat ini">🔊</button>
-            <button type="button" class="mini-btn danger btn-del-phrase" data-idx="${idx}" title="Hapus kalimat ini">✕</button>
+            <button type="button" class="mini-btn browse btn-test-phrase" data-idx="${idx}" title="Uji suara kalimat ini">${renderIcon('volume-2', { size: 13 })}</button>
+            <button type="button" class="mini-btn danger btn-del-phrase" data-idx="${idx}" title="Hapus kalimat ini">${renderIcon('x', { size: 13 })}</button>
           </div>
         </div>
       `).join('')
@@ -562,7 +562,7 @@ function openAnimDetail(sub) {
             settings.idleReminder.lines = lines
             saveSettings(settings)
             renderList()
-            showToast('Kalimat Dihapus 🗑️', removed, 'info', '🗑️', 2500)
+            showToast('Kalimat Dihapus', removed, 'info', '🗑️', 2500)
           }
         })
       })
@@ -574,7 +574,7 @@ function openAnimDetail(sub) {
       settings.idleReminder = settings.idleReminder || {}
       settings.idleReminder.enabled = toggleEn.checked
       saveSettings(settings)
-      showToast(toggleEn.checked ? 'Pengingat Idle Aktif 🔔' : 'Pengingat Idle Dimatikan 🔕', 'Status pengingat telah diperbarui.', 'success', toggleEn.checked ? '🔔' : '🔕')
+      showToast(toggleEn.checked ? 'Pengingat Idle Aktif' : 'Pengingat Idle Dimatikan', 'Status pengingat telah diperbarui.', 'success', toggleEn.checked ? '🔔' : '🔕')
     }
 
     selInterval.onchange = () => {
@@ -582,7 +582,7 @@ function openAnimDetail(sub) {
       const mins = parseInt(selInterval.value, 10) || 10
       settings.idleReminder.intervalMinutes = mins
       saveSettings(settings)
-      showToast('Interval Diperbarui ⏱️', `Pengingat akan muncul setiap ~${mins} menit saat santai`, 'success', '⏱️')
+      showToast('Interval Diperbarui', `Pengingat akan muncul setiap ~${mins} menit saat santai`, 'success', '⏱️')
     }
 
     const addLine = () => {
@@ -594,7 +594,7 @@ function openAnimDetail(sub) {
       saveSettings(settings)
       inputNew.value = ''
       renderList()
-      showToast('Kalimat Pengingat Ditambahkan! ✨', text, 'success', '✨')
+      showToast('Kalimat Pengingat Ditambahkan', text, 'success', '✨')
     }
 
     btnAdd.addEventListener('click', addLine)
@@ -608,27 +608,27 @@ function openAnimDetail(sub) {
     btnReset.addEventListener('click', () => {
       settings.idleReminder = settings.idleReminder || {}
       settings.idleReminder.lines = [
-        'Jangan lupa minum air putih ya 💧',
-        'Postur tubuhnya ditegakkan dulu yuk, biar punggung tidak pegal 🧘',
-        'Fokus kerja hebat banget! Semangat terus ya ✨',
-        'Sudah istirahatkan mata sejenak belum? Coba lihat ke kejauhan sebentar 👀',
-        'Ada yang bisa kubantu dengan AI Hermes? Buka chat kapan saja ya 💬',
-        'Tarik napas dalam-dalam... hembuskan perlahan 🌸'
+        'Jangan lupa minum air putih ya',
+        'Postur tubuhnya ditegakkan dulu yuk, biar punggung tidak pegal',
+        'Fokus kerja hebat banget! Semangat terus ya',
+        'Sudah istirahatkan mata sejenak belum? Coba lihat ke kejauhan sebentar',
+        'Ada yang bisa kubantu dengan AI Hermes? Buka chat kapan saja ya',
+        'Tarik napas dalam-dalam... hembuskan perlahan'
       ]
       saveSettings(settings)
       renderList()
-      showToast('Kalimat Bawaan Dipulihkan 🔄', '6 kalimat pengingat bawaan telah direset.', 'success', '🔄')
+      showToast('Kalimat Bawaan Dipulihkan', '6 kalimat pengingat bawaan telah direset.', 'success', '🔄')
     })
 
     btnTest.addEventListener('click', async () => {
       const lines = settings.idleReminder?.lines || []
-      const sample = lines.length > 0 ? lines[Math.floor(Math.random() * lines.length)] : 'Semangat fokus kerjanya ya! ✨'
+      const sample = lines.length > 0 ? lines[Math.floor(Math.random() * lines.length)] : 'Semangat fokus kerjanya ya!'
       try {
         const res = await window.hermesAvatar?.triggerIdleChatter?.(sample)
         if (res && res.ok === false) {
-          showToast('Avatar Belum Aktif ⚠️', 'Mulai desktop avatar terlebih dahulu untuk menguji di layar.', 'info', '⚠️')
+          showToast('Avatar Belum Aktif', 'Mulai desktop avatar terlebih dahulu untuk menguji di layar.', 'info', '⚠️')
         } else {
-          showToast('Pengingat Dimunculkan di Layar! 🚀', sample, 'success', '🔔')
+          showToast('Pengingat Dimunculkan di Layar', sample, 'success', '🔔')
         }
       } catch (err) {
         showToast('Info', err.message, 'info', 'ℹ️')
@@ -654,10 +654,10 @@ function renderPoseListHtml() {
         <strong>${escapeHtml(a.name)}</strong>
         <span class="format-pill-tag">.${escapeHtml(a.format)}</span>
         <span class="format-count-pill off">${escapeHtml(targetLabel)}</span>
-        ${isStateActive ? '<span class="voice-badge-pill">🟢 Aktif</span>' : ''}
+        ${isStateActive ? '<span class="voice-badge-pill">Aktif</span>' : ''}
       </div>
       <div style="display:flex; gap:6px; align-items:center;">
-        <button class="mini-btn use anim-test-btn" data-id="${escapeHtml(a.id)}" title="Uji animasi langsung di avatar">⚡ Uji</button>
+        <button class="mini-btn use anim-test-btn" data-id="${escapeHtml(a.id)}" title="Uji animasi langsung di avatar"><span class="btn-svg-icon">${renderIcon('play', { size: 12 })}</span> Uji</button>
         ${!isStateActive && a.targetState ? `<button class="mini-btn edit anim-activate-btn" data-id="${escapeHtml(a.id)}" data-state="${escapeHtml(a.targetState)}">Pasang Aktif</button>` : ''}
         <button class="mini-btn del anim-del-btn" data-id="${escapeHtml(a.id)}">Hapus</button>
       </div>
@@ -682,7 +682,7 @@ function bindPoseListEvents() {
       const a = (settings.animations || []).find((x) => x.id === btn.dataset.id)
       if (a) {
         await window.hermesAvatar?.previewAnimation?.({ anim: a, state: a.targetState || 'custom' })
-        showToast('Menguji Animasi ⚡', `Memainkan: ${a.name}`, 'info', '⚡', 2500)
+        showToast('Menguji Animasi', `Memainkan: ${a.name}`, 'info', '⚡', 2500)
       }
     })
   })
@@ -695,7 +695,7 @@ function bindPoseListEvents() {
       settings.stateAnimations[state] = `custom:${id}`
       saveSettings(settings)
       openAnimDetail('pose-saved')
-      showToast('Gaya Animasi Terpasang! ✨', `Animasi aktif untuk status ${state}`, 'success', '✨')
+      showToast('Gaya Animasi Terpasang', `Animasi aktif untuk status ${state}`, 'success', '✨')
     })
   })
 
@@ -731,7 +731,7 @@ function renderEmoteListHtml() {
         <strong>${escapeHtml(e.label)}</strong>
         <span class="muted">bawaan</span>
       </div>
-      <button class="mini-btn use emote-test-btn" data-emote="${escapeHtml(e.id)}">⚡ Uji</button>
+      <button class="mini-btn use emote-test-btn" data-emote="${escapeHtml(e.id)}"><span class="btn-svg-icon">${renderIcon('play', { size: 12 })}</span> Uji</button>
     </div>`
   }).join('')
 }
@@ -741,7 +741,7 @@ function bindEmoteTestEvents() {
     btn.addEventListener('click', async () => {
       const emote = btn.dataset.emote
       await window.hermesAvatar?.previewAnimation?.({ state: 'greeting', style: emote })
-      showToast('Menguji Emote ⚡', `Memainkan emote: ${emote}`, 'info', '⚡', 2500)
+      showToast('Menguji Emote', `Memainkan emote: ${emote}`, 'info', '⚡', 2500)
     })
   })
 }
@@ -771,7 +771,7 @@ function bindAnimAddForm() {
   addBtn?.addEventListener('click', async () => {
     const path = pathInput?.value.trim()
     if (!path) {
-      showToast('Pilih File Terlebih Dahulu ⚠️', 'Klik tombol Pilih File untuk mencari animasi gerakan', 'error', '⚠️')
+      showToast('Pilih File Terlebih Dahulu', 'Klik tombol Pilih File untuk mencari animasi gerakan', 'error', '⚠️')
       return
     }
     const name = nameInput?.value.trim() || path.split(/[/\\]/).pop() || 'Animasi'
@@ -802,7 +802,7 @@ function bindAnimAddForm() {
 
     saveSettings(settings)
     await window.hermesAvatar?.previewAnimation?.({ anim: newAnim, state: targetState })
-    showToast('Animasi Disimpan! 🎉', `"${name}" berhasil diunggah${autoApply ? ' dan dijadikan gaya aktif' : ''}`, 'success', '🎉')
+    showToast('Animasi Disimpan', `"${name}" berhasil diunggah${autoApply ? ' dan dijadikan gaya aktif' : ''}`, 'success', '🎉')
     openAnimDetail('state-mapping')
   })
 }

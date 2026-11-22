@@ -22,7 +22,7 @@
 
         <!-- Search Bar ala macOS Settings -->
         <div class="sidebar-search">
-          <span class="search-icon">🔍</span>
+          <span class="search-icon" data-icon="search" data-icon-size="13"></span>
           <input type="text" id="sidebar-search-input" placeholder="Search" autocomplete="off" spellcheck="false" />
         </div>
 
@@ -47,8 +47,8 @@
         <!-- Menu Navigasi -->
         <nav class="nav" id="nav"></nav>
         <div class="sidebar-footer" id="sidebar-footer" title="Klik untuk memeriksa pembaruan aplikasi" style="cursor:pointer; display:flex; align-items:center; justify-content:space-between;">
-          <span>Hermes 3D <span id="footer-version-tag">v0.1.8</span></span>
-          <span id="footer-update-badge" class="badge ready" style="display:none; font-size:9.5px; padding:1px 6px;">Update 🚀</span>
+          <span>Hermes 3D <span id="footer-version-tag">v0.1.9</span></span>
+          <span id="footer-update-badge" class="badge ready" style="display:none; font-size:9.5px; padding:1px 6px;">Update</span>
         </div>
       </aside>
 
@@ -65,11 +65,11 @@
           </div>
           <div class="header-right" style="display:flex; align-items:center; gap:8px;">
             <button type="button" id="ui-mode-toggle-btn" class="theme-toggle-btn" title="Ganti antara tampilan ramah pemula atau tampilan teknis developer">
-              <span id="ui-mode-icon" class="theme-icon">✨</span>
+              <span id="ui-mode-icon" class="theme-icon" data-icon="sliders-horizontal" data-icon-size="13"></span>
               <span id="ui-mode-text" class="theme-text">Mode Sederhana</span>
             </button>
             <button type="button" id="theme-toggle-btn" class="theme-toggle-btn" title="Ganti Mode Hitam / Putih">
-              <span id="theme-icon" class="theme-icon">🌙</span>
+              <span id="theme-icon" class="theme-icon" data-icon="moon" data-icon-size="13"></span>
               <span id="theme-text" class="theme-text">Mode Gelap</span>
             </button>
           </div>
@@ -86,11 +86,11 @@
               <svg class="lucide-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m18 15-6-6-6 6"/><path d="M12 9v12"/></svg>
             </div>
             <div class="alert-content">
-              <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-                <strong id="update-banner-title" style="color:#60a5fa;">🚀 Pembaruan Aplikasi Tersedia!</strong>
-                <span id="update-banner-tag" class="badge ready" style="font-size:10.5px; padding:2px 8px;">v0.1.8</span>
+              <div class="alert-head-row">
+                <strong id="update-banner-title" style="color:#60a5fa;">Pembaruan Aplikasi Tersedia</strong>
+                <span id="update-banner-tag" class="badge ready" style="font-size:10.5px; padding:2px 8px;">v0.1.9</span>
               </div>
-              <p id="update-banner-desc" style="margin-top:2px;">Versi baru telah rilis di GitHub dengan pembaruan stabilitas dan fitur.</p>
+              <p id="update-banner-desc">Versi baru telah rilis di GitHub dengan pembaruan stabilitas dan fitur.</p>
               <div id="banner-progress-wrap" class="hidden" style="margin-top:8px; width:100%;">
                 <div style="height:6px; background:rgba(255,255,255,0.1); border-radius:3px; overflow:hidden;">
                   <div id="banner-progress-bar" style="width:0%; height:100%; background:#3b82f6; transition:width 0.2s ease;"></div>
@@ -101,10 +101,10 @@
                 </div>
               </div>
             </div>
-            <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-              <button type="button" id="update-download-btn" class="mini-btn primary" style="background:#3b82f6; color:#fff;">Update Sekarang ⚡</button>
-              <button type="button" id="update-details-btn" class="mini-btn">Info Rilis 📋</button>
-              <button type="button" id="update-dismiss-btn" class="mini-btn del" title="Tutup pemberitahuan ini" style="padding:4px 8px;">✕</button>
+            <div class="alert-actions">
+              <button type="button" id="update-download-btn" class="mini-btn primary" style="background:#3b82f6; color:#fff;">Update Sekarang</button>
+              <button type="button" id="update-details-btn" class="mini-btn">Info Rilis</button>
+              <button type="button" id="update-dismiss-btn" class="mini-btn del" title="Tutup pemberitahuan ini" style="padding:4px 8px;" data-icon="x" data-icon-size="13"></button>
             </div>
           </div>
 
@@ -115,10 +115,10 @@
             </div>
             <div class="alert-content">
               <strong>Persiapan Paket Diperlukan</strong>
-              <p>Beberapa paket penting (Hermes, 9Router, atau Kokoro-TTS) belum aktif atau belum terpasang. Buka menu Package Hub untuk melengkapi persiapan.</p>
+              <p>Beberapa paket penting (Hermes atau mesin suara avatar) belum aktif atau belum terpasang. Buka menu Package Hub untuk melengkapi persiapan.</p>
             </div>
-            <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; flex-shrink:0;">
-              <button type="button" id="alert-install-all-btn" class="mini-btn use">⚡ Install Otomatis 1-Klik</button>
+            <div class="alert-actions">
+              <button type="button" id="alert-install-all-btn" class="mini-btn use">Install Otomatis 1-Klik</button>
               <button type="button" id="alert-open-pkg-btn" class="mini-btn primary">Buka Package Hub</button>
             </div>
           </div>
@@ -157,23 +157,28 @@
               </div>
               <div class="row-control" style="display:flex; align-items:center; gap:8px;">
                 <span id="hermes-status" class="badge">…</span>
-                <button type="button" id="home-start-hermes-btn" class="mini-btn use" style="display:none;" title="Jalankan layanan AI otomatis">Nyalakan ⚡</button>
+                <button type="button" id="home-start-hermes-btn" class="mini-btn use" style="display:none;" title="Jalankan layanan AI otomatis">Nyalakan</button>
               </div>
             </div>
 
-            <!-- 3. 9Router -->
-            <div class="settings-row dev-only">
+            <!-- 3. Jalur Koneksi & Uji Ping LLM (OAuth / 9Router Opsional) -->
+            <div class="settings-row">
               <div class="format-emblem theme-blue">
                 <svg class="lucide-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg>
               </div>
               <div class="format-info-col">
                 <div class="format-title-line">
-                  <span class="format-title">9Router Service</span>
+                  <span class="format-title">Jalur Koneksi &amp; Uji Ping LLM (OAuth / 9Router Opsional)</span>
                 </div>
-                <p class="format-desc-text">Proxy multi-model LLM di port 20128</p>
+                <p class="format-desc-text" id="home-llm-route-desc">Bebas memakai Login OAuth Resmi atau 9Router Lokal (opsional) — yang penting uji ping ke model berhasil &amp; tidak RTO</p>
               </div>
-              <div class="row-control">
-                <input id="router-check" type="checkbox" class="mac-switch" />
+              <div class="row-control" style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; justify-content:flex-end;">
+                <input id="router-check" type="checkbox" class="mac-switch" style="display:none;" />
+                <span id="home-llm-ping-status" class="badge">Memeriksa…</span>
+                <button type="button" id="home-llm-ping-btn" class="mini-btn browse" title="Uji koneksi ping ke model LLM aktif untuk memastikan bukan RTO">
+                  <span class="btn-svg-icon" data-icon="activity" data-icon-size="12"></span>
+                  <span>Tes Ping</span>
+                </button>
               </div>
             </div>
 
@@ -186,7 +191,7 @@
                 <div class="format-title-line">
                   <span class="format-title">Model LLM Terpilih</span>
                 </div>
-                <p class="format-desc-text">Model kecerdasan yang sedang aktif</p>
+                <p class="format-desc-text">Model kecerdasan aktif (OAuth Resmi / API Key / 9Router Opsional)</p>
               </div>
               <div class="row-control">
                 <div id="home-model" class="llm-active"></div>
@@ -222,7 +227,10 @@
               </div>
               <div class="row-control" style="display:flex; align-items:center; gap:8px;">
                 <span id="home-version-badge" class="badge">…</span>
-                <button type="button" id="home-check-update-btn" class="mini-btn" title="Periksa apakah ada pembaruan rilis baru di GitHub">Cek Update 🔄</button>
+                <button type="button" id="home-check-update-btn" class="mini-btn" title="Periksa apakah ada pembaruan rilis baru di GitHub">
+                  <span class="btn-svg-icon" data-icon="refresh-cw" data-icon-size="12"></span>
+                  <span>Cek Update</span>
+                </button>
               </div>
             </div>
           </div>
@@ -250,8 +258,8 @@
               </div>
               <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
                 <span id="pkg-drives-info" class="badge" style="font-size:11px;">Drive: …</span>
-                <button type="button" id="pkg-refresh-all-btn" class="mini-btn browse" title="Pindai ulang seluruh logical drive, port, dan dependensi">Pindai Seluruh Drive 🔍</button>
-                <button type="button" id="pkg-install-all-btn" class="mini-btn primary" title="Pasang dan nyalakan semua komponen penting secara otomatis di latar belakang">⚡ Install &amp; Aktifkan Semua Paket (1-Klik)</button>
+                <button type="button" id="pkg-refresh-all-btn" class="mini-btn browse" title="Pindai ulang seluruh logical drive, port, dan dependensi"><span class="btn-svg-icon" data-icon="search"></span> Pindai Seluruh Drive</button>
+                <button type="button" id="pkg-install-all-btn" class="mini-btn primary" title="Pasang dan nyalakan semua komponen penting secara otomatis di latar belakang"><span class="btn-svg-icon" data-icon="zap"></span> Install &amp; Aktifkan Semua Paket (1-Klik)</button>
               </div>
             </div>
             <div id="pkg-global-progress-wrap" class="pkg-progress-wrap" hidden>
@@ -265,10 +273,10 @@
             </div>
             <div id="pkg-resume-bar" style="display:flex; align-items:center; justify-content:space-between; gap:8px; margin-top:8px; flex-wrap:wrap;" hidden>
               <span id="pkg-resume-hint" class="hint" style="margin:0; font-size:11.5px;">Ada paket yang terhenti/gagal di tengah jalan. Lanjutkan tanpa mengulang dari awal:</span>
-              <button type="button" id="pkg-resume-install-btn" class="mini-btn use" hidden>▶️ Lanjutkan Instalasi Tertunda (Continue)</button>
+              <button type="button" id="pkg-resume-install-btn" class="mini-btn use" hidden><span class="btn-svg-icon" data-icon="play"></span> Lanjutkan Instalasi Tertunda (Continue)</button>
             </div>
             <div id="pkg-install-checklist" class="pkg-checklist" hidden></div>
-            <p class="hint" style="margin: 8px 0 0;">Cukup klik tombol <strong>⚡ Install 1-Klik</strong> untuk pemasangan otomatis tanpa membuka terminal, atau klik kartu paket untuk pengaturan lanjutan.</p>
+            <p class="hint" style="margin: 8px 0 0;">Cukup klik tombol <strong>Install 1-Klik</strong> untuk pemasangan otomatis tanpa membuka terminal, atau klik kartu paket untuk pengaturan lanjutan.</p>
           </div>
 
           <div class="group-header">Daftar Paket & Service (1-Klik Otomatis)</div>
@@ -286,34 +294,34 @@
                 </div>
               </div>
               <div class="pkg-header-right">
-                <button type="button" class="mini-btn primary pkg-quick-install-btn" data-oneclick-pkg="hermes" title="Pasang dan nyalakan Hermes Agent otomatis tanpa terminal">⚡ Install 1-Klik</button>
+                <button type="button" class="mini-btn primary pkg-quick-install-btn" data-oneclick-pkg="hermes" title="Pasang dan nyalakan Hermes Agent otomatis tanpa terminal"><span class="btn-svg-icon" data-icon="zap"></span> Install 1-Klik</button>
                 <span class="package-badge badge" id="pkg-status-hermes">…</span>
                 <span class="pkg-chevron">▾</span>
               </div>
             </div>
             <div class="pkg-body">
               <div class="pkg-subtabs">
-                <button type="button" class="pkg-tab-btn active" data-tab="install">📥 Install Otomatis</button>
-                <button type="button" class="pkg-tab-btn" data-tab="manage">⚙️ Status & Kelola Service</button>
+                <button type="button" class="pkg-tab-btn active" data-tab="install"><span class="btn-svg-icon" data-icon="download"></span> Install Otomatis</button>
+                <button type="button" class="pkg-tab-btn" data-tab="manage"><span class="btn-svg-icon" data-icon="sliders-horizontal"></span> Status &amp; Kelola Service</button>
               </div>
 
               <!-- Sub-panel Install -->
               <div class="pkg-tab-panel active" data-panel="install">
                 <p class="row-desc">Pasang <strong>Hermes Agent</strong> secara senyap di latar belakang tanpa membuka terminal atau menyalin perintah:</p>
                 <div style="display:flex; gap:8px; margin: 6px 0 8px; flex-wrap:wrap;">
-                  <button type="button" class="mini-btn primary oneclick-install-btn" data-oneclick-pkg="hermes">⚡ Install &amp; Aktifkan Otomatis (1-Klik Tanpa Terminal)</button>
+                  <button type="button" class="mini-btn primary oneclick-install-btn" data-oneclick-pkg="hermes"><span class="btn-svg-icon" data-icon="zap"></span> Install &amp; Aktifkan Otomatis (1-Klik Tanpa Terminal)</button>
                 </div>
                 <div id="pkg-inline-log-hermes" class="package-log muted" style="margin-bottom: 8px;"></div>
                 <details class="pkg-manual-fallback">
-                  <summary>🛠️ Opsi Lanjutan: Perintah Terminal Manual (Opsional)</summary>
+                  <summary>Opsi Lanjutan: Perintah Terminal Manual (Opsional)</summary>
                   <div style="display:flex; gap:8px; margin: 8px 0;">
-                    <button type="button" class="terminal-action-btn" data-terminal-action="install-hermes" data-terminal-cmd="npm install -g @nousresearch/hermes">🚀 Buka di Terminal & Install (NPM)</button>
+                    <button type="button" class="terminal-action-btn" data-terminal-action="install-hermes" data-terminal-cmd="npm install -g @nousresearch/hermes"><span class="btn-svg-icon" data-icon="terminal"></span> Buka di Terminal &amp; Install (NPM)</button>
                   </div>
                   <div class="command-box-group">
                     <span class="command-box-label">Salin Perintah Manual (PowerShell):</span>
                     <div class="command-box">
                       <code>npm install -g @nousresearch/hermes</code>
-                      <button type="button" class="copy-cmd-btn mini-btn" data-copy="npm install -g @nousresearch/hermes">Salin 📋</button>
+                      <button type="button" class="copy-cmd-btn mini-btn" data-copy="npm install -g @nousresearch/hermes"><span class="btn-svg-icon" data-icon="copy"></span> Salin</button>
                     </div>
                   </div>
                 </details>
@@ -330,21 +338,21 @@
                   <span class="badge" id="pkg-hermes-source-badge" style="font-size:10px;">…</span>
                 </div>
                 <div style="display:flex; gap:8px; margin: 6px 0 8px; flex-wrap: wrap;">
-                  <button type="button" id="pkg-hermes-start-btn" class="mini-btn primary" title="Jalankan daemon Hermes secara senyap di background">⚡ Jalankan di Background (Senyap)</button>
-                  <button type="button" id="pkg-hermes-browse-btn" class="mini-btn browse" title="Pilih file hermes.exe / hermes.cmd secara manual">Ubah Jalur 📂</button>
-                  <button type="button" id="pkg-hermes-reset-btn" class="mini-btn" title="Kembalikan ke deteksi otomatis sistem" style="display:none;">Reset Otomatis 🔄</button>
+                  <button type="button" id="pkg-hermes-start-btn" class="mini-btn primary" title="Jalankan daemon Hermes secara senyap di background"><span class="btn-svg-icon" data-icon="play"></span> Jalankan di Background (Senyap)</button>
+                  <button type="button" id="pkg-hermes-browse-btn" class="mini-btn browse" title="Pilih file hermes.exe / hermes.cmd secara manual"><span class="btn-svg-icon" data-icon="folder-open"></span> Ubah Jalur</button>
+                  <button type="button" id="pkg-hermes-reset-btn" class="mini-btn" title="Kembalikan ke deteksi otomatis sistem" style="display:none;"><span class="btn-svg-icon" data-icon="refresh-cw"></span> Reset Otomatis</button>
                 </div>
                 <details class="pkg-manual-fallback">
-                  <summary>🛠️ Opsi Lanjutan: Jalankan Manual via Terminal (Opsional)</summary>
+                  <summary>Opsi Lanjutan: Jalankan Manual via Terminal (Opsional)</summary>
                   <p class="row-desc" style="margin-top:6px;">Hermes otomatis dijalankan oleh aplikasi ini. Jika Anda ingin menjalankannya secara manual di jendela terminal terpisah:</p>
                   <div style="display:flex; gap:8px; margin: 4px 0 8px;">
-                    <button type="button" class="terminal-action-btn secondary-term" data-terminal-action="start-hermes" data-terminal-cmd="hermes serve">⚡ Buka Terminal & Jalankan (hermes serve)</button>
+                    <button type="button" class="terminal-action-btn secondary-term" data-terminal-action="start-hermes" data-terminal-cmd="hermes serve"><span class="btn-svg-icon" data-icon="terminal"></span> Buka Terminal &amp; Jalankan (hermes serve)</button>
                   </div>
                   <div class="command-box-group">
                     <span class="command-box-label">Perintah Terminal:</span>
                     <div class="command-box">
                       <code>hermes serve</code>
-                      <button type="button" class="copy-cmd-btn mini-btn" data-copy="hermes serve">Salin 📋</button>
+                      <button type="button" class="copy-cmd-btn mini-btn" data-copy="hermes serve"><span class="btn-svg-icon" data-icon="copy"></span> Salin</button>
                     </div>
                   </div>
                 </details>
@@ -365,34 +373,34 @@
                 </div>
               </div>
               <div class="pkg-header-right">
-                <button type="button" class="mini-btn primary pkg-quick-install-btn" data-oneclick-pkg="9router" title="Pasang dan nyalakan 9Router otomatis tanpa terminal">⚡ Install 1-Klik</button>
+                <button type="button" class="mini-btn primary pkg-quick-install-btn" data-oneclick-pkg="9router" title="Pasang dan nyalakan 9Router otomatis tanpa terminal"><span class="btn-svg-icon" data-icon="zap"></span> Install 1-Klik</button>
                 <span class="package-badge badge" id="pkg-status-router">…</span>
                 <span class="pkg-chevron">▾</span>
               </div>
             </div>
             <div class="pkg-body">
               <div class="pkg-subtabs">
-                <button type="button" class="pkg-tab-btn active" data-tab="install">📥 Install Otomatis</button>
-                <button type="button" class="pkg-tab-btn" data-tab="manage">⚙️ Status & Kelola Service</button>
+                <button type="button" class="pkg-tab-btn active" data-tab="install"><span class="btn-svg-icon" data-icon="download"></span> Install Otomatis</button>
+                <button type="button" class="pkg-tab-btn" data-tab="manage"><span class="btn-svg-icon" data-icon="sliders-horizontal"></span> Status &amp; Kelola Service</button>
               </div>
 
               <!-- Sub-panel Install -->
               <div class="pkg-tab-panel active" data-panel="install">
                 <p class="row-desc">9Router adalah gateway cerdas multi-provider AI. Klik tombol di bawah untuk pemasangan otomatis di latar belakang:</p>
                 <div style="display:flex; gap:8px; margin: 6px 0 8px; flex-wrap:wrap;">
-                  <button type="button" class="mini-btn primary oneclick-install-btn" data-oneclick-pkg="9router">⚡ Install &amp; Aktifkan Otomatis (1-Klik Tanpa Terminal)</button>
+                  <button type="button" class="mini-btn primary oneclick-install-btn" data-oneclick-pkg="9router"><span class="btn-svg-icon" data-icon="zap"></span> Install &amp; Aktifkan Otomatis (1-Klik Tanpa Terminal)</button>
                 </div>
                 <div id="pkg-inline-log-9router" class="package-log muted" style="margin-bottom: 8px;"></div>
                 <details class="pkg-manual-fallback">
-                  <summary>🛠️ Opsi Lanjutan: Perintah Terminal Manual (Opsional)</summary>
+                  <summary>Opsi Lanjutan: Perintah Terminal Manual (Opsional)</summary>
                   <div style="display:flex; gap:8px; margin: 8px 0;">
-                    <button type="button" class="terminal-action-btn" data-terminal-action="install-router" data-terminal-cmd="npm install -g 9router">🚀 Buka di Terminal & Install (NPM)</button>
+                    <button type="button" class="terminal-action-btn" data-terminal-action="install-router" data-terminal-cmd="npm install -g 9router"><span class="btn-svg-icon" data-icon="terminal"></span> Buka di Terminal &amp; Install (NPM)</button>
                   </div>
                   <div class="command-box-group">
                     <span class="command-box-label">Salin Perintah Manual (PowerShell):</span>
                     <div class="command-box">
                       <code>npm install -g 9router</code>
-                      <button type="button" class="copy-cmd-btn mini-btn" data-copy="npm install -g 9router">Salin 📋</button>
+                      <button type="button" class="copy-cmd-btn mini-btn" data-copy="npm install -g 9router"><span class="btn-svg-icon" data-icon="copy"></span> Salin</button>
                     </div>
                   </div>
                 </details>
@@ -409,12 +417,12 @@
                   <span class="badge" id="pkg-router-source-badge" style="font-size:10px;">…</span>
                 </div>
                 <div style="display:flex; gap:8px; margin: 6px 0 8px; flex-wrap: wrap;">
-                  <button type="button" id="pkg-router-start-btn" class="mini-btn primary" title="Jalankan service 9Router secara senyap di background">⚡ Jalankan di Background (Senyap)</button>
-                  <button type="button" id="pkg-router-browse-btn" class="mini-btn browse" title="Pilih file 9router.cmd secara manual">Ubah Jalur 📂</button>
-                  <button type="button" id="pkg-router-reset-btn" class="mini-btn" title="Kembalikan ke deteksi otomatis sistem" style="display:none;">Reset Otomatis 🔄</button>
+                  <button type="button" id="pkg-router-start-btn" class="mini-btn primary" title="Jalankan service 9Router secara senyap di background"><span class="btn-svg-icon" data-icon="play"></span> Jalankan di Background (Senyap)</button>
+                  <button type="button" id="pkg-router-browse-btn" class="mini-btn browse" title="Pilih file 9router.cmd secara manual"><span class="btn-svg-icon" data-icon="folder-open"></span> Ubah Jalur</button>
+                  <button type="button" id="pkg-router-reset-btn" class="mini-btn" title="Kembalikan ke deteksi otomatis sistem" style="display:none;"><span class="btn-svg-icon" data-icon="refresh-cw"></span> Reset Otomatis</button>
                 </div>
                 <details class="pkg-manual-fallback">
-                  <summary>🛠️ Opsi Lanjutan: Jalankan Manual via Terminal (Opsional)</summary>
+                  <summary>Opsi Lanjutan: Jalankan Manual via Terminal (Opsional)</summary>
                   <p class="row-desc" style="margin-top:6px;">Jalankan service 9Router sebelum menghubungkan avatar ke model LLM:</p>
                   <div style="display:flex; gap:8px; margin: 4px 0 8px;">
                     <button type="button" class="terminal-action-btn secondary-term" data-terminal-action="start-router" data-terminal-cmd="9router -n --skip-update">Buka Terminal (Debugging)</button>
@@ -423,7 +431,7 @@
                     <span class="command-box-label">Perintah Terminal:</span>
                     <div class="command-box">
                       <code>9router</code>
-                      <button type="button" class="copy-cmd-btn mini-btn" data-copy="9router">Salin 📋</button>
+                      <button type="button" class="copy-cmd-btn mini-btn" data-copy="9router"><span class="btn-svg-icon" data-icon="copy"></span> Salin</button>
                     </div>
                   </div>
                 </details>
@@ -444,15 +452,15 @@
                 </div>
               </div>
               <div class="pkg-header-right">
-                <button type="button" class="mini-btn primary pkg-quick-install-btn" data-oneclick-pkg="kokoro" title="Pasang Python/Kokoro dan nyalakan server suara otomatis">⚡ Install 1-Klik</button>
+                <button type="button" class="mini-btn primary pkg-quick-install-btn" data-oneclick-pkg="kokoro" title="Pasang Python/Kokoro dan nyalakan server suara otomatis"><span class="btn-svg-icon" data-icon="zap"></span> Install 1-Klik</button>
                 <span class="package-badge badge" id="pkg-status-kokoro">…</span>
                 <span class="pkg-chevron">▾</span>
               </div>
             </div>
             <div class="pkg-body">
               <div class="pkg-subtabs">
-                <button type="button" class="pkg-tab-btn active" data-tab="install">📥 Install Otomatis</button>
-                <button type="button" class="pkg-tab-btn" data-tab="manage">⚙️ Status & Kelola Service</button>
+                <button type="button" class="pkg-tab-btn active" data-tab="install"><span class="btn-svg-icon" data-icon="download"></span> Install Otomatis</button>
+                <button type="button" class="pkg-tab-btn" data-tab="manage"><span class="btn-svg-icon" data-icon="sliders-horizontal"></span> Status &amp; Kelola Service</button>
               </div>
 
               <!-- Sub-panel Install -->
@@ -463,20 +471,20 @@
                 </div>
                 <p class="row-desc">Aplikasi akan otomatis menyiapkan Python (bila belum ada), memasang <code>kokoro-onnx</code> &amp; <code>soundfile</code>, lalu menyalakan server audio lokal:</p>
                 <div style="display:flex; gap:8px; margin: 6px 0 8px; flex-wrap:wrap;">
-                  <button type="button" class="mini-btn primary oneclick-install-btn" data-oneclick-pkg="kokoro">⚡ Install &amp; Aktifkan Otomatis (1-Klik Tanpa Terminal)</button>
+                  <button type="button" class="mini-btn primary oneclick-install-btn" data-oneclick-pkg="kokoro"><span class="btn-svg-icon" data-icon="zap"></span> Install &amp; Aktifkan Otomatis (1-Klik Tanpa Terminal)</button>
                   <button type="button" id="pkg-install-kokoro-btn" class="mini-btn use" title="Pasang ulang paket pip Kokoro saja">Install Pip Saja</button>
                 </div>
                 <div id="pkg-inline-log-kokoro" class="package-log muted" style="margin-bottom: 8px;"></div>
                 <details class="pkg-manual-fallback">
-                  <summary>🛠️ Opsi Lanjutan: Perintah Terminal Manual (Opsional)</summary>
+                  <summary>Opsi Lanjutan: Perintah Terminal Manual (Opsional)</summary>
                   <div style="display:flex; gap:8px; margin: 8px 0;">
-                    <button type="button" class="terminal-action-btn" data-terminal-action="install-kokoro" data-terminal-cmd="py -m pip install kokoro-onnx soundfile">🚀 Buka di Terminal & Install Pip</button>
+                    <button type="button" class="terminal-action-btn" data-terminal-action="install-kokoro" data-terminal-cmd="py -m pip install kokoro-onnx soundfile"><span class="btn-svg-icon" data-icon="terminal"></span> Buka di Terminal &amp; Install Pip</button>
                   </div>
                   <div class="command-box-group">
                     <span class="command-box-label">Perintah Terminal Manual:</span>
                     <div class="command-box">
                       <code>py -m pip install kokoro-onnx soundfile</code>
-                      <button type="button" class="copy-cmd-btn mini-btn" data-copy="py -m pip install kokoro-onnx soundfile">Salin 📋</button>
+                      <button type="button" class="copy-cmd-btn mini-btn" data-copy="py -m pip install kokoro-onnx soundfile"><span class="btn-svg-icon" data-icon="copy"></span> Salin</button>
                     </div>
                   </div>
                 </details>
@@ -490,20 +498,20 @@
                   <span class="badge" id="pkg-kokoro-source-badge" style="font-size:10px;">…</span>
                 </div>
                 <div style="display:flex; gap:8px; margin: 6px 0 8px; flex-wrap: wrap;">
-                  <button type="button" id="pkg-kokoro-browse-btn" class="mini-btn browse" title="Pilih folder kustom untuk model Kokoro (misal di Drive D:\)">Ubah Folder Model 📂</button>
-                  <button type="button" id="pkg-kokoro-reset-btn" class="mini-btn" title="Kembalikan ke folder default" style="display:none;">Reset Default 🔄</button>
+                  <button type="button" id="pkg-kokoro-browse-btn" class="mini-btn browse" title="Pilih folder kustom untuk model Kokoro (misal di Drive D:\)"><span class="btn-svg-icon" data-icon="folder-open"></span> Ubah Folder Model</button>
+                  <button type="button" id="pkg-kokoro-reset-btn" class="mini-btn" title="Kembalikan ke folder default" style="display:none;"><span class="btn-svg-icon" data-icon="refresh-cw"></span> Reset Default</button>
                 </div>
                 <p class="row-desc">Jalankan daemon server audio Kokoro agar avatar dapat bersuara anime:</p>
                 <div style="display:flex; gap:8px; margin: 6px 0 10px; flex-wrap:wrap;">
-                  <button type="button" id="pkg-start-kokoro-btn" class="mini-btn primary">⚡ Jalankan di Background (Senyap)</button>
+                  <button type="button" id="pkg-start-kokoro-btn" class="mini-btn primary"><span class="btn-svg-icon" data-icon="play"></span> Jalankan di Background (Senyap)</button>
                 </div>
                 <div class="package-actions-row" style="margin-top: 8px;">
-                  <button type="button" id="pkg-open-folder-btn" class="mini-btn edit">Buka Folder Paket 📁</button>
-                  <button type="button" id="pkg-clean-btn" class="mini-btn del">Hapus Model & Cache 🗑️</button>
-                  <button type="button" id="pkg-uninstall-pip-btn" class="mini-btn del">Uninstall Pip ⚠️</button>
+                  <button type="button" id="pkg-open-folder-btn" class="mini-btn edit"><span class="btn-svg-icon" data-icon="folder-open"></span> Buka Folder Paket</button>
+                  <button type="button" id="pkg-clean-btn" class="mini-btn del"><span class="btn-svg-icon" data-icon="trash-2"></span> Hapus Model &amp; Cache</button>
+                  <button type="button" id="pkg-uninstall-pip-btn" class="mini-btn del"><span class="btn-svg-icon" data-icon="trash-2"></span> Uninstall Pip</button>
                 </div>
                 <details class="pkg-manual-fallback" style="margin-top:8px;">
-                  <summary>🛠️ Opsi Lanjutan: Jalankan Manual via Terminal (Opsional)</summary>
+                  <summary>Opsi Lanjutan: Jalankan Manual via Terminal (Opsional)</summary>
                   <div style="display:flex; gap:8px; margin: 8px 0;">
                     <button type="button" class="terminal-action-btn secondary-term" data-terminal-action="start-kokoro" data-terminal-cmd="py scripts/kokoro_server.py">Buka Terminal (Debugging)</button>
                   </div>
@@ -526,34 +534,34 @@
                 </div>
               </div>
               <div class="pkg-header-right">
-                <button type="button" class="mini-btn primary pkg-quick-install-btn" data-oneclick-pkg="python" title="Pasang Python 3.12 secara senyap di latar belakang">⚡ Install 1-Klik</button>
+                <button type="button" class="mini-btn primary pkg-quick-install-btn" data-oneclick-pkg="python" title="Pasang Python 3.12 secara senyap di latar belakang"><span class="btn-svg-icon" data-icon="zap"></span> Install 1-Klik</button>
                 <span class="package-badge badge" id="pkg-status-python">…</span>
                 <span class="pkg-chevron">▾</span>
               </div>
             </div>
             <div class="pkg-body">
               <div class="pkg-subtabs">
-                <button type="button" class="pkg-tab-btn active" data-tab="install">📥 Install Otomatis</button>
-                <button type="button" class="pkg-tab-btn" data-tab="manage">⚙️ Status & Kelola Service</button>
+                <button type="button" class="pkg-tab-btn active" data-tab="install"><span class="btn-svg-icon" data-icon="download"></span> Install Otomatis</button>
+                <button type="button" class="pkg-tab-btn" data-tab="manage"><span class="btn-svg-icon" data-icon="sliders-horizontal"></span> Status &amp; Kelola Service</button>
               </div>
 
               <!-- Sub-panel Install -->
               <div class="pkg-tab-panel active" data-panel="install">
                 <p class="row-desc">Belum punya Python di Windows? Klik tombol di bawah untuk mengunduh &amp; memasang <strong>Python 3.12</strong> secara senyap sekaligus mengatur PATH otomatis:</p>
                 <div style="display:flex; gap:8px; margin: 6px 0 8px; flex-wrap:wrap;">
-                  <button type="button" class="mini-btn primary oneclick-install-btn" data-oneclick-pkg="python">⚡ Install &amp; Aktifkan Otomatis (1-Klik Tanpa Terminal)</button>
+                  <button type="button" class="mini-btn primary oneclick-install-btn" data-oneclick-pkg="python"><span class="btn-svg-icon" data-icon="zap"></span> Install &amp; Aktifkan Otomatis (1-Klik Tanpa Terminal)</button>
                 </div>
                 <div id="pkg-inline-log-python" class="package-log muted" style="margin-bottom: 8px;"></div>
                 <details class="pkg-manual-fallback">
-                  <summary>🛠️ Opsi Lanjutan: Perintah Terminal Manual (Opsional)</summary>
+                  <summary>Opsi Lanjutan: Perintah Terminal Manual (Opsional)</summary>
                   <div style="display:flex; gap:8px; margin: 8px 0;">
-                    <button type="button" class="terminal-action-btn" data-terminal-action="test-python" data-terminal-cmd="python --version; py --version">🚀 Buka Terminal & Tes Python</button>
+                    <button type="button" class="terminal-action-btn" data-terminal-action="test-python" data-terminal-cmd="python --version; py --version"><span class="btn-svg-icon" data-icon="terminal"></span> Buka Terminal &amp; Tes Python</button>
                   </div>
                   <div class="command-box-group">
                     <span class="command-box-label">Perintah Terminal Cek Versi:</span>
                     <div class="command-box">
                       <code>python --version</code>
-                      <button type="button" class="copy-cmd-btn mini-btn" data-copy="python --version">Salin 📋</button>
+                      <button type="button" class="copy-cmd-btn mini-btn" data-copy="python --version"><span class="btn-svg-icon" data-icon="copy"></span> Salin</button>
                     </div>
                   </div>
                 </details>
@@ -566,8 +574,8 @@
                   <span class="badge" id="pkg-python-source-badge" style="font-size:10px;">…</span>
                 </div>
                 <div style="display:flex; gap:8px; margin: 6px 0 8px; flex-wrap: wrap;">
-                  <button type="button" id="pkg-python-browse-btn" class="mini-btn browse" title="Pilih binary python.exe kustom">Ubah Python 📂</button>
-                  <button type="button" id="pkg-python-reset-btn" class="mini-btn" title="Kembalikan ke deteksi otomatis sistem" style="display:none;">Reset Otomatis 🔄</button>
+                  <button type="button" id="pkg-python-browse-btn" class="mini-btn browse" title="Pilih binary python.exe kustom"><span class="btn-svg-icon" data-icon="folder-open"></span> Ubah Python</button>
+                  <button type="button" id="pkg-python-reset-btn" class="mini-btn" title="Kembalikan ke deteksi otomatis sistem" style="display:none;"><span class="btn-svg-icon" data-icon="refresh-cw"></span> Reset Otomatis</button>
                 </div>
               </div>
             </div>
@@ -612,7 +620,7 @@
                 </div>
               </div>
               <div class="pkg-header-right">
-                <span class="package-badge badge on" style="background:#8b5cf6; color:#fff;">Aktif ✓</span>
+                <span class="package-badge badge on" style="background:#8b5cf6; color:#fff;">Aktif</span>
                 <span class="pkg-chevron">▾</span>
               </div>
             </div>
@@ -622,13 +630,13 @@
               </div>
               <p class="row-desc" style="margin-top:6px;">Memori percakapan disimpan secara 100% offline dan privat di perangkat Anda.</p>
               <div style="display:flex; gap:8px; margin: 6px 0 8px;">
-                <button type="button" class="terminal-action-btn secondary-term" data-terminal-action="memory-status" data-terminal-cmd="hermes memory status">⚡ Cek Status Memori di Terminal</button>
+                <button type="button" class="terminal-action-btn secondary-term" data-terminal-action="memory-status" data-terminal-cmd="hermes memory status"><span class="btn-svg-icon" data-icon="terminal"></span> Cek Status Memori di Terminal</button>
               </div>
               <div class="command-box-group">
                 <span class="command-box-label">Perintah Terminal:</span>
                 <div class="command-box">
                   <code>hermes memory status</code>
-                  <button type="button" class="copy-cmd-btn mini-btn" data-copy="hermes memory status">Salin 📋</button>
+                  <button type="button" class="copy-cmd-btn mini-btn" data-copy="hermes memory status"><span class="btn-svg-icon" data-icon="copy"></span> Salin</button>
                 </div>
               </div>
             </div>
@@ -642,7 +650,7 @@
                   <svg class="lucide-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" x2="22" y1="12" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
                 </div>
                 <div class="pkg-title-text">
-                  <span class="pkg-title">🌐 Hermes Web Companion (Ekstensi Chrome & Edge)</span>
+                  <span class="pkg-title"><span class="btn-svg-icon" data-icon="globe"></span> Hermes Web Companion (Ekstensi Chrome &amp; Edge)</span>
                   <span class="pkg-sub">Ekstensi browser Ask AI pendamping — klik kanan atau Alt+A untuk merangkum web langsung ke Avatar</span>
                 </div>
               </div>
@@ -653,8 +661,8 @@
             </div>
             <div class="pkg-body">
               <div class="pkg-subtabs">
-                <button type="button" class="pkg-tab-btn active" data-tab="install">📥 Panduan Pasang di Chrome / Edge</button>
-                <button type="button" class="pkg-tab-btn" data-tab="manage">⚙️ Status Bridge & Tes Koneksi</button>
+                <button type="button" class="pkg-tab-btn active" data-tab="install"><span class="btn-svg-icon" data-icon="download"></span> Panduan Pasang di Chrome / Edge</button>
+                <button type="button" class="pkg-tab-btn" data-tab="manage"><span class="btn-svg-icon" data-icon="sliders-horizontal"></span> Status Bridge &amp; Tes Koneksi</button>
               </div>
 
               <!-- Sub-panel Install -->
@@ -670,7 +678,7 @@
                     <span class="step-num">1</span>
                     <div class="step-desc">
                       Buka halaman ekstensi di browser: ketik <code>chrome://extensions</code> (atau <code>edge://extensions</code>).
-                      <button type="button" class="mini-btn copy-cmd-btn" style="margin-left:8px;" data-copy="chrome://extensions">Salin URL 📋</button>
+                      <button type="button" class="mini-btn copy-cmd-btn" style="margin-left:8px;" data-copy="chrome://extensions"><span class="btn-svg-icon" data-icon="copy"></span> Salin URL</button>
                     </div>
                   </div>
                   <div class="install-step-item">
@@ -684,7 +692,7 @@
                     <div class="step-desc">
                       Klik tombol <strong>"Load unpacked"</strong> (Muat yang belum dibongkar) di Chrome/Edge, lalu arahkan dan pilih folder <code>chrome</code> (folder ekstensi) dan klik tombol <strong>"Select" / "Pilih"</strong>.
                       <div class="tip-box" style="margin-top:8px; font-size:12px; background:rgba(6,182,212,0.08); border:1px solid rgba(6,182,212,0.25); padding:8px 12px; border-radius:6px; line-height:1.5;">
-                        💡 <strong>Panduan Memuat di macOS & Windows:</strong><br>
+                        <strong>Panduan Memuat di macOS &amp; Windows:</strong><br>
                         • <strong>Pilih Foldernya Langsung:</strong> Browser hanya meminta Anda memilih satu <em>folder</em> (jangan buka atau seret file satuan di dalamnya). Klik folder <code>chrome</code> lalu klik tombol <strong>"Select" / "Pilih" / "Buka"</strong> di jendela file picker browser.<br>
                         • <strong>Shortcut macOS:</strong> Saat jendela pemilih file browser terbuka, tekan <kbd>Cmd</kbd> + <kbd>Shift</kbd> + <kbd>G</kbd>, lalu tempel (paste) path yang disalin dari tombol di bawah.
                       </div>
@@ -693,9 +701,9 @@
                 </div>
 
                 <div style="display:flex; gap:8px; margin: 10px 0 6px; flex-wrap:wrap;">
-                  <button type="button" id="pkg-companion-oneclick-btn" class="mini-btn primary">⚡ Siapkan &amp; Buka Ekstensi 1-Klik</button>
-                  <button type="button" id="pkg-open-extension-folder-btn" class="terminal-action-btn">📂 Buka Folder Ekstensi di Explorer / Finder</button>
-                  <button type="button" id="pkg-copy-extension-path-btn" class="mini-btn copy-cmd-btn">📋 Salin Path Folder Ekstensi</button>
+                  <button type="button" id="pkg-companion-oneclick-btn" class="mini-btn primary"><span class="btn-svg-icon" data-icon="zap"></span> Siapkan &amp; Buka Ekstensi 1-Klik</button>
+                  <button type="button" id="pkg-open-extension-folder-btn" class="terminal-action-btn"><span class="btn-svg-icon" data-icon="folder-open"></span> Buka Folder Ekstensi di Explorer / Finder</button>
+                  <button type="button" id="pkg-copy-extension-path-btn" class="mini-btn copy-cmd-btn"><span class="btn-svg-icon" data-icon="copy"></span> Salin Path Folder Ekstensi</button>
                 </div>
                 <div id="pkg-bridge-log" class="package-log muted" style="margin-top: 8px;"></div>
               </div>
@@ -708,14 +716,14 @@
                 </div>
                 <p class="row-desc">Menghubungkan browser Chrome/Edge Anda dengan avatar secara aman:</p>
                 <div style="display:flex; gap:8px; margin: 8px 0 10px; flex-wrap:wrap;">
-                  <button type="button" id="pkg-test-bridge-btn" class="mini-btn primary">⚡ Tes Koneksi Bridge</button>
+                  <button type="button" id="pkg-test-bridge-btn" class="mini-btn primary"><span class="btn-svg-icon" data-icon="zap"></span> Tes Koneksi Bridge</button>
                   <button type="button" class="terminal-action-btn secondary-term" data-terminal-action="ping-bridge" data-terminal-cmd="curl http://127.0.0.1:9124/api/ping">Cek via Curl di Terminal</button>
                 </div>
                 <div class="command-box-group force-visible">
                   <span class="command-box-label">Fitur Ekstensi:</span>
                   <ul style="margin: 4px 0 0 16px; font-size:12px; color:var(--text-secondary); line-height:1.6;">
                     <li><strong>Shortcut Cepat:</strong> Tekan <kbd>Alt + A</kbd> di browser untuk langsung menanyakan teks yang diblok ke avatar.</li>
-                    <li><strong>Context Menu:</strong> Klik kanan teks apa pun → pilih <em>"Tanyakan ke Hermes Avatar 🎙️"</em> atau <em>"Rangkum Halaman Ini"</em>.</li>
+                    <li><strong>Context Menu:</strong> Klik kanan teks apa pun → pilih <em>"Tanyakan ke Hermes Avatar"</em> atau <em>"Rangkum Halaman Ini"</em>.</li>
                     <li><strong>Rangkuman Otomatis:</strong> Jawaban muncul seketika di panel chat avatar, lengkap dengan pembacaan suara & animasi bibir!</li>
                   </ul>
                 </div>
@@ -798,7 +806,7 @@
               </div>
               <div class="row-control">
                 <select id="tts-provider" class="mac-select">
-                  <option value="kokoro">Kokoro-TTS (Lokal AI Anime ⭐)</option>
+                  <option value="kokoro">Kokoro-TTS (Lokal AI Anime)</option>
                   <option value="edge">Edge-TTS (Microsoft Cloud)</option>
                 </select>
               </div>
@@ -815,8 +823,8 @@
               </div>
               <div class="row-control">
                 <select id="tts-country-filter" class="mac-select">
-                  <option value="all">🌐 Semua Negara & Aksen (56 Karakter)</option>
-                  <option value="jp">🇯🇵 Jepang (Anime Seiyuu ⭐)</option>
+                  <option value="all">Semua Negara &amp; Aksen (56 Karakter)</option>
+                  <option value="jp">🇯🇵 Jepang (Anime Seiyuu)</option>
                   <option value="id">🇮🇩 Indonesia (Edge Natural)</option>
                   <option value="us">🇺🇸 Amerika Serikat (US English)</option>
                   <option value="uk">🇬🇧 Inggris (British Accent)</option>
@@ -856,7 +864,7 @@
               </div>
               <div class="row-control">
                 <select id="tts-intonation" class="mac-select">
-                  <option value="anime">Anime Vokal Jernih (Jepang / ID ⭐)</option>
+                  <option value="anime">Anime Vokal Jernih (Jepang / ID)</option>
                   <option value="international">Standard English (US)</option>
                   <option value="british">British English (UK)</option>
                 </select>
@@ -876,7 +884,7 @@
                 <div class="mac-input-action-group">
                   <input id="tts-test-input" type="text" class="mac-input" value="Halo! Saya adalah avatar desktop pintar Anda." placeholder="Ketik kalimat tes..." />
                   <button type="button" id="tts-test-btn" class="group-action-btn" title="Dengarkan pengujian suara">
-                    <span id="tts-test-icon">🔊</span>
+                    <span id="tts-test-icon" class="btn-svg-icon" data-icon="volume-2"></span>
                     <span id="tts-test-text">Uji</span>
                   </button>
                 </div>
@@ -1013,12 +1021,12 @@
               <div class="format-info-col">
                 <div class="format-title-line">
                   <span class="format-title">Ruang Penyimpanan Pustaka Musik</span>
-                  <span id="music-storage-badge" class="package-badge badge on">Tersimpan Permanen ✓</span>
+                  <span id="music-storage-badge" class="package-badge badge on">Tersimpan Permanen</span>
                 </div>
                 <p class="format-desc-text" id="music-storage-desc">Berkas lokal: <code>~/.hermes-avatar/music_library.json</code></p>
               </div>
               <div class="row-control" style="display:flex; gap:8px;">
-                <button type="button" id="btn-open-music-folder" class="mini-btn">Buka Folder 📂</button>
+                <button type="button" id="btn-open-music-folder" class="mini-btn"><span class="btn-svg-icon" data-icon="folder-open"></span> Buka Folder</button>
               </div>
             </div>
             <div class="settings-row">
@@ -1032,7 +1040,7 @@
                 <p class="format-desc-text" id="music-stats-desc">Memuat status lagu stream dan favorit tersimpan...</p>
               </div>
               <div class="row-control">
-                <button type="button" id="btn-refresh-music-stats" class="mini-btn">Segarkan 🔄</button>
+                <button type="button" id="btn-refresh-music-stats" class="mini-btn"><span class="btn-svg-icon" data-icon="refresh-cw"></span> Segarkan</button>
               </div>
             </div>
             <div class="settings-row" style="flex-direction: column; align-items: stretch; gap: 10px;">
@@ -1043,7 +1051,8 @@
               <div style="display: flex; gap: 8px;">
                 <input id="settings-music-url" type="url" class="mac-input" style="flex: 1;" placeholder="URL YouTube / Link Stream (https://...)" />
                 <button type="button" id="btn-settings-add-stream" class="group-action-btn primary">
-                  <span>Simpan ke Pustaka ➕</span>
+                  <span class="btn-svg-icon" data-icon="plus"></span>
+                  <span>Simpan ke Pustaka</span>
                 </button>
               </div>
               <div id="settings-music-feedback" style="font-size: 11px; color: #10b981; display: none;"></div>
@@ -1072,7 +1081,11 @@
                 </div>
                 <div class="row-control">
                   <div id="llm-active" class="llm-active"></div>
-                  <button type="button" id="llm-refresh-btn" class="mini-btn browse" style="margin-left: 6px;">Segarkan ↻</button>
+                  <button type="button" id="llm-ping-active-btn" class="mini-btn use" style="margin-left: 6px;" title="Uji ping ke model LLM aktif untuk memastikan tidak RTO">
+                    <span class="btn-svg-icon" data-icon="activity" data-icon-size="12"></span>
+                    <span>Tes Ping Model</span>
+                  </button>
+                  <button type="button" id="llm-refresh-btn" class="mini-btn browse" style="margin-left: 6px;"><span class="btn-svg-icon" data-icon="refresh-cw"></span> Segarkan</button>
                 </div>
               </div>
               <div class="settings-row">
@@ -1091,6 +1104,7 @@
                 </div>
               </div>
             </div>
+            <p class="hint" style="margin: 6px 10px 14px; font-size: 11.5px; color: var(--text-secondary);">Anda bebas memilih <strong>Login OAuth Resmi</strong> atau <strong>9Router Lokal (Opsional)</strong>. Selama <strong>Tes Ping Model</strong> berhasil dan tidak RTO, avatar siap dijalankan (5/5).</p>
 
             <div class="group-header">Kategori Pengaturan AI &amp; Provider</div>
             <div class="card">
@@ -1106,7 +1120,7 @@
                     <p class="format-desc-text">Pantau sisa kredit bulanan, Bonus Pack 9Router, dan cincin limit model OAuth secara real-time</p>
                   </div>
                   <div class="format-status-col">
-                    <span id="llm-menu-badge-quota" class="format-count-pill on">⚡ Memuat…</span>
+                    <span id="llm-menu-badge-quota" class="format-count-pill on">Memuat…</span>
                     <span class="format-arrow">›</span>
                   </div>
                 </div>
@@ -1122,7 +1136,7 @@
                     <p class="format-desc-text">Masuk 1-klik dengan akun Google atau GitHub (OpenRouter, Google Gemini AI Studio, Groq, Mistral)</p>
                   </div>
                   <div class="format-status-col">
-                    <span id="llm-menu-badge-oauth" class="format-count-pill on">🛡️ 4 Penyedia Gratis</span>
+                    <span id="llm-menu-badge-oauth" class="format-count-pill on">4 Penyedia Gratis</span>
                     <span class="format-arrow">›</span>
                   </div>
                 </div>
@@ -1193,8 +1207,8 @@
                       <span id="quota-compliance-badge" class="badge info">Patuh ToS</span>
                     </div>
                     <div class="quota-view-tabs" id="quota-view-tabs">
-                      <button type="button" class="quota-tab-btn active" data-quota-view="both">⚡ Keduanya</button>
-                      <button type="button" class="quota-tab-btn" data-quota-view="cards">🗂️ Kartu Akun</button>
+                      <button type="button" class="quota-tab-btn active" data-quota-view="both"><span class="btn-svg-icon" data-icon="layers"></span> Keduanya</button>
+                      <button type="button" class="quota-tab-btn" data-quota-view="cards"><span class="btn-svg-icon" data-icon="user-round"></span> Kartu Akun</button>
                       <button type="button" class="quota-tab-btn" data-quota-view="rings">⭕ Limit Model</button>
                     </div>
                   </div>
@@ -1215,11 +1229,11 @@
                         <option value="available">Available only</option>
                         <option value="expired">Expired / Invalid</option>
                       </select>
-                      <button type="button" id="quota-toggle-empty-btn" class="mini-btn quota-pill-btn">🚫 Hide Expired</button>
+                      <button type="button" id="quota-toggle-empty-btn" class="mini-btn quota-pill-btn">Hide Expired</button>
                     </div>
                     <div class="quota-toolbar-right">
-                      <button type="button" id="quota-autorefresh-btn" class="mini-btn quota-pill-btn">⏱️ Auto-refresh (<span id="quota-countdown">55</span>s)</button>
-                      <button type="button" id="quota-refresh-btn" class="mini-btn browse">↻ Cek Kuota</button>
+                      <button type="button" id="quota-autorefresh-btn" class="mini-btn quota-pill-btn"><span class="btn-svg-icon" data-icon="clock"></span> Auto-refresh (<span id="quota-countdown">55</span>s)</button>
+                      <button type="button" id="quota-refresh-btn" class="mini-btn browse"><span class="btn-svg-icon" data-icon="refresh-cw"></span> Cek Kuota</button>
                     </div>
                   </div>
 
@@ -1240,7 +1254,7 @@
               <div class="card" id="oauth-login-hub">
                 <div class="oauth-hub-wrapper">
                   <div class="oauth-section-subhead">
-                    <span class="oauth-section-title">🛡️ Jalur 1: OAuth Resmi &amp; Paket Gratis (Tanpa 9Router)</span>
+                    <span class="oauth-section-title">Jalur 1: OAuth Resmi &amp; Paket Gratis (Tanpa 9Router)</span>
                     <span class="oauth-section-note">Masuk langsung memakai akun Google / GitHub resmi penyedia AI.</span>
                   </div>
 
@@ -1249,7 +1263,7 @@
                     <div class="oauth-provider-card" data-hub-card="openrouter">
                       <div class="oauth-card-top">
                         <div class="oauth-card-identity">
-                          <span class="oauth-card-emblem">🌐</span>
+                          <span class="oauth-card-emblem" data-icon="globe" data-icon-size="18"></span>
                           <div class="oauth-card-titles">
                             <span class="oauth-card-name">OpenRouter (OAuth Resmi)</span>
                             <span class="oauth-tier-pill">OAuth PKCE 1-Klik · Model :free</span>
@@ -1268,7 +1282,7 @@
                         </div>
                       </div>
                       <div class="oauth-card-actions">
-                        <button type="button" id="btn-oauth-openrouter" class="mini-btn primary oauth-full-btn">🔗 Login 1-Klik via Google / GitHub (OAuth)</button>
+                        <button type="button" id="btn-oauth-openrouter" class="mini-btn primary oauth-full-btn"><span class="btn-svg-icon" data-icon="external-link"></span> Login 1-Klik via Google / GitHub (OAuth)</button>
                       </div>
                     </div>
 
@@ -1276,7 +1290,7 @@
                     <div class="oauth-provider-card" data-hub-card="gemini">
                       <div class="oauth-card-top">
                         <div class="oauth-card-identity">
-                          <span class="oauth-card-emblem">✨</span>
+                          <span class="oauth-card-emblem" data-icon="sparkles" data-icon-size="18"></span>
                           <div class="oauth-card-titles">
                             <span class="oauth-card-name">Google Gemini (AI Studio)</span>
                             <span class="oauth-tier-pill">Gratis ~1.500 req/hari</span>
@@ -1295,10 +1309,10 @@
                         </div>
                       </div>
                       <div class="oauth-card-actions">
-                        <button type="button" id="btn-get-gemini-key" class="mini-btn browse oauth-full-btn">🌐 1. Login Akun Google (Buka AI Studio)</button>
+                        <button type="button" id="btn-get-gemini-key" class="mini-btn browse oauth-full-btn"><span class="btn-svg-icon" data-icon="globe"></span> 1. Login Akun Google (Buka AI Studio)</button>
                         <div class="oauth-quick-paste-row">
                           <input type="password" class="mac-input oauth-inline-key" data-hub-provider="gemini" placeholder="Atau tempel key Gemini (AIza...) di sini" />
-                          <button type="button" class="mini-btn use oauth-paste-activate-btn" data-hub-provider="gemini" data-name="Google Gemini" data-baseurl="https://generativelanguage.googleapis.com/v1beta/openai" data-model="gemini-3.5-flash-lite">📋 2. Tempel &amp; Aktifkan ⚡</button>
+                          <button type="button" class="mini-btn use oauth-paste-activate-btn" data-hub-provider="gemini" data-name="Google Gemini" data-baseurl="https://generativelanguage.googleapis.com/v1beta/openai" data-model="gemini-3.5-flash-lite"><span class="btn-svg-icon" data-icon="check"></span> 2. Tempel &amp; Aktifkan</button>
                         </div>
                       </div>
                     </div>
@@ -1307,7 +1321,7 @@
                     <div class="oauth-provider-card" data-hub-card="groq">
                       <div class="oauth-card-top">
                         <div class="oauth-card-identity">
-                          <span class="oauth-card-emblem">🚀</span>
+                          <span class="oauth-card-emblem" data-icon="zap" data-icon-size="18"></span>
                           <div class="oauth-card-titles">
                             <span class="oauth-card-name">Groq Cloud (LPU Cepat)</span>
                             <span class="oauth-tier-pill">Gratis 14.400 req/hari</span>
@@ -1326,10 +1340,10 @@
                         </div>
                       </div>
                       <div class="oauth-card-actions">
-                        <button type="button" id="btn-get-groq-key" class="mini-btn browse oauth-full-btn" data-open-url="https://console.groq.com/keys" data-preset-target="groq">🌐 1. Login Google / GitHub di Groq Console</button>
+                        <button type="button" id="btn-get-groq-key" class="mini-btn browse oauth-full-btn" data-open-url="https://console.groq.com/keys" data-preset-target="groq"><span class="btn-svg-icon" data-icon="globe"></span> 1. Login Google / GitHub di Groq Console</button>
                         <div class="oauth-quick-paste-row">
                           <input type="password" class="mac-input oauth-inline-key" data-hub-provider="groq" placeholder="Atau tempel key Groq (gsk_...) di sini" />
-                          <button type="button" class="mini-btn use oauth-paste-activate-btn" data-hub-provider="groq" data-name="Groq Cloud" data-baseurl="https://api.groq.com/openai/v1" data-model="llama-3.3-70b-versatile">📋 2. Tempel &amp; Aktifkan ⚡</button>
+                          <button type="button" class="mini-btn use oauth-paste-activate-btn" data-hub-provider="groq" data-name="Groq Cloud" data-baseurl="https://api.groq.com/openai/v1" data-model="llama-3.3-70b-versatile"><span class="btn-svg-icon" data-icon="check"></span> 2. Tempel &amp; Aktifkan</button>
                         </div>
                       </div>
                     </div>
@@ -1338,7 +1352,7 @@
                     <div class="oauth-provider-card" data-hub-card="mistral">
                       <div class="oauth-card-top">
                         <div class="oauth-card-identity">
-                          <span class="oauth-card-emblem">🌪️</span>
+                          <span class="oauth-card-emblem" data-icon="cpu" data-icon-size="18"></span>
                           <div class="oauth-card-titles">
                             <span class="oauth-card-name">Mistral AI (La Plateforme)</span>
                             <span class="oauth-tier-pill">Paket Experiment Gratis</span>
@@ -1357,10 +1371,10 @@
                         </div>
                       </div>
                       <div class="oauth-card-actions">
-                        <button type="button" id="btn-get-mistral-key" class="mini-btn browse oauth-full-btn" data-open-url="https://console.mistral.ai/api-keys">🌐 1. Login Google / GitHub di Mistral Console</button>
+                        <button type="button" id="btn-get-mistral-key" class="mini-btn browse oauth-full-btn" data-open-url="https://console.mistral.ai/api-keys"><span class="btn-svg-icon" data-icon="globe"></span> 1. Login Google / GitHub di Mistral Console</button>
                         <div class="oauth-quick-paste-row">
                           <input type="password" class="mac-input oauth-inline-key" data-hub-provider="mistral" placeholder="Atau tempel key Mistral di sini" />
-                          <button type="button" class="mini-btn use oauth-paste-activate-btn" data-hub-provider="mistral" data-name="Mistral AI (Gratis)" data-baseurl="https://api.mistral.ai/v1" data-model="mistral-small-latest">📋 2. Tempel &amp; Aktifkan ⚡</button>
+                          <button type="button" class="mini-btn use oauth-paste-activate-btn" data-hub-provider="mistral" data-name="Mistral AI (Gratis)" data-baseurl="https://api.mistral.ai/v1" data-model="mistral-small-latest"><span class="btn-svg-icon" data-icon="check"></span> 2. Tempel &amp; Aktifkan</button>
                         </div>
                       </div>
                     </div>
@@ -1376,7 +1390,7 @@
                 <div class="oauth-router-bridge-card">
                   <div class="oauth-card-top">
                     <div class="oauth-card-identity">
-                      <span class="oauth-card-emblem">⚡</span>
+                      <span class="oauth-card-emblem" data-icon="server" data-icon-size="18"></span>
                       <div class="oauth-card-titles">
                         <span class="oauth-card-name">9Router Lokal — Multi-Akun OAuth &amp; CLI</span>
                         <span class="oauth-tier-pill">Opsional · Hubungkan beberapa akun langganan di komputer Anda</span>
@@ -1394,10 +1408,10 @@
                     <span class="oauth-router-chip">GitHub Copilot</span>
                   </div>
                   <div class="oauth-router-actions">
-                    <button type="button" id="btn-quick-9router" class="mini-btn use">⚡ Hubungkan Instan ke 9Router Lokal</button>
-                    <button type="button" id="btn-open-9router-providers" class="mini-btn browse">🔐 Login / Tambah Akun OAuth di 9Router</button>
-                    <button type="button" id="btn-open-9router-web" class="mini-btn secondary">📊 Buka Dashboard Kuota (:20128)</button>
-                    <button type="button" id="btn-jump-quota-from-router" class="mini-btn primary">📈 Lihat Monitor Kuota Akun ›</button>
+                    <button type="button" id="btn-quick-9router" class="mini-btn use"><span class="btn-svg-icon" data-icon="zap"></span> Hubungkan Instan ke 9Router Lokal</button>
+                    <button type="button" id="btn-open-9router-providers" class="mini-btn browse"><span class="btn-svg-icon" data-icon="user-round"></span> Login / Tambah Akun OAuth di 9Router</button>
+                    <button type="button" id="btn-open-9router-web" class="mini-btn secondary"><span class="btn-svg-icon" data-icon="external-link"></span> Buka Dashboard Kuota (:20128)</button>
+                    <button type="button" id="btn-jump-quota-from-router" class="mini-btn primary"><span class="btn-svg-icon" data-icon="activity"></span> Lihat Monitor Kuota Akun ›</button>
                   </div>
                 </div>
               </div>
@@ -1409,35 +1423,35 @@
               <div class="card">
                 <div id="llm-preset-grid" class="llm-preset-grid">
                   <button type="button" class="llm-preset-btn" data-preset="gemini" data-name="Google Gemini" data-baseurl="https://generativelanguage.googleapis.com/v1beta/openai" data-model="gemini-3.5-flash-lite" data-needskey="1">
-                    <span class="llm-preset-title">✨ Google Gemini (Gratis)</span>
+                    <span class="llm-preset-title">Google Gemini (Gratis)</span>
                     <span class="llm-preset-sub">gemini-3.5-flash-lite</span>
                   </button>
                   <button type="button" class="llm-preset-btn" data-preset="groq" data-name="Groq Cloud" data-baseurl="https://api.groq.com/openai/v1" data-model="llama-3.3-70b-versatile" data-needskey="1">
-                    <span class="llm-preset-title">🚀 Groq Cloud (Gratis)</span>
+                    <span class="llm-preset-title">Groq Cloud (Gratis)</span>
                     <span class="llm-preset-sub">llama-3.3-70b</span>
                   </button>
                   <button type="button" class="llm-preset-btn" data-preset="openrouter" data-name="OpenRouter" data-baseurl="https://openrouter.ai/api/v1" data-model="meta-llama/llama-3.3-70b-instruct:free" data-needskey="1">
-                    <span class="llm-preset-title">🌐 OpenRouter (Gratis)</span>
+                    <span class="llm-preset-title">OpenRouter (Gratis)</span>
                     <span class="llm-preset-sub">llama-3.3-70b:free</span>
                   </button>
                   <button type="button" class="llm-preset-btn" data-preset="9router" data-name="9Router Lokal" data-baseurl="http://127.0.0.1:20128/v1" data-model="default" data-needskey="0">
-                    <span class="llm-preset-title">⚡ 9Router Lokal</span>
+                    <span class="llm-preset-title">9Router Lokal</span>
                     <span class="llm-preset-sub">Otomatis lokal</span>
                   </button>
                   <button type="button" class="llm-preset-btn" data-preset="deepseek" data-name="DeepSeek" data-baseurl="https://api.deepseek.com/v1" data-model="deepseek-chat" data-needskey="1">
-                    <span class="llm-preset-title">🧠 DeepSeek</span>
+                    <span class="llm-preset-title">DeepSeek</span>
                     <span class="llm-preset-sub">deepseek-chat</span>
                   </button>
                   <button type="button" class="llm-preset-btn" data-preset="openai" data-name="OpenAI" data-baseurl="https://api.openai.com/v1" data-model="gpt-4o-mini" data-needskey="1">
-                    <span class="llm-preset-title">🤖 OpenAI (ChatGPT)</span>
+                    <span class="llm-preset-title">OpenAI (ChatGPT)</span>
                     <span class="llm-preset-sub">gpt-4o-mini</span>
                   </button>
                   <button type="button" class="llm-preset-btn" data-preset="ollama" data-name="Ollama Lokal" data-baseurl="http://127.0.0.1:11434/v1" data-model="llama3.2" data-needskey="0">
-                    <span class="llm-preset-title">🦙 Ollama (Offline)</span>
+                    <span class="llm-preset-title">Ollama (Offline)</span>
                     <span class="llm-preset-sub">llama3.2 lokal</span>
                   </button>
                   <button type="button" class="llm-preset-btn" data-preset="custom" data-name="" data-baseurl="" data-model="" data-needskey="1">
-                    <span class="llm-preset-title">⚙️ Kustom / Lainnya</span>
+                    <span class="llm-preset-title">Kustom / Lainnya</span>
                     <span class="llm-preset-sub">Isi alamat server sendiri</span>
                   </button>
                 </div>
@@ -1482,7 +1496,7 @@
                     <span class="row-title">Aksi</span>
                   </div>
                   <div class="row-control">
-                    <button type="button" id="llm-add-btn" class="mini-btn primary">Simpan &amp; Aktifkan Provider ⚡</button>
+                    <button type="button" id="llm-add-btn" class="mini-btn primary"><span class="btn-svg-icon" data-icon="check"></span> Simpan &amp; Aktifkan Provider</button>
                   </div>
                 </div>
               </div>
@@ -1509,8 +1523,8 @@
           <div class="group-header">Pustaka Skill Terpasang</div>
           <div class="card padded">
             <div class="skill-toolbar" style="margin-bottom: 12px;">
-              <input id="skill-search" type="text" class="mac-input" placeholder="🔍 Cari skill terpasang..." />
-              <button id="skill-refresh-btn" class="mini-btn browse" title="Muat ulang daftar skill dari disk">Muat Ulang ↻</button>
+              <input id="skill-search" type="text" class="mac-input" placeholder="Cari skill terpasang..." />
+              <button id="skill-refresh-btn" class="mini-btn browse" title="Muat ulang daftar skill dari disk"><span class="btn-svg-icon" data-icon="refresh-cw"></span> Muat Ulang</button>
             </div>
             <div id="skill-list" class="skill-list"></div>
           </div>
@@ -1570,7 +1584,7 @@
               </div>
               <div style="display:flex; justify-content:space-between; align-items:center; margin-top:12px; gap:8px; flex-wrap:wrap;">
                 <div class="skill-upload-row" style="margin:0;">
-                  <button type="button" id="skill-upload-btn" class="mini-btn browse">📁 Unggah File .md</button>
+                  <button type="button" id="skill-upload-btn" class="mini-btn browse"><span class="btn-svg-icon" data-icon="folder-open"></span> Unggah File .md</button>
                   <input id="skill-file" type="file" accept=".md,.markdown,text/markdown" hidden />
                   <span class="hint" id="skill-file-name" style="margin-left:8px;"></span>
                 </div>
@@ -1586,28 +1600,49 @@
           <p class="subtitle">Kelola memori jangka panjang, riwayat sesi, cron proaktif, MCP server, gateway pesan, fallback chain, Mixture of Agents, dan antrean Kanban/subagent.</p>
 
           <div class="brain-tab-bar" role="tablist">
-            <button type="button" class="brain-tab-btn active" data-brain-tab="sessions">🗂️ Riwayat Sesi</button>
-            <button type="button" class="brain-tab-btn" data-brain-tab="memory">🧠 Kepribadian &amp; Memori</button>
-            <button type="button" class="brain-tab-btn" data-brain-tab="cron">⏰ Cron &amp; Proaktif</button>
-            <button type="button" class="brain-tab-btn" data-brain-tab="mcp">🔌 MCP Server</button>
-            <button type="button" class="brain-tab-btn" data-brain-tab="gateway">📱 Gateway Pesan</button>
-            <button type="button" class="brain-tab-btn" data-brain-tab="advanced">🛡️ Fallback, MoA &amp; Kanban</button>
+            <button type="button" class="brain-tab-btn active" data-brain-tab="sessions">
+              <span class="btn-svg-icon" data-icon="folder" data-icon-size="14"></span>
+              <span>Riwayat Sesi</span>
+            </button>
+            <button type="button" class="brain-tab-btn" data-brain-tab="memory">
+              <span class="btn-svg-icon" data-icon="brain" data-icon-size="14"></span>
+              <span>Kepribadian &amp; Memori</span>
+            </button>
+            <button type="button" class="brain-tab-btn" data-brain-tab="cron">
+              <span class="btn-svg-icon" data-icon="clock" data-icon-size="14"></span>
+              <span>Cron &amp; Proaktif</span>
+            </button>
+            <button type="button" class="brain-tab-btn" data-brain-tab="mcp">
+              <span class="btn-svg-icon" data-icon="plug" data-icon-size="14"></span>
+              <span>MCP Server</span>
+            </button>
+            <button type="button" class="brain-tab-btn" data-brain-tab="gateway">
+              <span class="btn-svg-icon" data-icon="smartphone" data-icon-size="14"></span>
+              <span>Gateway Pesan</span>
+            </button>
+            <button type="button" class="brain-tab-btn" data-brain-tab="advanced">
+              <span class="btn-svg-icon" data-icon="shield-check" data-icon-size="14"></span>
+              <span>Fallback &amp; MoA</span>
+            </button>
           </div>
 
           <!-- TAB 1: RIWAYAT SESI & FTS5 -->
           <div class="brain-tab-panel active" data-brain-panel="sessions">
             <div class="card padded">
-              <div class="skill-toolbar" style="margin-bottom: 10px;">
-                <input id="brain-session-search" type="text" class="mac-input" placeholder="🔍 Cari pesan di seluruh sesi (FTS5 state.db)..." />
-                <button type="button" id="brain-session-refresh-btn" class="mini-btn browse">Segarkan ↻</button>
+              <div class="skill-toolbar" style="margin-bottom: 12px;">
+                <input id="brain-session-search" type="text" class="mac-input" placeholder="Cari pesan di seluruh sesi (FTS5 state.db)..." />
+                <button type="button" id="brain-session-refresh-btn" class="mini-btn browse">
+                  <span class="btn-svg-icon" data-icon="refresh-cw" data-icon-size="13"></span>
+                  <span>Segarkan</span>
+                </button>
               </div>
               <div class="brain-split">
                 <div id="brain-session-list" class="brain-scroll-list"></div>
-                <div style="display:flex; flex-direction:column; gap:8px;">
+                <div class="brain-session-detail-col">
                   <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap;">
                     <span id="brain-session-detail-title" style="font-size:12.5px; font-weight:600; color:var(--text);">Pilih sesi untuk melihat transkrip</span>
                     <div style="display:flex; gap:6px;">
-                      <button type="button" id="brain-session-resume-btn" class="mini-btn primary" disabled>Lanjutkan di Avatar ▶</button>
+                      <button type="button" id="brain-session-resume-btn" class="mini-btn primary" disabled>Lanjutkan di Avatar</button>
                       <button type="button" id="brain-session-delete-btn" class="mini-btn del" disabled>Hapus Sesi</button>
                     </div>
                   </div>
@@ -1626,10 +1661,10 @@
             <div class="card padded" style="margin-bottom: 14px;">
               <div class="brain-chip-row" style="margin-bottom: 10px;">
                 <span class="muted" style="align-self:center;">Preset Karakter:</span>
-                <button type="button" class="mini-btn secondary brain-soul-preset" data-preset="professional">💼 Asisten Profesional</button>
-                <button type="button" class="mini-btn secondary brain-soul-preset" data-preset="friendly">🌸 Pendamping Santai</button>
-                <button type="button" class="mini-btn secondary brain-soul-preset" data-preset="tsundere">🎀 Tsundere Lucu</button>
-                <button type="button" class="mini-btn secondary brain-soul-preset" data-preset="engineer">🛠️ Engineer Kritis</button>
+                <button type="button" class="mini-btn secondary brain-soul-preset" data-preset="professional">Asisten Profesional</button>
+                <button type="button" class="mini-btn secondary brain-soul-preset" data-preset="friendly">Pendamping Santai</button>
+                <button type="button" class="mini-btn secondary brain-soul-preset" data-preset="tsundere">Tsundere Ekspresif</button>
+                <button type="button" class="mini-btn secondary brain-soul-preset" data-preset="engineer">Engineer Kritis</button>
               </div>
               <textarea id="brain-soul-editor" class="brain-textarea" style="min-height:110px;" placeholder="Instruksi karakter &amp; gaya bahasa Hermes di SOUL.md..."></textarea>
               <div style="display:flex; justify-content:space-between; align-items:center; margin-top:8px;">
@@ -1689,14 +1724,14 @@
                   <div id="brain-cron-ticker-status" class="hint" style="margin:2px 0 0;">Memeriksa ticker…</div>
                 </div>
                 <div style="display:flex; gap:6px; flex-wrap:wrap;">
-                  <button type="button" id="brain-cron-tick-btn" class="mini-btn secondary">⚡ Jalankan Tick Sekarang</button>
-                  <button type="button" id="brain-cron-refresh-btn" class="mini-btn browse">Segarkan ↻</button>
+                  <button type="button" id="brain-cron-tick-btn" class="mini-btn secondary">Jalankan Tick Sekarang</button>
+                  <button type="button" id="brain-cron-refresh-btn" class="mini-btn browse">Segarkan</button>
                 </div>
               </div>
               <div class="brain-chip-row" style="margin-bottom: 10px;">
                 <span class="muted" style="align-self:center;">Preset 1-Klik:</span>
-                <button type="button" class="mini-btn secondary brain-cron-preset" data-cron-preset="briefing">☀️ Briefing Pagi 08:00</button>
-                <button type="button" class="mini-btn secondary brain-cron-preset" data-cron-preset="break">💧 Pengingat Istirahat 2 Jam</button>
+                <button type="button" class="mini-btn secondary brain-cron-preset" data-cron-preset="briefing">Briefing Pagi 08:00</button>
+                <button type="button" class="mini-btn secondary brain-cron-preset" data-cron-preset="break">Pengingat Istirahat 2 Jam</button>
               </div>
               <div class="brain-form-grid">
                 <div class="brain-field">
@@ -1735,10 +1770,10 @@
             <div class="card padded" style="margin-bottom:12px;">
               <div class="brain-chip-row" style="margin-bottom:10px;">
                 <span class="muted" style="align-self:center;">Preset Populer:</span>
-                <button type="button" class="mini-btn secondary brain-mcp-preset" data-mcp-preset="filesystem">📁 Filesystem</button>
-                <button type="button" class="mini-btn secondary brain-mcp-preset" data-mcp-preset="fetch">🌐 Web Fetch (uvx)</button>
-                <button type="button" class="mini-btn secondary brain-mcp-preset" data-mcp-preset="github">🐙 GitHub MCP</button>
-                <button type="button" class="mini-btn secondary brain-mcp-preset" data-mcp-preset="playwright">🎭 Playwright Browser</button>
+                <button type="button" class="mini-btn secondary brain-mcp-preset" data-mcp-preset="filesystem">Filesystem</button>
+                <button type="button" class="mini-btn secondary brain-mcp-preset" data-mcp-preset="fetch">Web Fetch (uvx)</button>
+                <button type="button" class="mini-btn secondary brain-mcp-preset" data-mcp-preset="github">GitHub MCP</button>
+                <button type="button" class="mini-btn secondary brain-mcp-preset" data-mcp-preset="playwright">Playwright Browser</button>
               </div>
               <div class="brain-form-grid">
                 <div class="brain-field">
@@ -1799,11 +1834,11 @@
                   <div id="brain-gw-status-text" class="hint" style="margin:2px 0 0;">Memeriksa gateway_state.json…</div>
                 </div>
                 <div style="display:flex; gap:6px; flex-wrap:wrap;">
-                  <button type="button" id="brain-gw-start-btn" class="mini-btn primary">▶ Start Service</button>
-                  <button type="button" id="brain-gw-bg-btn" class="mini-btn secondary">⚡ Run Background</button>
-                  <button type="button" id="brain-gw-restart-btn" class="mini-btn secondary">🔄 Restart</button>
-                  <button type="button" id="brain-gw-stop-btn" class="mini-btn del">⏹ Stop</button>
-                  <button type="button" id="brain-gw-refresh-btn" class="mini-btn browse">Segarkan ↻</button>
+                  <button type="button" id="brain-gw-start-btn" class="mini-btn primary">Start Service</button>
+                  <button type="button" id="brain-gw-bg-btn" class="mini-btn secondary">Run Background</button>
+                  <button type="button" id="brain-gw-restart-btn" class="mini-btn secondary">Restart</button>
+                  <button type="button" id="brain-gw-stop-btn" class="mini-btn del">Stop</button>
+                  <button type="button" id="brain-gw-refresh-btn" class="mini-btn browse">Segarkan</button>
                 </div>
               </div>
               <div id="brain-gw-platforms" class="brain-chip-row"></div>
@@ -1868,7 +1903,7 @@
               <!-- Native Fallback Chain -->
               <div class="card padded">
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-                  <strong style="font-size:13px;">🛡️ Fallback Provider Chain</strong>
+                  <strong style="font-size:13px;">Fallback Provider Chain</strong>
                   <button type="button" id="brain-fb-save-btn" class="mini-btn primary">Simpan Chain</button>
                 </div>
                 <p class="hint" style="margin:0 0 8px;">Urutan model cadangan otomatis saat model utama limit/429/error.</p>
@@ -1901,7 +1936,7 @@
               <!-- Mixture of Agents (MoA) -->
               <div class="card padded">
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-                  <strong style="font-size:13px;">🧠 Mixture of Agents (MoA)</strong>
+                  <strong style="font-size:13px;">Mixture of Agents (MoA)</strong>
                   <button type="button" id="brain-moa-save-btn" class="mini-btn primary">Simpan MoA</button>
                 </div>
                 <div class="brain-form-grid">
@@ -1936,12 +1971,12 @@
             </div>
 
             <!-- Kanban & Subagent Monitor -->
-            <div class="group-header">📋 Monitor Kanban &amp; Async Subagent</div>
+            <div class="group-header">Monitor Kanban &amp; Async Subagent</div>
             <div class="brain-split">
               <div class="card padded">
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
                   <strong style="font-size:13px;">Kartu Tugas Kanban (kanban.db)</strong>
-                  <button type="button" id="brain-kanban-refresh-btn" class="mini-btn browse">Segarkan ↻</button>
+                  <button type="button" id="brain-kanban-refresh-btn" class="mini-btn browse">Segarkan</button>
                 </div>
                 <div id="brain-kanban-list" class="brain-scroll-list" style="max-height:200px; margin-bottom:8px;"></div>
                 <div style="display:flex; gap:6px; flex-wrap:wrap;">
@@ -1954,7 +1989,7 @@
               <div class="card padded">
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
                   <strong style="font-size:13px;">Subagent Aktif &amp; Riwayat Delegasi</strong>
-                  <button type="button" id="brain-subagent-pause-btn" class="mini-btn secondary">⏸ Pause Spawn</button>
+                  <button type="button" id="brain-subagent-pause-btn" class="mini-btn secondary">Pause Spawn</button>
                 </div>
                 <div id="brain-subagent-meta" class="hint" style="margin:0 0 8px;"></div>
                 <div id="brain-subagent-list" class="brain-scroll-list" style="max-height:220px;"></div>
@@ -1984,7 +2019,10 @@
                     <option value="5120">5 GB</option>
                     <option value="10240">10 GB</option>
                   </select>
-                  <button type="button" id="storage-refresh-btn" class="mini-btn secondary">Segarkan ↻</button>
+                  <button type="button" id="storage-refresh-btn" class="mini-btn secondary">
+                    <span class="btn-svg-icon" data-icon="refresh-cw" data-icon-size="13"></span>
+                    <span>Segarkan</span>
+                  </button>
                 </div>
               </div>
 
@@ -1996,7 +2034,10 @@
                   <input type="checkbox" id="storage-archive-uploads-toggle" checked />
                   <span>Arsipkan otomatis screenshot &amp; file yang dijatuhkan ke avatar</span>
                 </label>
-                <button type="button" id="storage-quick-clean-cache-btn" class="mini-btn secondary">🧹 Bersihkan Cache &amp; Log</button>
+                <button type="button" id="storage-quick-clean-cache-btn" class="mini-btn secondary">
+                  <span class="btn-svg-icon" data-icon="trash-2" data-icon-size="13"></span>
+                  <span>Bersihkan Cache &amp; Log</span>
+                </button>
               </div>
             </div>
 
@@ -2108,7 +2149,7 @@
     <div id="prerequisite-modal" class="modal-overlay" hidden>
       <div class="modal prerequisite-modal-box" role="dialog" aria-modal="true" aria-labelledby="prereq-modal-title">
         <div style="display:flex; align-items:flex-start; gap:12px; margin-bottom:14px;">
-          <div class="format-emblem theme-amber" style="width:40px; height:40px; font-size:20px; flex-shrink:0;">⚠️</div>
+          <div class="format-emblem theme-amber" style="width:40px; height:40px; flex-shrink:0;" data-icon="alert-triangle" data-icon-size="20"></div>
           <div>
             <h2 id="prereq-modal-title" class="modal-title" style="margin:0 0 4px; font-size:16px;">Prasyarat Sistem Belum Siap</h2>
             <div style="font-size:12.5px; color:var(--text-secondary); line-height:1.4;">
@@ -2128,8 +2169,8 @@
         <div class="modal-actions" style="display:flex; flex-wrap:wrap; justify-content:flex-end; gap:8px;">
           <button type="button" id="prereq-cancel-btn" class="modal-btn secondary">Batal</button>
           <button type="button" id="prereq-hub-btn" class="modal-btn secondary">Buka Package Hub</button>
-          <button type="button" id="prereq-llm-btn" class="modal-btn secondary" style="border-color:rgba(139,92,246,0.5); color:#a78bfa;">Pilih Model LLM 🤖</button>
-          <button type="button" id="prereq-auto-btn" class="modal-btn primary" style="background:var(--accent,#3b82f6); color:#fff;">⚡ Nyalakan Otomatis</button>
+          <button type="button" id="prereq-llm-btn" class="modal-btn secondary" style="border-color:rgba(139,92,246,0.5); color:#a78bfa;">Pilih Model LLM</button>
+          <button type="button" id="prereq-auto-btn" class="modal-btn primary" style="background:var(--accent,#3b82f6); color:#fff;">Nyalakan Otomatis</button>
           <button type="button" id="prereq-force-btn" class="modal-btn" style="background:rgba(255,255,255,0.06); color:var(--text); border:1px solid var(--border);">Tetap Mulai Saja</button>
         </div>
       </div>
@@ -2138,25 +2179,25 @@
     <div id="update-modal" class="modal-overlay" hidden>
       <div class="modal update-modal-box" role="dialog" aria-modal="true" aria-labelledby="update-modal-title" style="max-width: 540px;">
         <div style="display:flex; align-items:flex-start; gap:12px; margin-bottom:14px;">
-          <div class="format-emblem theme-blue" style="width:40px; height:40px; font-size:20px; flex-shrink:0;">🚀</div>
+          <div class="format-emblem theme-blue" style="width:40px; height:40px; flex-shrink:0;" data-icon="zap" data-icon-size="20"></div>
           <div style="flex:1;">
             <h2 id="update-modal-title" class="modal-title" style="margin:0 0 4px; font-size:16px;">Pembaruan Aplikasi Tersedia</h2>
             <div id="update-modal-subtitle" style="font-size:12.5px; color:var(--text-secondary); line-height:1.4;">
               Versi baru telah rilis di GitHub.
             </div>
           </div>
-          <button type="button" id="update-modal-close" class="mini-btn del" style="padding:4px 8px;" title="Tutup">✕</button>
+          <button type="button" id="update-modal-close" class="mini-btn del" style="padding:4px 8px;" title="Tutup" data-icon="x" data-icon-size="13"></button>
         </div>
 
-        <div class="update-version-comparison" style="display:flex; align-items:center; justify-content:space-between; background:rgba(255,255,255,0.04); border:1px solid var(--border); border-radius:8px; padding:10px 14px; margin-bottom:14px;">
+        <div class="update-version-comparison" style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; background:rgba(255,255,255,0.04); border:1px solid var(--border); border-radius:8px; padding:10px 14px; margin-bottom:14px;">
           <div>
             <span style="font-size:11px; color:var(--text-secondary); display:block;">Versi Terpasang:</span>
-            <strong id="modal-current-ver" style="font-size:14px; color:var(--text);">v0.1.8</strong>
+            <strong id="modal-current-ver" style="font-size:14px; color:var(--text);">v0.1.9</strong>
           </div>
-          <span style="font-size:16px; color:var(--text-secondary);">➔</span>
+          <span style="font-size:16px; color:var(--text-secondary);">→</span>
           <div>
             <span style="font-size:11px; color:var(--text-secondary); display:block;">Versi Terbaru:</span>
-            <strong id="modal-latest-ver" style="font-size:14px; color:#3b82f6;">v0.1.8</strong>
+            <strong id="modal-latest-ver" style="font-size:14px; color:#3b82f6;">v0.1.9</strong>
           </div>
           <span id="modal-release-date" class="badge" style="font-size:11px;">Rilis Terbaru</span>
         </div>
@@ -2181,14 +2222,14 @@
           <span class="command-box-label">Atau Update Otomatis lewat Terminal (1 Baris Perintah):</span>
           <div style="display:flex; gap:6px; align-items:center; margin-top:4px;">
             <code id="modal-cli-cmd" style="flex:1; background:rgba(0,0,0,0.3); border:1px solid var(--border); border-radius:6px; padding:8px 12px; font-size:11.5px; color:#a5d6ff; user-select:all; overflow-x:auto; white-space:nowrap;">curl -fsSL https://raw.githubusercontent.com/KarmaSenzu/Hermes-Desktop-Pet/main/update.sh | bash</code>
-            <button type="button" id="modal-copy-cli-btn" class="mini-btn" title="Salin perintah terminal">Salin 📋</button>
+            <button type="button" id="modal-copy-cli-btn" class="mini-btn" title="Salin perintah terminal"><span class="btn-svg-icon" data-icon="copy"></span> Salin</button>
           </div>
         </div>
 
         <div class="modal-actions" style="display:flex; flex-wrap:wrap; justify-content:flex-end; gap:8px;">
           <button type="button" id="modal-cancel-btn" class="modal-btn secondary">Tutup</button>
-          <button type="button" id="modal-github-btn" class="modal-btn secondary">Halaman Rilis GitHub 🌐</button>
-          <button type="button" id="modal-download-btn" class="modal-btn primary" style="background:var(--accent,#3b82f6); color:#fff;">Update Otomatis Sekarang ⚡</button>
+          <button type="button" id="modal-github-btn" class="modal-btn secondary">Halaman Rilis GitHub</button>
+          <button type="button" id="modal-download-btn" class="modal-btn primary" style="background:var(--accent,#3b82f6); color:#fff;">Update Otomatis Sekarang</button>
         </div>
       </div>
     </div>

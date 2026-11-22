@@ -89,7 +89,7 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         with:
           name: Hermes Desktop Pet ${{ github.ref_name }}
-          generate_release_notes: true
+          generate_release_notes: ${{ runner.os == 'Windows' }}
           fail_on_unmatched_files: false
           files: |
             avatar/dist/*.exe
@@ -107,16 +107,34 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     steps:
-      - name: Append Combined SHA-256 Checksums to Release Notes
+      - name: Append Categorized Download Guide & SHA-256 Checksums
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG_NAME: ${{ github.ref_name }}
           REPO: ${{ github.repository }}
         run: |
+          VER="${TAG_NAME#v}"
+          GUIDE=$(cat <<EOF
+          ### Panduan Pilih File Unduhan Sesuai Perangkat
+
+          | Sistem Operasi | Kegunaan | File yang Diunduh |
+          | :--- | :--- | :--- |
+          | **Windows 10 / 11 (64-bit)** | Installer Setup (Disarankan) | \`WINDOWS-Installer-Hermes-Desktop-Pet-v${VER}-x64.exe\` |
+          | **Windows 10 / 11 (64-bit)** | Versi Portabel (Ekstrak & Jalankan) | \`WINDOWS-Portable-Hermes-Desktop-Pet-v${VER}-x64.zip\` |
+          | **macOS Apple Silicon (M1/M2/M3/M4)** | Installer DMG (Disarankan) | \`MACOS-M-Series-Hermes-Desktop-Pet-v${VER}-arm64.dmg\` |
+          | **macOS Apple Silicon (M1/M2/M3/M4)** | Arsip Aplikasi (.app) | \`MACOS-M-Series-Hermes-Desktop-Pet-v${VER}-arm64.zip\` |
+          | **Linux (x86_64)** | AppImage Universal (Klik 2x / chmod +x) | \`LINUX-Hermes-Desktop-Pet-v${VER}-x86_64.AppImage\` |
+          | **Linux (x86_64)** | Arsip Portabel (.tar.gz) | \`LINUX-Hermes-Desktop-Pet-v${VER}-x86_64.tar.gz\` |
+          | **Pembaruan Ringan (OTA)** | Patch internal otomatis aplikasi | \`OTA-Patch-Hermes-Desktop-Pet-v${VER}.zip\` |
+
+          ---
+          EOF
+          )
           gh release download "$TAG_NAME" -R "$REPO" -p "SHA256SUMS-*.txt" -D /tmp/checksums || true
+          EXISTING_BODY=$(gh release view "$TAG_NAME" -R "$REPO" --json body -q .body || echo "")
+          NEW_BODY=$(printf '%s\n\n%s' "$GUIDE" "$EXISTING_BODY")
           if compgen -G "/tmp/checksums/SHA256SUMS-*.txt" > /dev/null; then
-            EXISTING_BODY=$(gh release view "$TAG_NAME" -R "$REPO" --json body -q .body || echo "")
             CHECKSUMS=$(cat /tmp/checksums/SHA256SUMS-*.txt | sort -u)
-            NEW_BODY=$(printf '%s\n\n### Checksums (SHA-256)\n```\n%s\n```\n' "$EXISTING_BODY" "$CHECKSUMS")
-            gh release edit "$TAG_NAME" -R "$REPO" --notes "$NEW_BODY"
+            NEW_BODY=$(printf '%s\n\n### Checksums (SHA-256)\n```\n%s\n```\n' "$NEW_BODY" "$CHECKSUMS")
           fi
+          gh release edit "$TAG_NAME" -R "$REPO" --notes "$NEW_BODY"

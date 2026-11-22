@@ -193,7 +193,7 @@ export function renderMusicPlaylistPickerCard({
   header.className = 'assessment-card-header'
   const badge = document.createElement('div')
   badge.className = 'assessment-badge'
-  badge.textContent = '🎵 PILIH PLAYLIST & LAGU ANDA'
+  badge.textContent = 'PILIH PLAYLIST & LAGU ANDA'
   const pill = document.createElement('span')
   pill.className = 'assessment-type-pill'
   pill.textContent = `${snapshot.tracks.length} Koleksi`
@@ -219,7 +219,7 @@ export function renderMusicPlaylistPickerCard({
   const playCatBtn = document.createElement('button')
   playCatBtn.type = 'button'
   playCatBtn.className = 'assessment-execute-btn'
-  playCatBtn.textContent = '▶ Putar Playlist Terpilih'
+  playCatBtn.textContent = 'Putar Playlist Terpilih'
   const statusSpan = document.createElement('span')
   statusSpan.className = 'assessment-status-text'
   statusSpan.textContent = 'Klik lagu atau kategori untuk memutar'
@@ -266,7 +266,7 @@ export function renderMusicPlaylistPickerCard({
 
       const left = document.createElement('span')
       left.className = 'widget-list-title'
-      left.textContent = `${favSet.has(tr.id) ? '❤️ ' : '▶ '}${tr.title}`
+      left.textContent = `${favSet.has(tr.id) ? '[Favorit] ' : ''}${tr.title}`
 
       const right = document.createElement('span')
       right.className = 'widget-list-sub'
@@ -277,9 +277,9 @@ export function renderMusicPlaylistPickerCard({
       itemBtn.addEventListener('click', () => {
         const played = musicPlayer.playTrackById(tr.id)
         if (played) {
-          pill.textContent = 'Memutar ♪'
+          pill.textContent = 'Memutar'
           statusSpan.textContent = `Memutar: ${played.title}`
-          showSpeechBubble(`Memutar "${played.title}" 🎵`, 4500)
+          showSpeechBubble(`Memutar "${played.title}"`, 4500)
           speak(`Baik, aku putarkan ${played.title}.`, 'happy')
           onAfterPick(played)
         }
@@ -291,9 +291,9 @@ export function renderMusicPlaylistPickerCard({
   playCatBtn.addEventListener('click', () => {
     const played = musicPlayer.playCategory(activeCat)
     if (played) {
-      pill.textContent = 'Memutar ♪'
+      pill.textContent = 'Memutar'
       statusSpan.textContent = `Memutar playlist: ${played.title}`
-      showSpeechBubble(`Memutar playlist pilihanmu: "${played.title}" 🎵`, 4500)
+      showSpeechBubble(`Memutar playlist pilihanmu: "${played.title}"`, 4500)
       speak(`Baik, aku mulai putar dari playlist pilihanmu.`, 'happy')
       onAfterPick(played)
     }
@@ -326,7 +326,7 @@ export function renderFocusSetupCard({
   header.className = 'assessment-card-header'
   const badge = document.createElement('div')
   badge.className = 'assessment-badge'
-  badge.textContent = '⏱️ ATUR SESI FOKUS'
+  badge.textContent = 'ATUR SESI FOKUS'
   const pill = document.createElement('span')
   pill.className = 'assessment-type-pill'
   pill.textContent = 'Siap Mulai'
@@ -369,7 +369,7 @@ export function renderFocusSetupCard({
     const dBtn = document.createElement('button')
     dBtn.type = 'button'
     dBtn.className = `assessment-preset-chip ${mins === chosenMinutes ? 'active-chip' : ''}`
-    dBtn.textContent = `⏱️ ${mins} Menit`
+    dBtn.textContent = `${mins} Menit`
     dBtn.addEventListener('click', () => {
       chosenMinutes = mins
       durButtons.forEach((b, idx) => b.classList.toggle('active-chip', [15, 25, 45, 60][idx] === mins))
@@ -395,7 +395,7 @@ export function renderFocusSetupCard({
   const startBtn = document.createElement('button')
   startBtn.type = 'button'
   startBtn.className = 'assessment-execute-btn'
-  startBtn.textContent = '🚀 Mulai Fokus Sekarang'
+  startBtn.textContent = 'Mulai Fokus Sekarang'
   const statusSpan = document.createElement('span')
   statusSpan.className = 'assessment-status-text'
   statusSpan.textContent = 'Kostum kerja aktif otomatis'
@@ -439,12 +439,12 @@ export function renderSmartBriefingCard({
   if (!chatLog) return null
   const hour = new Date().getHours()
   const greetingTime = hour < 11
-    ? 'Selamat Pagi 🌅'
+    ? 'Selamat Pagi'
     : hour < 15
-      ? 'Selamat Siang ☀️'
+      ? 'Selamat Siang'
       : hour < 18
-        ? 'Selamat Sore 🌇'
-        : 'Selamat Malam 🌙'
+        ? 'Selamat Sore'
+        : 'Selamat Malam'
 
   const lib = musicPlayer?.getLibrarySnapshot?.() || { favorites: [], onlineCustomCount: 0, localCustomCount: 0 }
   const customCount = (lib.onlineCustomCount || 0) + (lib.localCustomCount || 0)
@@ -457,7 +457,7 @@ export function renderSmartBriefingCard({
   header.className = 'assessment-card-header'
   const badge = document.createElement('div')
   badge.className = 'assessment-badge'
-  badge.textContent = `✨ BRIEFING HARIAN · ${greetingTime.toUpperCase()}`
+  badge.textContent = `BRIEFING HARIAN · ${greetingTime.toUpperCase()}`
   const pill = document.createElement('span')
   pill.className = 'assessment-type-pill'
   pill.textContent = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
@@ -478,25 +478,25 @@ export function renderSmartBriefingCard({
   const focusBtn = document.createElement('button')
   focusBtn.type = 'button'
   focusBtn.className = 'assessment-execute-btn'
-  focusBtn.textContent = '⏱️ Mulai Sesi Fokus'
+  focusBtn.textContent = 'Mulai Sesi Fokus'
   focusBtn.addEventListener('click', () => {
     renderFocusSetupCard({ chatLog, pomodoroTimer, musicPlayer, showSpeechBubble, speak })
-    showSpeechBubble('Mau mulai fokus buat apa hari ini? ⏱️', 4000)
+    showSpeechBubble('Mau mulai fokus buat apa hari ini?', 4000)
   })
 
   const musicBtn = document.createElement('button')
   musicBtn.type = 'button'
   musicBtn.className = 'assessment-preset-chip active-chip'
-  musicBtn.textContent = '🎵 Pilih Playlist Musik'
+  musicBtn.textContent = 'Pilih Playlist Musik'
   musicBtn.addEventListener('click', () => {
     renderMusicPlaylistPickerCard({ chatLog, musicPlayer, showSpeechBubble, speak })
-    showSpeechBubble('Pilih playlist atau lagu yang ingin kamu putar 🎵', 4000)
+    showSpeechBubble('Pilih playlist atau lagu yang ingin kamu putar', 4000)
   })
 
   const visionBtn = document.createElement('button')
   visionBtn.type = 'button'
   visionBtn.className = 'assessment-preset-chip'
-  visionBtn.textContent = '📸 Lihat Layar Sekarang'
+  visionBtn.textContent = 'Lihat Layar Sekarang'
   visionBtn.addEventListener('click', () => {
     onCaptureScreen()
   })
@@ -537,7 +537,7 @@ export function renderScreenVisionCard({
 
   const badge = document.createElement('div')
   badge.className = 'assessment-badge'
-  badge.textContent = '📸 SCREEN VISION · LIHAT LAYAR'
+  badge.textContent = 'SCREEN VISION · LIHAT LAYAR'
 
   const pill = document.createElement('span')
   pill.className = 'assessment-type-pill'
@@ -546,12 +546,12 @@ export function renderScreenVisionCard({
   badgeWrap.appendChild(badge)
   badgeWrap.appendChild(pill)
 
-  // Tombol ✕ untuk membatalkan dan menghapus kartu dari chat
+  // Tombol batal dan hapus kartu dari chat
   const closeBtn = document.createElement('button')
   closeBtn.type = 'button'
   closeBtn.className = 'assessment-close-card-btn'
   closeBtn.title = 'Batalkan & Hapus Tangkapan Layar Ini'
-  closeBtn.innerHTML = '✕'
+  closeBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>'
   closeBtn.addEventListener('click', (e) => {
     e.stopPropagation()
     card.classList.add('removing')
@@ -593,9 +593,9 @@ export function renderScreenVisionCard({
   const presets = document.createElement('div')
   presets.className = 'assessment-quick-presets'
   const quickQuestions = [
-    { label: '🐞 Cek Error', text: 'Periksa error atau masalah yang terlihat pada tangkapan layar ini dan beri solusinya.' },
-    { label: '📝 Jelaskan Layar', text: 'Jelaskan isi dan konteks dari tangkapan layar ini secara ringkas dalam Bahasa Indonesia.' },
-    { label: '🌐 Terjemahkan', text: 'Terjemahkan seluruh teks penting yang ada pada tangkapan layar ini ke Bahasa Indonesia.' }
+    { label: 'Cek Error', text: 'Periksa error atau masalah yang terlihat pada tangkapan layar ini dan beri solusinya.' },
+    { label: 'Jelaskan Layar', text: 'Jelaskan isi dan konteks dari tangkapan layar ini secara ringkas dalam Bahasa Indonesia.' },
+    { label: 'Terjemahkan', text: 'Terjemahkan seluruh teks penting yang ada pada tangkapan layar ini ke Bahasa Indonesia.' }
   ]
   for (const item of quickQuestions) {
     const btn = document.createElement('button')
@@ -618,19 +618,19 @@ export function renderScreenVisionCard({
   const sendBtn = document.createElement('button')
   sendBtn.type = 'button'
   sendBtn.className = 'assessment-execute-btn'
-  sendBtn.textContent = '🚀 Analisis dengan Hermes AI'
+  sendBtn.textContent = 'Analisis dengan Hermes AI'
 
   const retakeBtn = document.createElement('button')
   retakeBtn.type = 'button'
   retakeBtn.className = 'assessment-retake-btn'
   retakeBtn.title = 'Ulangi tangkapan layar jika pilihan/posisi salah'
-  retakeBtn.textContent = '🔄 Tangkap Ulang'
+  retakeBtn.textContent = 'Tangkap Ulang'
 
   const discardBtn = document.createElement('button')
   discardBtn.type = 'button'
   discardBtn.className = 'assessment-discard-btn'
   discardBtn.title = 'Batalkan & Hapus Kartu Ini'
-  discardBtn.textContent = '🗑️ Batalkan'
+  discardBtn.textContent = 'Batalkan'
 
   actionRow.appendChild(sendBtn)
   actionRow.appendChild(retakeBtn)
@@ -692,7 +692,7 @@ export function renderDroppedFileCard({
   header.className = 'assessment-card-header'
   const badge = document.createElement('div')
   badge.className = 'assessment-badge'
-  badge.textContent = '📂 FILE DITERIMA AVATAR'
+  badge.textContent = 'FILE DITERIMA AVATAR'
   const pill = document.createElement('span')
   pill.className = 'assessment-type-pill'
   pill.textContent = `${files.length} Berkas`
@@ -713,9 +713,9 @@ export function renderDroppedFileCard({
   const actions = document.createElement('div')
   actions.className = 'assessment-quick-presets'
   const modes = [
-    { label: '📄 Rangkum Dokumen', instruction: 'Baca file berikut dan buatkan ringkasan yang jelas, terstruktur, dan mudah dipahami dalam Bahasa Indonesia.' },
-    { label: '🔍 Cari Poin Penting', instruction: 'Ekstrak seluruh poin kunci, angka penting, dan kesimpulan utama dari file berikut.' },
-    { label: '🇮🇩 Terjemahkan', instruction: 'Baca isi file berikut lalu terjemahkan ke Bahasa Indonesia yang natural dan akurat.' }
+    { label: 'Rangkum Dokumen', instruction: 'Baca file berikut dan buatkan ringkasan yang jelas, terstruktur, dan mudah dipahami dalam Bahasa Indonesia.' },
+    { label: 'Cari Poin Penting', instruction: 'Ekstrak seluruh poin kunci, angka penting, dan kesimpulan utama dari file berikut.' },
+    { label: 'Terjemahkan', instruction: 'Baca isi file berikut lalu terjemahkan ke Bahasa Indonesia yang natural dan akurat.' }
   ]
   for (const m of modes) {
     const b = document.createElement('button')

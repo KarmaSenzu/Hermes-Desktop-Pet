@@ -1,6 +1,6 @@
 {
   "name": "hermes-desktop-pet",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "description": "Hermes Desktop Pet — Interactive AI Companion (Electron, Pixi.js, Live2D & Three.js)",
   "homepage": "https://github.com/KarmaSenzu/Hermes-Desktop-Pet",
   "repository": {
@@ -70,13 +70,18 @@
     ],
     "win": {
       "icon": "build/icon.ico",
+      "artifactName": "WINDOWS-Portable-Hermes-Desktop-Pet-v${version}-${arch}.${ext}",
       "target": [
         "nsis",
         "zip"
       ]
     },
+    "nsis": {
+      "artifactName": "WINDOWS-Installer-Hermes-Desktop-Pet-v${version}-${arch}.${ext}"
+    },
     "mac": {
       "icon": "build/icon.icns",
+      "artifactName": "MACOS-M-Series-Hermes-Desktop-Pet-v${version}-${arch}.${ext}",
       "target": [
         "dmg",
         "zip"
@@ -88,6 +93,7 @@
     },
     "linux": {
       "icon": "build/icon.png",
+      "artifactName": "LINUX-Hermes-Desktop-Pet-v${version}-${arch}.${ext}",
       "target": [
         "AppImage",
         "tar.gz"

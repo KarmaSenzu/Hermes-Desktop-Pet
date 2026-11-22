@@ -438,13 +438,13 @@ async function loadCronTab() {
     const runBtn = document.createElement('button')
     runBtn.type = 'button'
     runBtn.className = 'mini-btn secondary'
-    runBtn.textContent = '▶ Run Now'
+    runBtn.textContent = 'Run Now'
     runBtn.addEventListener('click', () => handleCronAction('run', job.jobId))
 
     const toggleBtn = document.createElement('button')
     toggleBtn.type = 'button'
     toggleBtn.className = 'mini-btn secondary'
-    toggleBtn.textContent = job.enabled ? '⏸ Pause' : '▶ Resume'
+    toggleBtn.textContent = job.enabled ? 'Pause' : 'Resume'
     toggleBtn.addEventListener('click', () => handleCronAction(job.enabled ? 'pause' : 'resume', job.jobId))
 
     const delBtn = document.createElement('button')
@@ -468,7 +468,7 @@ async function handleCronAction(action, jobId) {
   uiDeps.showToast('Memproses Cron…', `Menjalankan ${action}…`, 'running', '⏰')
   const res = await window.hermesAvatar?.hermesBrainSet?.('cron-manage', { action, jobId, name: jobId })
   if (res?.ok) {
-    uiDeps.showToast('Cron Diperbarui ✅', `Aksi "${action}" berhasil.`, 'success', '⏰')
+    uiDeps.showToast('Cron Diperbarui', `Aksi "${action}" berhasil.`, 'success', '⏰')
     loadCronTab()
   } else {
     uiDeps.showToast('Gagal Memproses Cron', res?.error || 'Terjadi kesalahan', 'error', '❌')
@@ -565,7 +565,7 @@ async function loadMcpTab() {
     toggleBtn.addEventListener('click', async () => {
       const r = await window.hermesAvatar?.hermesBrainSet?.('mcp-toggle', { id: srv.id, enabled: !srv.enabled })
       if (r?.ok) {
-        uiDeps.showToast('MCP Diperbarui ✅', `${srv.id} sekarang ${!srv.enabled ? 'aktif' : 'nonaktif'}.`, 'success', '🔌')
+        uiDeps.showToast('MCP Diperbarui', `${srv.id} sekarang ${!srv.enabled ? 'aktif' : 'nonaktif'}.`, 'success', '🔌')
         loadMcpTab()
       } else {
         uiDeps.showToast('Gagal Toggle MCP', r?.error || 'Error', 'error', '❌')
@@ -650,7 +650,7 @@ async function runGatewayControl(action) {
   uiDeps.showToast('Mengatur Gateway…', `Menjalankan ${action}…`, 'running', '📱')
   const res = await window.hermesAvatar?.hermesBrainSet?.('gateway-control', { action })
   if (res?.ok) {
-    uiDeps.showToast('Gateway Berhasil ✅', res.output || `Aksi "${action}" selesai.`, 'success', '📱')
+    uiDeps.showToast('Gateway Berhasil', res.output || `Aksi "${action}" selesai.`, 'success', '📱')
     setTimeout(loadGatewayTab, 800)
   } else {
     uiDeps.showToast('Perintah Gateway Gagal', res?.error || 'Pastikan service/jadwal sudah terpasang atau gunakan Run Background.', 'error', '❌', 6000)
@@ -774,7 +774,7 @@ async function loadKanbanTab() {
         const doneBtn = document.createElement('button')
         doneBtn.type = 'button'
         doneBtn.className = 'mini-btn secondary'
-        doneBtn.textContent = '✓ Selesai'
+        doneBtn.textContent = 'Selesai'
         doneBtn.addEventListener('click', () => handleKanbanAction('kanban-complete', { taskId: t.id }))
 
         const archBtn = document.createElement('button')
@@ -794,7 +794,7 @@ async function loadKanbanTab() {
   const del = res.delegation || {}
   delegationPausedState = Boolean(del.paused)
   if (pauseBtn) {
-    pauseBtn.textContent = delegationPausedState ? '▶ Lanjutkan Spawn' : '⏸ Pause Spawn'
+    pauseBtn.textContent = delegationPausedState ? 'Lanjutkan Spawn' : 'Pause Spawn'
   }
   if (subMeta) {
     subMeta.textContent = del.connected
@@ -829,7 +829,7 @@ async function loadKanbanTab() {
         stopBtn.type = 'button'
         stopBtn.className = 'mini-btn del'
         stopBtn.style.marginTop = '4px'
-        stopBtn.textContent = '⏹ Hentikan Subagent'
+        stopBtn.textContent = 'Hentikan Subagent'
         stopBtn.addEventListener('click', () => handleKanbanAction('subagent-interrupt', { subagentId: sid }))
         card.appendChild(stopBtn)
       }
@@ -852,7 +852,7 @@ async function loadKanbanTab() {
 async function handleKanbanAction(action, payload = {}) {
   const res = await window.hermesAvatar?.hermesBrainSet?.('kanban-manage', { action, ...payload })
   if (res?.ok || res?.paused !== undefined) {
-    uiDeps.showToast('Berhasil ✅', 'Status Kanban/Subagent diperbarui.', 'success', '📋')
+    uiDeps.showToast('Berhasil', 'Status Kanban/Subagent diperbarui.', 'success', '📋')
     loadKanbanTab()
   } else {
     uiDeps.showToast('Gagal Mengubah Status', res?.error || 'Terjadi kesalahan', 'error', '❌')
@@ -883,7 +883,7 @@ export function initHermesBrainPanel({ showToast, confirmDialog } = {}) {
     if (!selectedSessionId) return
     const res = await window.hermesAvatar?.resumeSessionInAvatar?.(selectedSessionId)
     if (res?.ok) {
-      uiDeps.showToast('Sesi Dilanjutkan ▶', 'Chat Avatar dibuka dengan riwayat sesi terpilih.', 'success', '💬')
+      uiDeps.showToast('Sesi Dilanjutkan', 'Chat Avatar dibuka dengan riwayat sesi terpilih.', 'success', '💬')
     } else {
       uiDeps.showToast('Gagal Membuka Sesi', res?.error || 'Error', 'error', '❌')
     }
@@ -904,7 +904,7 @@ export function initHermesBrainPanel({ showToast, confirmDialog } = {}) {
         const msg = res.closedActiveSession
           ? 'Sesi aktif berhasil ditutup dan dihapus dari Hermes.'
           : 'Sesi berhasil dihapus dari Hermes.'
-        uiDeps.showToast('Sesi Dihapus 🗑️', msg, 'info', '🗑️')
+        uiDeps.showToast('Sesi Dihapus', msg, 'info', '🗑️')
         selectedSessionId = null
         if (titleEl) titleEl.textContent = 'Pilih sesi di sebelah kiri'
         if (metaEl) metaEl.textContent = ''
@@ -931,7 +931,7 @@ export function initHermesBrainPanel({ showToast, confirmDialog } = {}) {
   document.getElementById('brain-soul-save-btn')?.addEventListener('click', async () => {
     const content = document.getElementById('brain-soul-editor')?.value || ''
     const res = await window.hermesAvatar?.hermesBrainSet?.('memory-save', { target: 'soul', content })
-    if (res?.ok) uiDeps.showToast('SOUL.md Disimpan ✨', 'Kepribadian Hermes berhasil diperbarui.', 'success', '🧠')
+    if (res?.ok) uiDeps.showToast('SOUL.md Disimpan', 'Kepribadian Hermes berhasil diperbarui.', 'success', '🧠')
     else uiDeps.showToast('Gagal Simpan SOUL.md', res?.error || 'Error', 'error', '❌')
   })
 
@@ -960,7 +960,7 @@ export function initHermesBrainPanel({ showToast, confirmDialog } = {}) {
       entries: userEntries
     })
     if (res?.ok) {
-      uiDeps.showToast('USER.md Disimpan ✅', 'Profil pengguna diperbarui dengan aman.', 'success', '🧠')
+      uiDeps.showToast('USER.md Disimpan', 'Profil pengguna diperbarui dengan aman.', 'success', '🧠')
       loadMemoryEditor()
     } else {
       uiDeps.showToast('Gagal Simpan USER.md', res?.error || 'Error', 'error', '❌')
@@ -992,7 +992,7 @@ export function initHermesBrainPanel({ showToast, confirmDialog } = {}) {
       entries: memoryEntries
     })
     if (res?.ok) {
-      uiDeps.showToast('MEMORY.md Disimpan ✅', 'Fakta memori Hermes diperbarui dengan aman.', 'success', '🧠')
+      uiDeps.showToast('MEMORY.md Disimpan', 'Fakta memori Hermes diperbarui dengan aman.', 'success', '🧠')
       loadMemoryEditor()
     } else {
       uiDeps.showToast('Gagal Simpan MEMORY.md', res?.error || 'Error', 'error', '❌')
@@ -1023,7 +1023,7 @@ export function initHermesBrainPanel({ showToast, confirmDialog } = {}) {
       deliver
     })
     if (res?.ok) {
-      uiDeps.showToast('Jadwal Cron Dibuat ⏰', 'Tugas terjadwal baru berhasil ditambahkan.', 'success', '⏰')
+      uiDeps.showToast('Jadwal Cron Dibuat', 'Tugas terjadwal baru berhasil ditambahkan.', 'success', '⏰')
       loadCronTab()
     } else {
       uiDeps.showToast('Gagal Membuat Jadwal', res?.error || 'Periksa format schedule & prompt.', 'error', '❌')
@@ -1078,7 +1078,7 @@ export function initHermesBrainPanel({ showToast, confirmDialog } = {}) {
       }
     })
     if (res?.ok) {
-      uiDeps.showToast('MCP Disimpan 🔌', res.reloaded ? 'MCP aktif dimuat ulang ke Hermes.' : 'Disimpan ke config.yaml.', 'success', '🔌')
+      uiDeps.showToast('MCP Disimpan', res.reloaded ? 'MCP aktif dimuat ulang ke Hermes.' : 'Disimpan ke config.yaml.', 'success', '🔌')
       loadMcpTab()
     } else {
       uiDeps.showToast('Gagal Simpan MCP', res?.error || 'Periksa konfigurasi MCP', 'error', '❌')
@@ -1105,7 +1105,7 @@ export function initHermesBrainPanel({ showToast, confirmDialog } = {}) {
     }
     const res = await window.hermesAvatar?.hermesBrainSet?.('gateway-save-env', payload)
     if (res?.ok) {
-      uiDeps.showToast('Konfigurasi .env Disimpan ✅', 'Restart gateway agar kredensial baru diterapkan.', 'success', '📱')
+      uiDeps.showToast('Konfigurasi .env Disimpan', 'Restart gateway agar kredensial baru diterapkan.', 'success', '📱')
       loadGatewayTab()
     } else {
       uiDeps.showToast('Gagal Simpan .env', res?.error || 'Error', 'error', '❌')
@@ -1142,7 +1142,7 @@ export function initHermesBrainPanel({ showToast, confirmDialog } = {}) {
   document.getElementById('brain-fb-save-btn')?.addEventListener('click', async () => {
     const res = await window.hermesAvatar?.hermesBrainSet?.('fallback-save', { chain: fallbackChain })
     if (res?.ok) {
-      uiDeps.showToast('Fallback Chain Disimpan 🛡️', 'Urutan fallback native ditulis ke config.yaml.', 'success', '🛡️')
+      uiDeps.showToast('Fallback Chain Disimpan', 'Urutan fallback native ditulis ke config.yaml.', 'success', '🛡️')
       loadFallbackAndMoaTab()
     } else {
       uiDeps.showToast('Gagal Simpan Fallback', res?.error || 'Error', 'error', '❌')
@@ -1175,7 +1175,7 @@ export function initHermesBrainPanel({ showToast, confirmDialog } = {}) {
       }
     })
     if (res?.ok) {
-      uiDeps.showToast('Konfigurasi MoA Disimpan 🧠', activePreset ? 'Mode Mixture of Agents aktif.' : 'Preset MoA disimpan.', 'success', '🧠')
+      uiDeps.showToast('Konfigurasi MoA Disimpan', activePreset ? 'Mode Mixture of Agents aktif.' : 'Preset MoA disimpan.', 'success', '🧠')
       loadFallbackAndMoaTab()
     } else {
       uiDeps.showToast('Gagal Simpan MoA', res?.error || 'Periksa isian MoA', 'error', '❌')
@@ -1199,7 +1199,7 @@ export function initHermesBrainPanel({ showToast, confirmDialog } = {}) {
     })
     if (res?.ok) {
       if (titleEl) titleEl.value = ''
-      uiDeps.showToast('Kartu Kanban Dibuat 📋', `"${title}" ditambahkan.`, 'success', '📋')
+      uiDeps.showToast('Kartu Kanban Dibuat', `"${title}" ditambahkan.`, 'success', '📋')
       loadKanbanTab()
     } else {
       uiDeps.showToast('Gagal Buat Kartu', res?.error || 'Error', 'error', '❌')

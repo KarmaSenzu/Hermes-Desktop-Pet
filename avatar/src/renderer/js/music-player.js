@@ -9,6 +9,8 @@
  * 6. Pencarian real-time & Playlist Kategori
  */
 
+import { renderIcon } from './icons.js'
+
 // Preset Lagu Bawaan (Procedural Ambient Lofi - Langsung Putar Offline)
 const BUILTIN_TRACKS = [
   {
@@ -16,7 +18,7 @@ const BUILTIN_TRACKS = [
     title: 'Cozy Rain & Warm Rhodes',
     artist: 'Hermes Chill Beats',
     category: 'focus',
-    badge: 'Fokus ☕',
+    badge: 'Fokus',
     duration: 180,
     type: 'procedural',
     preset: 'cozy_rhodes'
@@ -26,7 +28,7 @@ const BUILTIN_TRACKS = [
     title: 'Midnight Study in Shibuya',
     artist: 'Tokyo Lofi Sessions',
     category: 'chill',
-    badge: 'Santai 🌸',
+    badge: 'Santai',
     duration: 210,
     type: 'procedural',
     preset: 'shibuya_night'
@@ -36,7 +38,7 @@ const BUILTIN_TRACKS = [
     title: 'Cafe Latte Afternoon',
     artist: 'Hermes Companion',
     category: 'focus',
-    badge: 'Fokus ☕',
+    badge: 'Fokus',
     duration: 195,
     type: 'procedural',
     preset: 'cafe_latte'
@@ -46,7 +48,7 @@ const BUILTIN_TRACKS = [
     title: 'Deep Focus Space Ambient',
     artist: 'Zenith Ambient Labs',
     category: 'focus',
-    badge: 'Fokus ☕',
+    badge: 'Fokus',
     duration: 240,
     type: 'procedural',
     preset: 'space_ambient'
@@ -56,7 +58,7 @@ const BUILTIN_TRACKS = [
     title: 'Sakura Breeze Chillhop',
     artist: 'Akihiro & Hermes',
     category: 'chill',
-    badge: 'Santai 🌸',
+    badge: 'Santai',
     duration: 175,
     type: 'procedural',
     preset: 'sakura_breeze'
@@ -70,7 +72,7 @@ const ONLINE_CURATED_STATIONS = [
     title: 'Lofi Hip Hop Radio - beats to relax/study to',
     artist: 'Lofi Girl',
     category: 'online',
-    badge: 'YouTube ▶',
+    badge: 'YouTube',
     duration: 0,
     type: 'youtube',
     videoId: 'jfKfPfyJRdk',
@@ -81,7 +83,7 @@ const ONLINE_CURATED_STATIONS = [
     title: 'Synthwave Radio - chill synth / retro beats',
     artist: 'Lofi Girl Synthwave',
     category: 'online',
-    badge: 'YouTube ▶',
+    badge: 'YouTube',
     duration: 0,
     type: 'youtube',
     videoId: '4xDzrJKXOOY',
@@ -92,7 +94,7 @@ const ONLINE_CURATED_STATIONS = [
     title: 'Nightwave Plaza',
     artist: 'Vaporwave & City Pop Radio',
     category: 'online',
-    badge: 'Live 24/7 🌐',
+    badge: 'Live 24/7',
     duration: 0,
     type: 'stream',
     url: 'https://radio.plaza.one/mp3'
@@ -102,7 +104,7 @@ const ONLINE_CURATED_STATIONS = [
     title: 'SomaFM Groove Salad',
     artist: 'Downtempo Ambient Chill',
     category: 'online',
-    badge: 'Live 24/7 🌐',
+    badge: 'Live 24/7',
     duration: 0,
     type: 'stream',
     url: 'https://ice2.somafm.com/groovesalad-128-mp3'
@@ -112,7 +114,7 @@ const ONLINE_CURATED_STATIONS = [
     title: 'Deep Focus Space Drone',
     artist: 'SomaFM Drone Zone',
     category: 'online',
-    badge: 'Live 24/7 🌐',
+    badge: 'Live 24/7',
     duration: 0,
     type: 'stream',
     url: 'https://ice4.somafm.com/dronezone-128-mp3'
@@ -339,6 +341,7 @@ export class MusicPlayer {
     // YouTube IFrame Player
     this.ytPlayer = null
     this.ytReady = false
+    this._ytApiRequested = false
     this.ytProgressTimer = null
 
     this.tracks = [...BUILTIN_TRACKS, ...ONLINE_CURATED_STATIONS]
@@ -370,7 +373,6 @@ export class MusicPlayer {
     }
     this.isPlaying = false
     this.pause()
-    this.initYouTubeApi()
     this.bindEvents()
     this.renderTracklist()
     this.updateCurrentTrackDisplay()
@@ -402,7 +404,7 @@ export class MusicPlayer {
     }
   }
 
-  ensureYouTubePlayer(onReadyCb) {
+  ensureYouTubePlayer(onReadyCb, attempt = 0) {
     if (this.ytPlayer) {
       if (this.ytReady) {
         onReadyCb?.()
@@ -410,8 +412,17 @@ export class MusicPlayer {
       return
     }
 
+    if (!this._ytApiRequested) {
+      this._ytApiRequested = true
+      this.initYouTubeApi()
+    }
+
     if (!window.YT || !window.YT.Player) {
-      setTimeout(() => this.ensureYouTubePlayer(onReadyCb), 300)
+      if (attempt >= 20) {
+        console.warn('[YouTube Player] YouTube IFrame API tidak tersedia (diblokir CSP atau offline)')
+        return
+      }
+      setTimeout(() => this.ensureYouTubePlayer(onReadyCb, attempt + 1), 300)
       return
     }
 
@@ -868,7 +879,7 @@ export class MusicPlayer {
       title: title || (isYt ? 'YouTube Audio' : 'Internet Stream'),
       artist: artist || (isYt ? 'YouTube' : 'Web Radio'),
       category: 'online',
-      badge: isYt ? 'YouTube ▶' : 'Live 🌐',
+      badge: isYt ? 'YouTube' : 'Live',
       duration: 0,
       type: isYt ? 'youtube' : 'stream',
       videoId: videoId || null,
@@ -921,26 +932,25 @@ export class MusicPlayer {
       this.dom.artist.textContent = track.artist || 'Unknown Artist'
     }
     if (this.dom.badge) {
-      this.dom.badge.textContent = track.badge || (track.category === 'online' ? 'Live 🌐' : track.category === 'local' ? 'Lokal 📁' : 'Musik 🎵')
+      this.dom.badge.textContent = track.badge || (track.category === 'online' ? 'Live' : track.category === 'local' ? 'Lokal' : 'Musik')
       this.dom.badge.classList.toggle('badge-youtube', track.type === 'youtube')
     }
 
     const isFav = this.favorites.has(track.id)
     if (this.dom.favBtn) {
-      this.dom.favBtn.textContent = isFav ? '❤️' : '🤍'
+      this.dom.favBtn.innerHTML = renderIcon('heart', { size: 14, strokeWidth: isFav ? 2.4 : 1.8 })
       this.dom.favBtn.classList.toggle('active', isFav)
     }
 
     if (this.dom.discIcon) {
-      if (track.type === 'youtube') {
-        this.dom.discIcon.textContent = '▶'
-      } else if (track.category === 'online') {
-        this.dom.discIcon.textContent = '🌐'
-      } else if (track.category === 'local') {
-        this.dom.discIcon.textContent = '📁'
-      } else {
-        this.dom.discIcon.textContent = track.category === 'focus' ? '☕' : '🌸'
-      }
+      const iconName = track.type === 'youtube'
+        ? 'play'
+        : track.category === 'online'
+          ? 'radio'
+          : track.category === 'local'
+            ? 'folder'
+            : (track.category === 'focus' ? 'coffee' : 'music')
+      this.dom.discIcon.innerHTML = renderIcon(iconName, { size: 10 })
     }
 
     if (track.type === 'procedural') {
@@ -1061,7 +1071,7 @@ export class MusicPlayer {
 
   updatePlayStateUi(playing) {
     if (this.dom.playBtn) {
-      this.dom.playBtn.textContent = playing ? '⏸' : '▶'
+      this.dom.playBtn.innerHTML = renderIcon(playing ? 'pause' : 'play', { size: 17 })
       this.dom.playBtn.title = playing ? 'Jeda Musik' : 'Putar Musik'
     }
     if (this.dom.disc) {
@@ -1179,7 +1189,7 @@ export class MusicPlayer {
     if (this.dom.volSlider) this.dom.volSlider.value = String(pct)
     if (this.dom.volLabel) this.dom.volLabel.textContent = `${pct}%`
     if (this.dom.muteBtn) {
-      this.dom.muteBtn.textContent = this.isMuted ? '🔇' : pct > 50 ? '🔊' : '🔉'
+      this.dom.muteBtn.innerHTML = renderIcon(this.isMuted ? 'volume-x' : 'volume-2', { size: 14 })
     }
 
     this.savePersistedData()
@@ -1208,16 +1218,14 @@ export class MusicPlayer {
     this.repeatMode = modes[nextIdx]
 
     if (this.dom.repeatBtn) {
+      this.dom.repeatBtn.innerHTML = renderIcon('repeat', { size: 15 })
       if (this.repeatMode === 'all') {
-        this.dom.repeatBtn.textContent = '🔁'
         this.dom.repeatBtn.classList.add('active')
         this.dom.repeatBtn.title = 'Ulangi: Semua Lagu'
       } else if (this.repeatMode === 'one') {
-        this.dom.repeatBtn.textContent = '🔂'
         this.dom.repeatBtn.classList.add('active')
-        this.dom.repeatBtn.title = 'Ulangi: Satu Lagu Saja'
+        this.dom.repeatBtn.title = 'Ulangi: Satu Lagu Saja (1x)'
       } else {
-        this.dom.repeatBtn.textContent = '🔁'
         this.dom.repeatBtn.classList.remove('active')
         this.dom.repeatBtn.title = 'Ulangi: Nonaktif'
       }
@@ -1281,7 +1289,7 @@ export class MusicPlayer {
     if (filtered.length === 0) {
       this.dom.tracklist.innerHTML = `
         <div class="music-empty-state">
-          <span>🎵 Tidak ada lagu yang cocok</span>
+          <span>Tidak ada lagu yang cocok</span>
           <small>Coba ubah kata kunci atau ganti filter kategori.</small>
         </div>
       `
@@ -1303,13 +1311,13 @@ export class MusicPlayer {
                 : '∞'
 
         const delBtn = canDelete
-          ? `<button class="track-del-mini" data-del-id="${track.id}" title="Hapus dari Penyimpanan Permanen">🗑️</button>`
+          ? `<button class="track-del-mini" data-del-id="${track.id}" title="Hapus dari Penyimpanan Permanen">${renderIcon('trash-2', { size: 12 })}</button>`
           : ''
 
         return `
           <div class="music-track-item ${isCur ? 'active' : ''}" data-id="${track.id}">
             <div class="track-left">
-              <span class="track-play-indicator">${isCur && this.isPlaying ? '🔊' : (track.type === 'youtube' ? '▶' : '▶')}</span>
+              <span class="track-play-indicator">${renderIcon(isCur && this.isPlaying ? 'volume-2' : 'play', { size: 12 })}</span>
               <div class="track-info">
                 <span class="track-name" title="${track.title}">${track.title}</span>
                 <span class="track-sub">${track.artist || 'Unknown'} • ${track.badge || 'Online'}</span>
@@ -1317,8 +1325,8 @@ export class MusicPlayer {
             </div>
             <div class="track-right">
               <span class="track-dur">${durText}</span>
-              <button class="track-fav-mini ${isFav ? 'active' : ''}" data-fav-id="${track.id}" title="${isFav ? 'Hapus dari Favorit' : 'Simpan ke Favorit ❤️'}">
-                ${isFav ? '❤️' : '🤍'}
+              <button class="track-fav-mini ${isFav ? 'active' : ''}" data-fav-id="${track.id}" title="${isFav ? 'Hapus dari Favorit' : 'Simpan ke Favorit'}">
+                ${renderIcon('heart', { size: 12, strokeWidth: isFav ? 2.4 : 1.8 })}
               </button>
               ${delBtn}
             </div>
@@ -1382,7 +1390,7 @@ export class MusicPlayer {
           title,
           artist: 'Lagu Lokal',
           category: 'local',
-          badge: 'Lokal 📁',
+          badge: 'Lokal',
           duration: 0,
           type: 'local',
           url: audioUrl,
@@ -1409,12 +1417,12 @@ export class MusicPlayer {
     const countCat = (cat) => this.tracks.filter((t) => t.category === cat).length
     return {
       categories: [
-        { id: 'favorite', label: '❤️ Favorit Saya', count: this.favorites.size },
-        { id: 'online', label: '🌐 Stream & YouTube Saya', count: countCat('online') },
-        { id: 'local', label: '📁 Musik Lokal Saya', count: countCat('local') },
-        { id: 'focus', label: '☕ Fokus Lofi', count: countCat('focus') },
-        { id: 'chill', label: '🌸 Santai Chill', count: countCat('chill') },
-        { id: 'all', label: '🎵 Semua Koleksi', count: this.tracks.length }
+        { id: 'favorite', label: 'Favorit Saya', count: this.favorites.size },
+        { id: 'online', label: 'Stream & YouTube', count: countCat('online') },
+        { id: 'local', label: 'Musik Lokal', count: countCat('local') },
+        { id: 'focus', label: 'Fokus Lofi', count: countCat('focus') },
+        { id: 'chill', label: 'Santai Chill', count: countCat('chill') },
+        { id: 'all', label: 'Semua Koleksi', count: this.tracks.length }
       ],
       tracks: [...this.tracks],
       favorites: [...this.favorites],

@@ -18,7 +18,7 @@ const stagingDir = join(distDir, 'patch-staging')
 
 const pkg = JSON.parse(readFileSync(join(avatarDir, 'package.json'), 'utf8'))
 const version = (process.env.GITHUB_REF_NAME || `v${pkg.version}`).replace(/^v/i, '')
-const patchFileName = `Hermes-Desktop-Pet-Patch-v${version}.zip`
+const patchFileName = `OTA-Patch-Hermes-Desktop-Pet-v${version}.zip`
 const patchPath = join(distDir, patchFileName)
 
 if (!existsSync(join(avatarDir, 'out', 'main', 'index.js'))) {

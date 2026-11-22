@@ -72,14 +72,92 @@ export function extractAssessmentChoices(text, options = {}) {
   return selected.size > 0 ? Array.from(selected) : null
 }
 
-export function bindDynamicAssessmentCards(container, options = {}) {
-  if (!container) return
+function updateDynamicCardBtn(card) {
+  const executeBtn = card.querySelector('.assessment-execute-btn')
+  if (!executeBtn) return
+  const count = card.querySelectorAll('.assessment-option-item.selected').length
+  if (count === 0) {
+    executeBtn.disabled = true
+    executeBtn.textContent = 'Eksekusi Pilihan (0 Dipilih)'
+  } else {
+    executeBtn.disabled = false
+    executeBtn.textContent = `Eksekusi Pilihan (${count} Dipilih)`
+  }
+}
+
+function executeDynamicCard(card, options = {}) {
+  const executeBtn = card.querySelector('.assessment-execute-btn')
+  if (!executeBtn || card.classList.contains('executed')) return false
+
+  const selected = Array.from(card.querySelectorAll('.assessment-option-item.selected'))
+  if (selected.length === 0) return false
+
   const {
     getController = () => null,
     showSpeechBubble = () => {},
     speak = () => {},
     handleUserChat = () => {}
   } = options
+
+  const chosenTitles = selected.map((it) => it.getAttribute('data-title') || it.getAttribute('data-id'))
+  executeBtn.disabled = true
+  executeBtn.textContent = 'Sedang Mengeksekusi...'
+  card.classList.add('executed')
+
+  getController()?.setExpression('composing')
+  showSpeechBubble(`Mengeksekusi ${chosenTitles.length} langkah terpilih...`, 3500)
+  speak(`Baik, saya akan mulai memproses ${chosenTitles.length} pilihan yang kamu tentukan.`, 'happy')
+
+  const promptToSend = `Saya memilih langkah berikut:\n${chosenTitles.map((t, i) => `${i + 1}. ${t}`).join('\n')}\n\nTolong jelaskan secara detail instruksi langkah-langkahnya dan pandu saya sekarang.`
+  const displayLabel = `Memilih langkah: ${chosenTitles.join(', ')}`
+
+  setTimeout(() => {
+    handleUserChat(promptToSend, displayLabel)
+  }, 350)
+  return true
+}
+
+export function attachDynamicAssessmentDelegation(rootEl, options = {}) {
+  if (!rootEl) return
+  if (rootEl.getAttribute?.('data-assessment-delegated') === 'true') return
+  rootEl.setAttribute?.('data-assessment-delegated', 'true')
+
+  rootEl.addEventListener('click', (e) => {
+    const card = e.target?.closest?.('.dynamic-assessment-card')
+    if (!card || card.getAttribute('data-bound') === 'true') return
+
+    const presetChip = e.target.closest('.assessment-preset-chip')
+    if (presetChip && presetChip.closest?.('.dynamic-assessment-card') === card) {
+      e.stopPropagation?.()
+      if (card.classList.contains('executed')) return
+      const preset = presetChip.getAttribute('data-preset')
+      if (preset === 'all') {
+        card.querySelectorAll('.assessment-option-item').forEach((it) => it.classList.add('selected'))
+      }
+      updateDynamicCardBtn(card)
+      executeDynamicCard(card, options)
+      return
+    }
+
+    const execBtn = e.target.closest('.assessment-execute-btn')
+    if (execBtn && execBtn.closest?.('.dynamic-assessment-card') === card) {
+      e.stopPropagation?.()
+      executeDynamicCard(card, options)
+      return
+    }
+
+    const optionItem = e.target.closest('.assessment-option-item')
+    if (optionItem && optionItem.closest?.('.dynamic-assessment-card') === card) {
+      e.stopPropagation?.()
+      if (card.classList.contains('executed')) return
+      optionItem.classList.toggle('selected')
+      updateDynamicCardBtn(card)
+    }
+  })
+}
+
+export function bindDynamicAssessmentCards(container, options = {}) {
+  if (!container) return
 
   const cards = container.querySelectorAll('.dynamic-assessment-card:not([data-bound="true"])')
   cards.forEach((card) => {
@@ -88,55 +166,34 @@ export function bindDynamicAssessmentCards(container, options = {}) {
     const executeBtn = card.querySelector('.assessment-execute-btn')
     const presetChips = card.querySelectorAll('.assessment-preset-chip')
 
-    function updateBtn() {
-      const selected = card.querySelectorAll('.assessment-option-item.selected')
-      const count = selected.length
-      if (count === 0) {
-        executeBtn.disabled = true
-        executeBtn.textContent = '⚡ Eksekusi Pilihan (0 Dipilih)'
-      } else {
-        executeBtn.disabled = false
-        executeBtn.textContent = `⚡ Eksekusi Pilihan (${count} Dipilih)`
-      }
-    }
-
     optionItems.forEach((item) => {
-      item.addEventListener('click', () => {
+      item.addEventListener('click', (e) => {
+        e?.stopPropagation?.()
+        if (card.classList.contains('executed')) return
         item.classList.toggle('selected')
-        updateBtn()
+        updateDynamicCardBtn(card)
       })
     })
 
     presetChips.forEach((chip) => {
-      chip.addEventListener('click', () => {
+      chip.addEventListener('click', (e) => {
+        e?.stopPropagation?.()
+        if (card.classList.contains('executed')) return
         const preset = chip.getAttribute('data-preset')
         if (preset === 'all') {
           optionItems.forEach((it) => it.classList.add('selected'))
         }
-        updateBtn()
-        executeBtn.click()
+        updateDynamicCardBtn(card)
+        executeDynamicCard(card, options)
       })
     })
 
-    executeBtn.addEventListener('click', async () => {
-      const selected = Array.from(card.querySelectorAll('.assessment-option-item.selected'))
-      if (selected.length === 0) return
-      const chosenTitles = selected.map((it) => it.getAttribute('data-title') || it.getAttribute('data-id'))
-      executeBtn.disabled = true
-      executeBtn.textContent = '✓ Sedang Mengeksekusi...'
-      card.classList.add('executed')
-
-      getController()?.setExpression('composing')
-      showSpeechBubble(`Mengeksekusi ${chosenTitles.length} langkah terpilih... ⚡`, 3500)
-      speak(`Baik, saya akan mulai memproses ${chosenTitles.length} pilihan yang kamu tentukan.`, 'happy')
-
-      const promptToSend = `Saya memilih langkah berikut:\n${chosenTitles.map((t, i) => `${i + 1}. ${t}`).join('\n')}\n\nTolong jelaskan secara detail instruksi langkah-langkahnya dan pandu saya sekarang.`
-      const displayLabel = `Memilih langkah: ${chosenTitles.join(', ')}`
-
-      setTimeout(() => {
-        handleUserChat(promptToSend, displayLabel)
-      }, 350)
-    })
+    if (executeBtn) {
+      executeBtn.addEventListener('click', (e) => {
+        e?.stopPropagation?.()
+        executeDynamicCard(card, options)
+      })
+    }
   })
 }
 
@@ -164,12 +221,12 @@ export async function executeSelectedCapabilities(selectedIds, cardRef = null, o
     const execBtn = card.querySelector('.assessment-execute-btn')
     if (execBtn) {
       execBtn.disabled = true
-      execBtn.textContent = '✓ Sedang Dijalankan...'
+      execBtn.textContent = 'Sedang Dijalankan...'
     }
   }
 
   getController()?.setExpression('composing')
-  showSpeechBubble(`Mengeksekusi ${selectedIds.length} fitur terpilih... ⚡`, 3500)
+  showSpeechBubble(`Mengeksekusi ${selectedIds.length} fitur terpilih...`, 3500)
 
   let weatherResult = null
   if (selectedIds.includes('weather')) {
@@ -226,33 +283,33 @@ export async function executeSelectedCapabilities(selectedIds, cardRef = null, o
   const timeFormatted = now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
 
   const markdownSections = [
-    `## ⚡ Hasil Eksekusi Demonstrasi Kemampuan\n> **Waktu Eksekusi:** ${dateFormatted}, pukul ${timeFormatted} WIB\n`
+    `## Hasil Eksekusi Demonstrasi Kemampuan\n> **Waktu Eksekusi:** ${dateFormatted}, pukul ${timeFormatted} WIB\n`
   ]
 
   if (weatherResult) {
-    markdownSections.push(`### 🌦️ 1. Cuaca Jakarta Hari Ini\n` +
-      `- **Kondisi Langit:** ${weatherResult.condition} 🌤️\n` +
+    markdownSections.push(`### 1. Cuaca Jakarta Hari Ini\n` +
+      `- **Kondisi Langit:** ${weatherResult.condition}\n` +
       `- **Suhu Saat Ini:** ${weatherResult.temp}°C\n` +
       `- **Kelembapan:** ${weatherResult.humidity}% | **Kecepatan Angin:** ${weatherResult.wind} km/jam\n` +
       `*Prakiraan sensor resmi Open-Meteo & BMKG untuk wilayah Jakarta.*\n`)
   }
 
   if (appsResult) {
-    markdownSections.push(`### 🚀 2. Kontrol Sistem Windows (Multi-App)\n` +
-      `- **Status:** Berhasil meluncurkan **Task Manager** ke layar kerja Anda! 💻\n` +
+    markdownSections.push(`### 2. Kontrol Sistem Windows (Multi-App)\n` +
+      `- **Status:** Berhasil meluncurkan **Task Manager** ke layar kerja Anda.\n` +
       `*Catatan: Anda juga bisa meminta saya membuka banyak aplikasi sekaligus, misal: "Buka Word, Task Manager dan VS Code".*\n`)
   }
 
   if (newsResult) {
     const list = newsResult.map((it, idx) => `${idx + 1}. **${it.title}**`).join('\n')
-    markdownSections.push(`### 🇮🇩 3. Berita Terkini Indonesia Hari Ini\n` +
+    markdownSections.push(`### 3. Berita Terkini Indonesia Hari Ini\n` +
       `${list}\n` +
       `*Sumber resmi Google News RSS terbitan beberapa jam/menit lalu.*\n`)
   }
 
   if (selectedIds.includes('summary')) {
-    markdownSections.push(`### 📋 4. Notulen Eksekutif Otomatis\n` +
-      `- **Status:** Menyiapkan notulen percakapan interaktif di chat... ⏳\n`)
+    markdownSections.push(`### 4. Notulen Eksekutif Otomatis\n` +
+      `- **Status:** Menyiapkan notulen percakapan interaktif di chat...\n`)
   }
 
   const finalMarkdown = markdownSections.join('\n---\n\n')
@@ -280,7 +337,7 @@ export async function executeSelectedCapabilities(selectedIds, cardRef = null, o
 
   if (card) {
     const execBtn = card.querySelector('.assessment-execute-btn')
-    if (execBtn) execBtn.textContent = '✓ Selesai Dieksekusi'
+    if (execBtn) execBtn.textContent = 'Selesai Dieksekusi'
   }
 }
 
@@ -300,14 +357,14 @@ export function createCapabilityAssessmentCard(options = {}) {
   }
 
   getController()?.setExpression('happy')
-  showSpeechBubble('Berikut 4 keunggulan utamaku! Pilih yang ingin kamu coba 🎯', 4000)
+  showSpeechBubble('Berikut 4 keunggulan utamaku! Pilih yang ingin kamu coba.', 4000)
   speak('Berikut empat keunggulan utama saya. Silakan pilih nomor atau fitur yang ingin langsung saya demonstrasikan.', 'happy')
 
   const card = document.createElement('div')
   card.className = 'avatar assessment-card'
   card.innerHTML = `
     <div class="assessment-card-header">
-      <div class="assessment-badge">🎯 AI CAPABILITY ASSESSMENT TOOL</div>
+      <div class="assessment-badge">AI CAPABILITY ASSESSMENT TOOL</div>
       <span class="assessment-type-pill">Multi-Select Aktif</span>
     </div>
     <div class="assessment-prompt-text">
@@ -317,41 +374,41 @@ export function createCapabilityAssessmentCard(options = {}) {
       <div class="assessment-option-item" data-id="weather">
         <div class="assessment-custom-checkbox"></div>
         <div class="assessment-option-content">
-          <div class="assessment-option-title">1. 🌦️ Info Cuaca Real-Time</div>
+          <div class="assessment-option-title">1. Info Cuaca Real-Time</div>
           <div class="assessment-option-desc">Suhu, kelembapan & kondisi langit Jakarta saat ini (live sensor BMKG / Open-Meteo).</div>
         </div>
       </div>
       <div class="assessment-option-item" data-id="apps">
         <div class="assessment-custom-checkbox"></div>
         <div class="assessment-option-content">
-          <div class="assessment-option-title">2. 🚀 Kontrol Sistem (Multi-App Launcher)</div>
+          <div class="assessment-option-title">2. Kontrol Sistem (Multi-App Launcher)</div>
           <div class="assessment-option-desc">Membuka aplikasi (Word, VS Code, Task Manager) serentak dalam hitungan milidetik.</div>
         </div>
       </div>
       <div class="assessment-option-item" data-id="news">
         <div class="assessment-custom-checkbox"></div>
         <div class="assessment-option-content">
-          <div class="assessment-option-title">3. 🇮🇩 Berita Terkini Indonesia Hari Ini</div>
+          <div class="assessment-option-title">3. Berita Terkini Indonesia Hari Ini</div>
           <div class="assessment-option-desc">Rangkuman 4 tajuk utama terhangat dari Google News RSS terbitan beberapa jam/menit lalu.</div>
         </div>
       </div>
       <div class="assessment-option-item" data-id="summary">
         <div class="assessment-custom-checkbox"></div>
         <div class="assessment-option-content">
-          <div class="assessment-option-title">4. 📋 Notulen Eksekutif Otomatis</div>
+          <div class="assessment-option-title">4. Notulen Eksekutif Otomatis</div>
           <div class="assessment-option-desc">Merangkum sesi obrolan menjadi kartu notulen rapi yang siap disalin atau disimpan permanen.</div>
         </div>
       </div>
     </div>
     <div class="assessment-quick-presets">
       <span style="font-size: 10px; color: #94a3b8; align-self: center;">Preset Cepat:</span>
-      <button type="button" class="assessment-preset-chip" data-preset="weather,news">⚡ Cuaca & Berita (1 & 3)</button>
-      <button type="button" class="assessment-preset-chip" data-preset="weather">🌦️ Cuaca Saja (1)</button>
-      <button type="button" class="assessment-preset-chip" data-preset="apps">🚀 Aplikasi Saja (2)</button>
-      <button type="button" class="assessment-preset-chip" data-preset="all">🔥 Jalankan Semua (1-4)</button>
+      <button type="button" class="assessment-preset-chip" data-preset="weather,news">Cuaca & Berita (1 & 3)</button>
+      <button type="button" class="assessment-preset-chip" data-preset="weather">Cuaca Saja (1)</button>
+      <button type="button" class="assessment-preset-chip" data-preset="apps">Aplikasi Saja (2)</button>
+      <button type="button" class="assessment-preset-chip" data-preset="all">Jalankan Semua (1-4)</button>
     </div>
     <div class="assessment-footer">
-      <button type="button" class="assessment-execute-btn" disabled>⚡ Eksekusi Pilihan (0 Dipilih)</button>
+      <button type="button" class="assessment-execute-btn" disabled>Eksekusi Pilihan (0 Dipilih)</button>
       <span class="assessment-status-text">Ketik / sebut angka (misal: "coba 1 dan 3")</span>
     </div>
   `
@@ -370,10 +427,10 @@ export function createCapabilityAssessmentCard(options = {}) {
     const count = selected.length
     if (count === 0) {
       executeBtn.disabled = true
-      executeBtn.textContent = '⚡ Eksekusi Pilihan (0 Dipilih)'
+      executeBtn.textContent = 'Eksekusi Pilihan (0 Dipilih)'
     } else {
       executeBtn.disabled = false
-      executeBtn.textContent = `⚡ Eksekusi Pilihan (${count} Dipilih)`
+      executeBtn.textContent = `Eksekusi Pilihan (${count} Dipilih)`
     }
   }
 
@@ -408,7 +465,7 @@ export function createCapabilityAssessmentCard(options = {}) {
     if (ids.length === 0) return
 
     executeBtn.disabled = true
-    executeBtn.textContent = '⏳ Sedang Mengeksekusi...'
+    executeBtn.textContent = 'Sedang Mengeksekusi...'
     await onExecute(ids, card)
   })
 

@@ -2342,9 +2342,13 @@ body {
    ========================================================================== */
 .status-bubble {
   position: fixed;
-  top: 20px;
-  right: 24px;
-  z-index: 90;
+  left: 0;
+  top: 0;
+  z-index: 105;
+  max-width: 320px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   background: var(--glass-bg);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
@@ -2358,6 +2362,37 @@ body {
   align-items: center;
   gap: 8px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  pointer-events: auto;
+  cursor: pointer;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
+}
+
+.status-bubble.is-working {
+  border-color: rgba(99, 102, 241, 0.7);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45), 0 0 16px rgba(99, 102, 241, 0.35);
+}
+
+.status-bubble.has-unread {
+  border-color: rgba(16, 185, 129, 0.75);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45), 0 0 16px rgba(16, 185, 129, 0.35);
+}
+
+#comment-toggle.is-working::after,
+#comment-toggle.has-unread::after {
+  content: '';
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #6366f1;
+  box-shadow: 0 0 8px rgba(99, 102, 241, 0.9);
+}
+
+#comment-toggle.has-unread::after {
+  background: #10b981;
+  box-shadow: 0 0 8px rgba(16, 185, 129, 0.9);
 }
 
 .status-bubble .dots::after {
@@ -2375,6 +2410,65 @@ body {
 }
 
 /* Widget interaktif di chat (Timer, Musik, Vision, File Drop, Briefing) */
+.inline-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.inline-icon svg,
+.hud-emoji svg,
+.panel-close-mini svg,
+.chat-tool-btn svg,
+.chat-close svg,
+.music-ctrl-btn svg,
+.music-vol-btn svg,
+.music-fav-btn svg,
+.music-disc-icon svg,
+.mode-icon svg,
+#mic-btn svg {
+  display: block;
+}
+
+.timer-action-btn,
+.custom-apply-btn,
+.timer-preset-btn,
+.timer-edit-badge,
+.screen-refresh-btn,
+.music-add-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+}
+
+.panel-close-mini,
+.chat-close,
+.chat-tool-btn,
+#mic-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.status-bubble.is-working::before,
+.status-bubble.has-unread::before {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: #818cf8;
+  box-shadow: 0 0 8px rgba(129, 140, 248, 0.9);
+}
+
+.status-bubble.has-unread::before {
+  background: #34d399;
+  box-shadow: 0 0 8px rgba(52, 211, 153, 0.9);
+}
+
 .widget-card {
   display: flex;
   flex-direction: column;
@@ -2592,6 +2686,13 @@ body {
   gap: 10px;
   animation: flyout-in 0.22s cubic-bezier(0.16, 1, 0.3, 1);
   color: #f1f5f9;
+  transition: left 0.18s cubic-bezier(0.2, 0.8, 0.2, 1), top 0.18s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.timer-panel.no-transition,
+.music-panel.no-transition,
+.screen-capture-modal.no-transition {
+  transition: none !important;
 }
 
 .screen-modal-body {

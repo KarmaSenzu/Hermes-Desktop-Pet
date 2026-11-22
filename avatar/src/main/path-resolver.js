@@ -108,6 +108,7 @@ export function fastWhere(binName, extensions = null) {
       const output = execSync(lookupCmd, {
         encoding: 'utf8',
         timeout: 1500,
+        windowsHide: true,
         env,
         stdio: ['ignore', 'pipe', 'ignore']
       })
@@ -237,7 +238,7 @@ export async function resolvePythonBinary() {
   // Helper untuk memverifikasi eksekusi python --version
   const verifyPython = (cmdPath) => new Promise((resolveVer) => {
     try {
-      execFile(cmdPath, ['--version'], { timeout: 2500, env: process.env }, (err, stdout, stderr) => {
+      execFile(cmdPath, ['--version'], { timeout: 2500, windowsHide: true, env: process.env }, (err, stdout, stderr) => {
         if (!err && (stdout || stderr)) {
           const v = (stdout || stderr).trim()
           if (/Python\s+\d+/i.test(v)) {
@@ -377,10 +378,55 @@ function probePythonModule(cmdPath, importExpr, timeoutMs = 3000) {
   })
 }
 
+function resolveRealPythonExecutable(cmdPath) {
+  const cleanCmd = String(cmdPath || '').trim()
+  const trySiblingPythonw = async (pyExePath) => {
+    const winGui = pyExePath.replace(/python(\d+(?:\.\d+)?)?\.exe$/i, 'pythonw.exe')
+    if (winGui && winGui.toLowerCase() !== pyExePath.toLowerCase()) {
+      // Catatan: pakai probePythonModule tanpa existsSync karena App Execution Alias WindowsApps mengembalikan existsSync=false
+      if (await probePythonModule(winGui, 'import sys', 2500)) {
+        return winGui
+      }
+    }
+    return null
+  }
+
+  if (process.platform !== 'win32') {
+    return Promise.resolve(cleanCmd)
+  }
+
+  if (!/(?:^|[\\/])py(?:\.exe)?$/i.test(cleanCmd)) {
+    return (async () => (await trySiblingPythonw(cleanCmd)) || cleanCmd)()
+  }
+
+  return new Promise((resolve) => {
+    try {
+      execFile(
+        cleanCmd,
+        ['-c', 'import sys; print(getattr(sys, "_base_executable", "") or sys.executable)'],
+        { timeout: 3000, windowsHide: true, env: process.env },
+        async (err, stdout) => {
+          const resolved = !err && typeof stdout === 'string' ? stdout.trim().split(/\r?\n/)[0].trim() : ''
+          if (resolved) {
+            const winGui = await trySiblingPythonw(resolved)
+            if (winGui) return resolve(winGui)
+            if (await probePythonModule(resolved, 'import sys', 2500)) {
+              return resolve(resolved)
+            }
+          }
+          resolve(cleanCmd)
+        }
+      )
+    } catch {
+      resolve(cleanCmd)
+    }
+  })
+}
+
 /**
  * Mendapatkan binary Python aktif (berjalan senyap via windowsHide: true saat spawn)
  * yang terverifikasi bisa mengeksekusi Python dan diprioritaskan yang sudah memiliki kokoro_onnx.
- * Catatan: Menghindari pyw.exe di Windows Store / App Execution Alias karena kerap langsung exit code 1.
+ * Catatan: Menghindari py.exe / pyw.exe launcher jika binary python.exe aslinya bisa dipanggil langsung.
  */
 export async function resolveWindowlessPythonBinary() {
   const isWin = process.platform === 'win32'
@@ -419,14 +465,14 @@ export async function resolveWindowlessPythonBinary() {
   // Prioritas 1: Python yang terbukti punya kokoro_onnx & soundfile terpasang
   for (const c of candidates) {
     if (await probePythonModule(c, 'import kokoro_onnx, soundfile', 4500)) {
-      return c
+      return await resolveRealPythonExecutable(c)
     }
   }
 
   // Prioritas 2: Python mana pun yang bisa berjalan normal (bukan pyw/alias rusak)
   for (const c of candidates) {
     if (await probePythonModule(c, 'import sys', 2500)) {
-      return c
+      return await resolveRealPythonExecutable(c)
     }
   }
 

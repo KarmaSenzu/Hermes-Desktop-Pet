@@ -25,31 +25,31 @@
       <div id="hud-actions" class="hud-actions">
         <!-- AI Chat Hermes -->
         <button id="comment-toggle" class="hud-item hud-anim-chat" title="Buka Percakapan AI dengan Hermes">
-          <span class="hud-emoji">💬</span>
+          <span class="hud-emoji" data-icon="message-circle" data-icon-size="18"></span>
           <span class="hud-label">Chat</span>
         </button>
 
         <!-- Timer Pomodoro ala YourMother -->
-        <button id="timer-toggle" class="hud-item hud-anim-timer" title="Fokus & Pomodoro Timer ⏱️">
-          <span class="hud-emoji">⏱️</span>
+        <button id="timer-toggle" class="hud-item hud-anim-timer" title="Fokus & Pomodoro Timer">
+          <span class="hud-emoji" data-icon="timer" data-icon-size="18"></span>
           <span class="hud-label">Timer</span>
         </button>
 
         <!-- Pemutar Musik & Lofi ala Spotify Mini -->
-        <button id="music-toggle" class="hud-item hud-anim-music" title="Pemutar Musik & Lofi Companion 🎵">
-          <span class="hud-emoji">🎵</span>
+        <button id="music-toggle" class="hud-item hud-anim-music" title="Pemutar Musik & Lofi Companion">
+          <span class="hud-emoji" data-icon="music" data-icon-size="18"></span>
           <span class="hud-label">Musik</span>
         </button>
 
         <!-- 1-Click Screen Vision: Lihat & Analisis Layar -->
-        <button id="vision-toggle" class="hud-item hud-anim-vision" title="Lihat & Analisis Layar Aktif 📸">
-          <span class="hud-emoji">📸</span>
+        <button id="vision-toggle" class="hud-item hud-anim-vision" title="Lihat & Analisis Layar Aktif">
+          <span class="hud-emoji" data-icon="camera" data-icon-size="18"></span>
           <span class="hud-label">Layar</span>
         </button>
 
         <!-- Mute / Unmute Suara ala YourMother (MotherMute) -->
         <button id="mute-btn" class="hud-item hud-anim-mute" title="Bungkam / Nyalakan Suara TTS">
-          <span id="mute-icon" class="hud-emoji">🔊</span>
+          <span id="mute-icon" class="hud-emoji" data-icon="volume-2" data-icon-size="18"></span>
           <span id="mute-label" class="hud-label">Suara</span>
         </button>
 
@@ -58,16 +58,16 @@
         <!-- Kontrol Ukuran (Zoom) & Posisi Layar -->
         <div class="hud-zoom-group">
           <button id="zoom-in-btn" class="hud-item hud-mini-btn" title="Perbesar Karakter (+)">
-            <span class="hud-emoji">➕</span>
+            <span class="hud-emoji" data-icon="zoom-in" data-icon-size="16"></span>
           </button>
           <span id="zoom-level-badge" class="hud-zoom-badge" title="Ukuran Saat Ini (Bisa juga scroll roda mouse di atas karakter)">100%</span>
           <button id="zoom-out-btn" class="hud-item hud-mini-btn" title="Perkecil Karakter (-)">
-            <span class="hud-emoji">➖</span>
+            <span class="hud-emoji" data-icon="zoom-out" data-icon-size="16"></span>
           </button>
         </div>
 
         <button id="reset-pos-btn" class="hud-item hud-anim-pin" title="Kembalikan Karakter ke Posisi Ideal (Reset)">
-          <span class="hud-emoji">📍</span>
+          <span class="hud-emoji" data-icon="locate-fixed" data-icon-size="18"></span>
           <span class="hud-label">Reset</span>
         </button>
 
@@ -75,19 +75,19 @@
 
         <!-- Panel Pengaturan -->
         <button id="settings-btn" class="hud-item hud-anim-gear" title="Buka Panel Pengaturan">
-          <span class="hud-emoji">⚙️</span>
+          <span class="hud-emoji" data-icon="settings" data-icon-size="18"></span>
           <span class="hud-label">Setting</span>
         </button>
 
         <!-- Tutup Avatar & Kembali ke Launcher Utama -->
         <button id="exit-avatar-btn" class="hud-item hud-anim-exit" title="Tutup Avatar & Kembali ke Launcher Utama">
-          <span class="hud-emoji">🚪</span>
+          <span class="hud-emoji" data-icon="log-out" data-icon-size="18"></span>
           <span class="hud-label">Keluar</span>
         </button>
 
         <!-- Tutup Menu -->
         <button id="hud-close-btn" class="hud-item hud-anim-close" title="Tutup Menu">
-          <span class="hud-emoji">✕</span>
+          <span class="hud-emoji" data-icon="x" data-icon-size="16"></span>
         </button>
       </div>
     </div>
@@ -96,9 +96,10 @@
     <div id="timer-panel" class="interactive-ui timer-panel" hidden>
       <div class="panel-header">
         <div class="panel-header-title">
-          <span>⏱️ Timer Fokus</span>
+          <span class="inline-icon" data-icon="timer" data-icon-size="15"></span>
+          <span>Timer Fokus</span>
         </div>
-        <button id="timer-close-btn" class="panel-close-mini" title="Tutup Timer">✕</button>
+        <button id="timer-close-btn" class="panel-close-mini" title="Tutup Timer" data-icon="x" data-icon-size="14"></button>
       </div>
 
       <!-- Input Catatan Info Tugas di atas Timer -->
@@ -110,10 +111,13 @@
       </div>
 
       <!-- Tampilan Waktu (Bisa diklik untuk input manual) -->
-      <div class="timer-display" id="timer-display-box" title="Klik untuk edit waktu manual ✏️">
+      <div class="timer-display" id="timer-display-box" title="Klik untuk edit waktu manual">
         <div class="timer-time-row">
           <span id="timer-time-display">25:00</span>
-          <button id="timer-edit-time-btn" class="timer-edit-badge" title="Ubah waktu manual">✏️ Edit</button>
+          <button id="timer-edit-time-btn" class="timer-edit-badge" title="Ubah waktu manual">
+            <span class="inline-icon" data-icon="pencil" data-icon-size="11"></span>
+            <span>Edit</span>
+          </button>
         </div>
         <span id="timer-status-text">Siap untuk sesi fokus</span>
       </div>
@@ -131,8 +135,11 @@
             <input id="timer-custom-sec" type="number" min="0" max="59" value="00" />
             <small>Detik</small>
           </div>
-          <button type="button" id="timer-custom-apply-btn" class="custom-apply-btn">Pasang ✓</button>
-          <button type="button" id="timer-custom-cancel-btn" class="custom-cancel-btn" title="Tutup">✕</button>
+          <button type="button" id="timer-custom-apply-btn" class="custom-apply-btn">
+            <span>Pasang</span>
+            <span class="inline-icon" data-icon="check" data-icon-size="12"></span>
+          </button>
+          <button type="button" id="timer-custom-cancel-btn" class="custom-cancel-btn" title="Tutup" data-icon="x" data-icon-size="12"></button>
         </div>
       </div>
 
@@ -142,22 +149,31 @@
         <button class="timer-preset-btn" data-minutes="15">15m</button>
         <button class="timer-preset-btn" data-minutes="45">45m</button>
         <button class="timer-preset-btn" data-minutes="5">5m</button>
-        <button id="timer-preset-custom-btn" class="timer-preset-btn" title="Atur menit manual">✏️ Custom</button>
+        <button id="timer-preset-custom-btn" class="timer-preset-btn" title="Atur menit manual">
+          <span class="inline-icon" data-icon="sliders" data-icon-size="11"></span>
+          <span>Custom</span>
+        </button>
       </div>
 
       <!-- Toggle Ganti Baju Fokus (Jas & Kacamata) ala YourMother -->
       <div class="timer-outfit-row">
-        <label class="timer-outfit-label" title="Mother otomatis memakai jas kerja, jam tangan, & kacamata saat timer aktif">
+        <label class="timer-outfit-label" title="Avatar otomatis memakai jas kerja, jam tangan, & kacamata saat timer aktif">
           <input id="timer-outfit-toggle" type="checkbox" checked />
           <span class="outfit-toggle-slider"></span>
-          <span class="outfit-toggle-text">👗 Auto Ganti Baju Fokus (Jas & Kacamata)</span>
+          <span class="outfit-toggle-text">Auto Ganti Baju Fokus (Jas & Kacamata)</span>
         </label>
       </div>
 
       <!-- Kontrol Timer -->
       <div class="timer-controls">
-        <button id="timer-start-btn" class="timer-action-btn primary">▶ Mulai</button>
-        <button id="timer-reset-btn" class="timer-action-btn">🔄 Reset</button>
+        <button id="timer-start-btn" class="timer-action-btn primary">
+          <span class="inline-icon" data-icon="play" data-icon-size="14"></span>
+          <span>Mulai</span>
+        </button>
+        <button id="timer-reset-btn" class="timer-action-btn">
+          <span class="inline-icon" data-icon="refresh-cw" data-icon-size="14"></span>
+          <span>Reset</span>
+        </button>
       </div>
     </div>
 
@@ -166,9 +182,9 @@
       <div class="panel-header">
         <div class="music-header-title">
           <span class="music-spotify-dot"></span>
-          <span>🎵 Hermes Music Player</span>
+          <span>Hermes Music Player</span>
         </div>
-        <button id="music-close-btn" class="panel-close-mini" title="Tutup Pemutar Musik">✕</button>
+        <button id="music-close-btn" class="panel-close-mini" title="Tutup Pemutar Musik" data-icon="x" data-icon-size="14"></button>
       </div>
 
       <!-- Now Playing Hero Card -->
@@ -176,7 +192,7 @@
         <div class="music-disc-wrap">
           <div id="music-disc" class="music-disc" title="Now Playing">
             <div class="music-disc-inner">
-              <span id="music-disc-icon" class="music-disc-icon">🎵</span>
+              <span id="music-disc-icon" class="music-disc-icon" data-icon="music" data-icon-size="11"></span>
             </div>
           </div>
         </div>
@@ -184,11 +200,11 @@
         <div class="music-meta">
           <div class="music-meta-top">
             <span id="music-title" class="music-title" title="Judul Lagu">Cozy Rain & Warm Rhodes</span>
-            <button id="music-fav-btn" class="music-fav-btn" title="Simpan ke Favorit ❤️">🤍</button>
+            <button id="music-fav-btn" class="music-fav-btn" title="Simpan ke Favorit" data-icon="heart" data-icon-size="14"></button>
           </div>
           <div class="music-meta-sub">
             <span id="music-artist" class="music-artist">Hermes Chill Beats</span>
-            <span id="music-badge" class="music-badge">Fokus ☕</span>
+            <span id="music-badge" class="music-badge">Fokus</span>
           </div>
           <div id="music-eq" class="music-eq" title="Audio Visualizer">
             <span class="eq-bar bar-1"></span>
@@ -208,16 +224,16 @@
 
       <!-- Main Controls -->
       <div class="music-controls-row">
-        <button id="music-shuffle-btn" class="music-ctrl-btn" title="Acak Lagu (Shuffle)">🔀</button>
-        <button id="music-prev-btn" class="music-ctrl-btn" title="Lagu Sebelumnya">⏮️</button>
-        <button id="music-play-btn" class="music-ctrl-btn music-play-main" title="Putar / Jeda Musik">▶</button>
-        <button id="music-next-btn" class="music-ctrl-btn" title="Lagu Berikutnya">⏭️</button>
-        <button id="music-repeat-btn" class="music-ctrl-btn active" title="Ulangi Lagu (Loop)">🔁</button>
+        <button id="music-shuffle-btn" class="music-ctrl-btn" title="Acak Lagu (Shuffle)" data-icon="shuffle" data-icon-size="15"></button>
+        <button id="music-prev-btn" class="music-ctrl-btn" title="Lagu Sebelumnya" data-icon="skip-back" data-icon-size="16"></button>
+        <button id="music-play-btn" class="music-ctrl-btn music-play-main" title="Putar / Jeda Musik" data-icon="play" data-icon-size="17"></button>
+        <button id="music-next-btn" class="music-ctrl-btn" title="Lagu Berikutnya" data-icon="skip-forward" data-icon-size="16"></button>
+        <button id="music-repeat-btn" class="music-ctrl-btn active" title="Ulangi Lagu (Loop)" data-icon="repeat" data-icon-size="15"></button>
       </div>
 
       <!-- Volume Bar -->
       <div class="music-volume-row">
-        <button id="music-mute-btn" class="music-vol-btn" title="Bungkam Suara Musik">🔊</button>
+        <button id="music-mute-btn" class="music-vol-btn" title="Bungkam Suara Musik" data-icon="volume-2" data-icon-size="14"></button>
         <input id="music-vol-slider" type="range" class="music-slider music-vol-slider" min="0" max="100" value="70" />
         <span id="music-vol-label" class="music-vol-label">70%</span>
       </div>
@@ -225,17 +241,17 @@
       <!-- Search & Category Filters -->
       <div class="music-filter-box">
         <div class="music-search-wrap">
-          <span class="music-search-icon">🔍</span>
+          <span class="music-search-icon" data-icon="search" data-icon-size="12"></span>
           <input id="music-search-input" type="text" placeholder="Cari lagu, artis, atau genre..." autocomplete="off" />
-          <button id="music-search-clear" class="music-search-clear" title="Bersihkan pencarian" hidden>✕</button>
+          <button id="music-search-clear" class="music-search-clear" title="Bersihkan pencarian" data-icon="x" data-icon-size="12" hidden></button>
         </div>
         <div class="music-categories">
-          <button class="music-cat-btn active" data-category="all">Semua 🎵</button>
-          <button class="music-cat-btn" data-category="favorite">Favorit ❤️</button>
-          <button class="music-cat-btn" data-category="focus">Fokus ☕</button>
-          <button class="music-cat-btn" data-category="chill">Santai 🌸</button>
-          <button class="music-cat-btn" data-category="online">Online 🌐</button>
-          <button class="music-cat-btn" data-category="local">Lokal 📁</button>
+          <button class="music-cat-btn active" data-category="all">Semua</button>
+          <button class="music-cat-btn" data-category="favorite">Favorit</button>
+          <button class="music-cat-btn" data-category="focus">Fokus</button>
+          <button class="music-cat-btn" data-category="chill">Santai</button>
+          <button class="music-cat-btn" data-category="online">Online</button>
+          <button class="music-cat-btn" data-category="local">Lokal</button>
         </div>
       </div>
 
@@ -249,18 +265,23 @@
       <!-- Footer Actions: Import Local Music & Online Stream -->
       <div class="music-footer">
         <button id="music-add-online-toggle-btn" class="music-add-btn online" title="Tambah Stasiun Radio atau Link Musik Online dari Internet">
-          <span>🌐 + Stream Online</span>
+          <span class="inline-icon" data-icon="globe" data-icon-size="13"></span>
+          <span>Stream Online</span>
         </button>
         <button id="music-add-local-btn" class="music-add-btn local" title="Pilih File Musik dari Komputer Anda">
-          <span>📁 + File Lokal</span>
+          <span class="inline-icon" data-icon="folder" data-icon-size="13"></span>
+          <span>File Lokal</span>
         </button>
       </div>
 
       <!-- Drawer Input Stream Online -->
       <div id="music-online-drawer" class="music-online-drawer" hidden>
         <div class="drawer-header">
-          <span>🌐 Tambah Link Audio / Stream Web</span>
-          <button id="music-online-drawer-close" class="panel-close-mini">✕</button>
+          <span style="display:inline-flex; align-items:center; gap:5px;">
+            <span class="inline-icon" data-icon="globe" data-icon-size="13"></span>
+            <span>Tambah Link Audio / Stream Web</span>
+          </span>
+          <button id="music-online-drawer-close" class="panel-close-mini" data-icon="x" data-icon-size="13"></button>
         </div>
         <div class="drawer-body">
           <input id="music-online-url-input" type="url" placeholder="URL Audio / YouTube (mis: https://youtube.com/watch?v=... atau .mp3)" autocomplete="off" />
@@ -269,8 +290,8 @@
             <input id="music-online-artist-input" type="text" placeholder="Artis / Channel (otomatis)..." autocomplete="off" />
           </div>
           <div class="drawer-actions-row">
-            <button id="music-online-submit-btn" class="drawer-action-btn primary">Pasang & Putar ✓</button>
-            <button id="music-online-research-btn" class="drawer-action-btn ai-agent" title="Minta Hermes AI meriset link musik lofi gratis di internet">🤖 Minta Hermes Carikan</button>
+            <button id="music-online-submit-btn" class="drawer-action-btn primary">Pasang & Putar</button>
+            <button id="music-online-research-btn" class="drawer-action-btn ai-agent" title="Minta Hermes AI meriset link musik lofi gratis di internet">Minta Hermes Carikan</button>
           </div>
         </div>
       </div>
@@ -280,9 +301,10 @@
     <div id="screen-capture-modal" class="interactive-ui screen-capture-modal" hidden>
       <div class="panel-header">
         <div class="panel-header-title">
-          <span>📸 Tangkap Layar (Screen Vision)</span>
+          <span class="inline-icon" data-icon="camera" data-icon-size="15"></span>
+          <span>Tangkap Layar (Screen Vision)</span>
         </div>
-        <button id="screen-modal-close-btn" class="panel-close-mini" title="Tutup">✕</button>
+        <button id="screen-modal-close-btn" class="panel-close-mini" title="Tutup" data-icon="x" data-icon-size="14"></button>
       </div>
 
       <div class="screen-modal-body">
@@ -291,14 +313,14 @@
         <!-- Mode Utama -->
         <div class="screen-mode-grid">
           <button type="button" id="snip-mode-area-btn" class="screen-mode-card highlight">
-            <span class="mode-icon">✂️</span>
+            <span class="mode-icon" data-icon="scissors" data-icon-size="18"></span>
             <div class="mode-info">
               <strong>Pilih Kotak Area (Snip)</strong>
               <small>Tarik kursor & potong kotak di layar ala Snipping Tool</small>
             </div>
           </button>
           <button type="button" id="snip-mode-fullscreen-btn" class="screen-mode-card">
-            <span class="mode-icon">🖥️</span>
+            <span class="mode-icon" data-icon="monitor" data-icon-size="18"></span>
             <div class="mode-info">
               <strong>Seluruh Layar</strong>
               <small>Tangkap tampilan penuh seluruh monitor aktif</small>
@@ -309,8 +331,11 @@
         <!-- Daftar Jendela Aplikasi yang Terbuka -->
         <div class="screen-windows-section">
           <div class="windows-section-header">
-            <span>🪟 Atau Pilih Jendela Aplikasi Tertentu:</span>
-            <button type="button" id="screen-refresh-windows-btn" class="screen-refresh-btn" title="Segarkan daftar jendela">🔄 Refresh</button>
+            <span>Pilih Jendela Aplikasi Tertentu:</span>
+            <button type="button" id="screen-refresh-windows-btn" class="screen-refresh-btn" title="Segarkan daftar jendela">
+              <span class="inline-icon" data-icon="refresh-cw" data-icon-size="12"></span>
+              <span>Refresh</span>
+            </button>
           </div>
           <div id="screen-windows-list" class="screen-windows-list">
             <div class="screen-window-loading">Memuat daftar jendela terbuka...</div>
@@ -320,9 +345,12 @@
     </div>
 
     <!-- Fullscreen Snip Crop Overlay (ala Snipping Tool) -->
-    <div id="snip-overlay" class="snip-overlay" hidden>
+    <div id="snip-overlay" class="interactive-ui snip-overlay" hidden>
       <div id="snip-hint-box" class="snip-hint-box">
-        <span>✂️ Klik dan tarik untuk memilih kotak area · Tekan <kbd>ESC</kbd> untuk batal</span>
+        <span style="display:inline-flex; align-items:center; gap:6px;">
+          <span class="inline-icon" data-icon="scissors" data-icon-size="14"></span>
+          <span>Klik dan tarik untuk memilih kotak area · Tekan <kbd>ESC</kbd> untuk batal</span>
+        </span>
       </div>
       <div id="snip-selection-box" class="snip-selection-box" hidden>
         <span id="snip-dimension-badge" class="snip-dimension-badge">0 × 0</span>
@@ -332,9 +360,7 @@
     <!-- Floating Chat Window AI (Hermes) -->
     <div id="chat" class="interactive-ui chat hidden">
       <!-- Handle drag untuk kustomisasi ukuran chat bebas -->
-      <div id="chat-resize-handle" class="chat-resize-handle" title="Tarik sudut ini untuk memperbesar/memperkecil kotak chat">
-        <span class="resize-icon">⤡</span>
-      </div>
+      <div id="chat-resize-handle" class="chat-resize-handle" title="Tarik sudut ini untuk memperbesar/memperkecil kotak chat" data-icon="maximize-2" data-icon-size="12"></div>
 
       <div class="chat-header">
         <div class="chat-header-title-wrap">
@@ -342,25 +368,17 @@
           <span class="chat-title">Hermes AI Companion</span>
         </div>
         <div class="chat-header-actions">
-          <button type="button" id="chat-new-session-btn" class="chat-tool-btn" title="Buat Sesi Percakapan Baru">
-            <span>＋</span>
-          </button>
-          <button type="button" id="chat-history-toggle-btn" class="chat-tool-btn" title="Riwayat Sesi & Pencarian (state.db)">
-            <span>🗂️</span>
-          </button>
-          <button type="button" id="chat-summary-btn" class="chat-tool-btn" title="Buat Notulen Eksekutif dari Percakapan">
-            <span>📋</span>
-          </button>
-          <button type="button" id="chat-size-toggle-btn" class="chat-tool-btn" title="Ganti Mode Ukuran (Ringkas / Normal / Luas)">
-            <span>⛶</span>
-          </button>
-          <button type="button" id="chat-close-btn" class="chat-close" title="Tutup">✕</button>
+          <button type="button" id="chat-new-session-btn" class="chat-tool-btn" title="Buat Sesi Percakapan Baru" data-icon="plus" data-icon-size="14"></button>
+          <button type="button" id="chat-history-toggle-btn" class="chat-tool-btn" title="Riwayat Sesi & Pencarian (state.db)" data-icon="folder" data-icon-size="14"></button>
+          <button type="button" id="chat-summary-btn" class="chat-tool-btn" title="Buat Notulen Eksekutif dari Percakapan" data-icon="clipboard-list" data-icon-size="14"></button>
+          <button type="button" id="chat-size-toggle-btn" class="chat-tool-btn" title="Ganti Mode Ukuran (Ringkas / Normal / Luas)" data-icon="maximize-2" data-icon-size="14"></button>
+          <button type="button" id="chat-close-btn" class="chat-close" title="Tutup" data-icon="x" data-icon-size="15"></button>
         </div>
       </div>
       <div id="chat-history-drawer" class="chat-history-drawer" hidden>
         <div class="chat-history-toolbar">
-          <input id="chat-history-search" type="text" class="chat-history-search" placeholder="🔍 Cari riwayat obrolan..." autocomplete="off" />
-          <button type="button" id="chat-history-close-btn" class="panel-close-mini" title="Tutup Riwayat">✕</button>
+          <input id="chat-history-search" type="text" class="chat-history-search" placeholder="Cari riwayat obrolan..." autocomplete="off" />
+          <button type="button" id="chat-history-close-btn" class="panel-close-mini" title="Tutup Riwayat" data-icon="x" data-icon-size="13"></button>
         </div>
         <div id="chat-history-list" class="chat-history-list"></div>
       </div>
@@ -368,7 +386,7 @@
       <form id="chat-form" class="chat-form">
         <input id="chat-input" type="text" placeholder="Ketik pesan untuk Hermes..." autocomplete="off" />
         <button type="submit" id="chat-submit-btn">Kirim</button>
-        <button type="button" id="mic-btn" title="Bicara via Mikrofon">🎤</button>
+        <button type="button" id="mic-btn" title="Bicara via Mikrofon" data-icon="mic" data-icon-size="15"></button>
       </form>
     </div>
 

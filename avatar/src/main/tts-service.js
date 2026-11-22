@@ -160,7 +160,7 @@ export async function synthesizeTts({
         [System.Convert]::ToBase64String($ms.ToArray())
       `
       const base64Wav = await new Promise((res, rej) => {
-        execFile('powershell', ['-NoProfile', '-Command', psScript], { timeout: 12000 }, (err, stdout) => {
+        execFile('powershell', ['-NoProfile', '-NonInteractive', '-Command', psScript], { timeout: 12000, windowsHide: true }, (err, stdout) => {
           if (err) return rej(err)
           res(stdout.trim())
         })

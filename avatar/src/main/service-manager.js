@@ -222,7 +222,7 @@ async function waitForPortToClose(port, timeoutMs = 6000) {
 async function findPidByPort(port) {
   return new Promise((resolve) => {
     if (process.platform === 'win32') {
-      execFile('netstat', ['-ano', '-p', 'tcp'], (err, stdout) => {
+      execFile('netstat', ['-ano', '-p', 'tcp'], { windowsHide: true }, (err, stdout) => {
         if (err || !stdout) return resolve(null)
         const lines = stdout.split('\n')
         for (const line of lines) {
@@ -248,7 +248,7 @@ async function killProcessByPid(pid) {
   if (!pid || pid <= 0) return
   return new Promise((resolve) => {
     if (process.platform === 'win32') {
-      execFile('taskkill', ['/PID', String(pid), '/T', '/F'], () => resolve())
+      execFile('taskkill', ['/PID', String(pid), '/T', '/F'], { windowsHide: true }, () => resolve())
     } else {
       try {
         process.kill(pid, 'SIGTERM')
@@ -384,15 +384,18 @@ async function startKokoro() {
     const scriptDir = dirname(validScript)
     let spawnError = null
     let earlyExitCode = null
+    // Penting di Windows: jangan gabungkan `detached: true` dengan `windowsHide: true`,
+    // karena DETACHED_PROCESS membuat Windows mengabaikan CREATE_NO_WINDOW dan memunculkan jendela konsol py.exe.
     const child = spawn(pyCmd, [validScript], {
       cwd: scriptDir,
-      detached: true,
       stdio: 'ignore',
       shell: false,
       windowsHide: true,
       env: {
         ...process.env,
-        KOKORO_MODEL_DIR: kokoroDirInfo.dir
+        KOKORO_MODEL_DIR: kokoroDirInfo.dir,
+        PYTHONUNBUFFERED: '1',
+        PYTHONUTF8: '1'
       }
     })
     child.on('error', (err) => {
@@ -402,7 +405,6 @@ async function startKokoro() {
     child.on('exit', (code) => {
       earlyExitCode = code
     })
-    child.unref()
     children.push({ name: 'kokoro', child })
 
     // Tunggu sampai port 8880 benar-benar aktif (maks 12 detik), hentikan tunggu lebih awal bila proses crash
@@ -522,7 +524,10 @@ export async function startAllServices() {
   ensureDefaultSkills()
   const router = await checkRouter()
   const hermes = await startHermes()
-  const kokoro = await startKokoro()
+  // Kokoro-TTS memakai ~400-980 MB RAM saat ONNX dimuat; jalankan lazy hanya jika belum aktif
+  // (tts-service.js akan auto-start saat suara Kokoro dipakai, atau manual lewat Package Hub).
+  const kokoroRunning = await isPortOpen(KOKORO_PORT)
+  const kokoro = { already: kokoroRunning, ok: kokoroRunning, lazy: !kokoroRunning }
   return { router, hermes, kokoro, token: SESSION_TOKEN }
 }
 
@@ -532,6 +537,9 @@ export async function startAllServices() {
 export function stopAllServices() {
   for (const { child } of children) {
     try {
+      if (process.platform === 'win32' && child?.pid) {
+        execFile('taskkill', ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true }, () => {})
+      }
       child.kill('SIGTERM')
     } catch {
       // sudah mati
