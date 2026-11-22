@@ -77,6 +77,15 @@
       ]
     },
     "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "allowElevation": true,
+      "createDesktopShortcut": "always",
+      "createStartMenuShortcut": true,
+      "shortcutName": "Hermes Desktop Pet",
+      "runAfterFinish": true,
+      "deleteAppDataOnUninstall": false,
       "artifactName": "WINDOWS-Installer-Hermes-Desktop-Pet-v${version}-${arch}.${ext}"
     },
     "mac": {
