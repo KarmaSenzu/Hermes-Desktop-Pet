@@ -115,7 +115,7 @@ export async function getAcademicPapers(query, limit = 5, { fetchImpl = globalTh
     const resp = await fetchImpl(url, {
       headers: {
         Accept: 'application/json',
-        'User-Agent': 'HermesDesktopPet/1.1.1 (academic-assistant)'
+        'User-Agent': 'HermesDesktopPet/1.1.2 (academic-assistant)'
       },
       signal: AbortSignal.timeout(8000)
     })

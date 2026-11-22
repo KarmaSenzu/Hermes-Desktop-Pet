@@ -87,7 +87,7 @@ export function startBridgeServer(onPrompt, token, port = BRIDGE_PORT) {
       res.end(JSON.stringify({
         ok: true,
         app: 'Hermes Companion Bridge',
-        version: '1.1.1',
+        version: '1.1.2',
         port: expectedPort
       }))
       return

@@ -55,7 +55,7 @@ describe('integration-audit: real loopback sockets, disk persistence & cross-pla
     expect(pingBody).toEqual({
       ok: true,
       app: 'Hermes Companion Bridge',
-      version: '1.1.1',
+      version: '1.1.2',
       port
     })
 

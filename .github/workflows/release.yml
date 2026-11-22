@@ -107,34 +107,66 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     steps:
-      - name: Append Categorized Download Guide & SHA-256 Checksums
+      - name: Append Clean Categorized Download Guide & SHA-256 Checksums
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG_NAME: ${{ github.ref_name }}
           REPO: ${{ github.repository }}
         run: |
-          VER="${TAG_NAME#v}"
-          GUIDE=$(cat <<EOF
-          ### Panduan Pilih File Unduhan Sesuai Perangkat
-
-          | Sistem Operasi | Kegunaan | File yang Diunduh |
-          | :--- | :--- | :--- |
-          | **Windows 10 / 11 (64-bit)** | Installer Setup (Disarankan) | \`WINDOWS-Installer-Hermes-Desktop-Pet-v${VER}-x64.exe\` |
-          | **Windows 10 / 11 (64-bit)** | Versi Portabel (Ekstrak & Jalankan) | \`WINDOWS-Portable-Hermes-Desktop-Pet-v${VER}-x64.zip\` |
-          | **macOS Apple Silicon (M1/M2/M3/M4)** | Installer DMG (Disarankan) | \`MACOS-M-Series-Hermes-Desktop-Pet-v${VER}-arm64.dmg\` |
-          | **macOS Apple Silicon (M1/M2/M3/M4)** | Arsip Aplikasi (.app) | \`MACOS-M-Series-Hermes-Desktop-Pet-v${VER}-arm64.zip\` |
-          | **Linux (x86_64)** | AppImage Universal (Klik 2x / chmod +x) | \`LINUX-Hermes-Desktop-Pet-v${VER}-x86_64.AppImage\` |
-          | **Linux (x86_64)** | Arsip Portabel (.tar.gz) | \`LINUX-Hermes-Desktop-Pet-v${VER}-x86_64.tar.gz\` |
-          | **Pembaruan Ringan (OTA)** | Patch internal otomatis aplikasi | \`OTA-Patch-Hermes-Desktop-Pet-v${VER}.zip\` |
-
-          ---
-          EOF
-          )
+          mkdir -p /tmp/checksums
           gh release download "$TAG_NAME" -R "$REPO" -p "SHA256SUMS-*.txt" -D /tmp/checksums || true
-          EXISTING_BODY=$(gh release view "$TAG_NAME" -R "$REPO" --json body -q .body || echo "")
-          NEW_BODY=$(printf '%s\n\n%s' "$GUIDE" "$EXISTING_BODY")
-          if compgen -G "/tmp/checksums/SHA256SUMS-*.txt" > /dev/null; then
-            CHECKSUMS=$(cat /tmp/checksums/SHA256SUMS-*.txt | sort -u)
-            NEW_BODY=$(printf '%s\n\n### Checksums (SHA-256)\n```\n%s\n```\n' "$NEW_BODY" "$CHECKSUMS")
-          fi
-          gh release edit "$TAG_NAME" -R "$REPO" --notes "$NEW_BODY"
+          node -e '
+            const { execSync } = require("child_process");
+            const fs = require("fs");
+            const path = require("path");
+
+            const tag = process.env.TAG_NAME;
+            const repo = process.env.REPO;
+            const ver = tag.replace(/^v/i, "");
+
+            let rawBody = "";
+            try {
+              rawBody = execSync(`gh release view "${tag}" -R "${repo}" --json body -q .body`, { encoding: "utf8" });
+            } catch (e) {
+              rawBody = "";
+            }
+
+            // Bersihkan semua duplikasi blok panduan unduhan dan checksum lama jika ada
+            let cleanBody = rawBody
+              .replace(/### Panduan Pilih File Unduhan Sesuai Perangkat[\s\S]*?(?:---\n?|$)/g, "")
+              .replace(/### Checksums \(SHA-256\)[\s\S]*?(?:```\n?|$)/g, "")
+              .trim();
+
+            const guide = `### Panduan Pilih File Unduhan Sesuai Perangkat
+
+| Sistem Operasi | Kegunaan | File yang Diunduh |
+| :--- | :--- | :--- |
+| **Windows 10 / 11 (64-bit)** | Installer Setup (Disarankan) | \`WINDOWS-Installer-Hermes-Desktop-Pet-v${ver}-x64.exe\` |
+| **Windows 10 / 11 (64-bit)** | Versi Portabel (Ekstrak & Jalankan) | \`WINDOWS-Portable-Hermes-Desktop-Pet-v${ver}-x64.zip\` |
+| **macOS Apple Silicon (M1/M2/M3/M4)** | Installer DMG (Disarankan) | \`MACOS-M-Series-Hermes-Desktop-Pet-v${ver}-arm64.dmg\` |
+| **macOS Apple Silicon (M1/M2/M3/M4)** | Arsip Aplikasi (.app) | \`MACOS-M-Series-Hermes-Desktop-Pet-v${ver}-arm64.zip\` |
+| **Linux (x86_64)** | AppImage Universal (Klik 2x / chmod +x) | \`LINUX-Hermes-Desktop-Pet-v${ver}-x86_64.AppImage\` |
+| **Linux (x86_64)** | Arsip Portabel (.tar.gz) | \`LINUX-Hermes-Desktop-Pet-v${ver}-x86_64.tar.gz\` |
+| **Pembaruan Ringan (OTA)** | Patch internal otomatis aplikasi | \`OTA-Patch-Hermes-Desktop-Pet-v${ver}.zip\` |
+
+---`;
+
+            let checksumSection = "";
+            const checkDir = "/tmp/checksums";
+            if (fs.existsSync(checkDir)) {
+              const files = fs.readdirSync(checkDir).filter(f => f.startsWith("SHA256SUMS-"));
+              const allLines = new Set();
+              for (const f of files) {
+                const content = fs.readFileSync(path.join(checkDir, f), "utf8");
+                content.split("\n").map(l => l.trim()).filter(Boolean).forEach(l => allLines.add(l));
+              }
+              if (allLines.size > 0) {
+                checksumSection = `### Checksums (SHA-256)\n\`\`\`\n${Array.from(allLines).sort().join("\n")}\n\`\`\``;
+              }
+            }
+
+            const sections = [guide, cleanBody, checksumSection].filter(Boolean);
+            const finalBody = sections.join("\n\n");
+            fs.writeFileSync("/tmp/final_notes.md", finalBody, "utf8");
+          '
+          gh release edit "$TAG_NAME" -R "$REPO" --notes-file /tmp/final_notes.md

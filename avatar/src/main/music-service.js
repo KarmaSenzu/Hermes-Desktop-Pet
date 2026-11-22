@@ -620,7 +620,7 @@ async function searchItunesAndRadioFallback(query, limit, fetchImpl = globalThis
       const res = await fetchImpl(
         `https://de1.api.radio-browser.info/json/stations/search?name=${encodeURIComponent(query)}&limit=${limit}&hidebroken=true`,
         {
-          headers: { 'User-Agent': 'HermesAvatar/1.1.1' },
+          headers: { 'User-Agent': 'HermesAvatar/1.1.2' },
           signal: controller.signal
         }
       )
@@ -935,7 +935,7 @@ export async function resolveMusicStream({
   const proxyUrl = `model://music-stream/${encodeURIComponent(streamId)}?url=${encodeURIComponent(cleanUrl)}`
   streamCache.set(streamId, {
     streamUrl: cleanUrl,
-    httpHeaders: { 'User-Agent': 'HermesAvatar/1.1.1' },
+    httpHeaders: { 'User-Agent': 'HermesAvatar/1.1.2' },
     mimeType: '',
     title: title || 'Online Stream',
     artist: artist || 'Web Radio',

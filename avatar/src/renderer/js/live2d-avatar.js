@@ -146,6 +146,19 @@ export class Live2DAvatar {
       } catch {
         // abaikan jika model tidak memiliki parameter ini
       }
+
+      // Matikan part/parameter watermark atau proteksi anti-scalping (seperti Part17 / Paramheadxy pada Ellen Joe)
+      try {
+        const core = this.model.internalModel.coreModel
+        if (typeof core.setPartOpacityById === 'function') {
+          core.setPartOpacityById('Part17', 0)
+        }
+        if (typeof core.setParameterValueById === 'function') {
+          core.setParameterValueById('Paramheadxy', 0)
+        }
+      } catch {
+        // abaikan jika model tidak memiliki part/param watermark ini
+      }
     }
 
     // Mainkan motion idle awal secara lembut
@@ -821,6 +834,14 @@ export class Live2DAvatar {
           // Jika bukan mode fokus, pastikan jas & jam tangan selalu nonaktif
           core.setParameterValueById('Param35', 0)
           core.setParameterValueById('Param80', 0)
+        }
+
+        // Pastikan watermark part & parameter (seperti Part17 / Paramheadxy pada Ellen Joe) selalu nonaktif setiap frame
+        if (typeof core.setPartOpacityById === 'function') {
+          core.setPartOpacityById('Part17', 0)
+        }
+        if (typeof core.setParameterValueById === 'function') {
+          core.setParameterValueById('Paramheadxy', 0)
         }
       } catch {
         // Abaikan jika parameter tidak didukung model
