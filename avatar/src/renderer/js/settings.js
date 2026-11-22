@@ -4,6 +4,7 @@
  */
 
 import { loadSettings, saveSettings } from './settings-store.js'
+import { getLocale, setLocale, applyTranslations, t as i18nT } from './i18n.js'
 import { renderIcon, hydrateIcons } from './icons.js'
 import { escapeHtml } from './utils.js'
 import { showToast } from './toast.js'
@@ -4729,8 +4730,31 @@ function initProfileAvatar() {
   }
 }
 
+// Bahasa antarmuka (i18n): terapkan locale tersimpan + wire selector + terapkan ke DOM.
+function initLanguageSelector() {
+  // Terapkan terjemahan statis (data-i18n) sesuai locale tersimpan.
+  try {
+    const savedLang = settings?.ui?.language || getLocale()
+    setLocale(savedLang, { persist: false })
+  } catch { /* abaikan */ }
+  try { applyTranslations(document) } catch { /* abaikan */ }
+
+  const sel = document.getElementById('ui-language-select')
+  if (!sel) return
+  sel.value = (settings?.ui?.language === 'en') ? 'en' : 'id'
+  sel.addEventListener('change', () => {
+    const lang = sel.value === 'en' ? 'en' : 'id'
+    if (!settings.ui) settings.ui = {}
+    settings.ui.language = lang
+    saveSettings(settings)
+    setLocale(lang)
+    try { applyTranslations(document) } catch { /* abaikan */ }
+  })
+}
+
 function init() {
   detectPlatform()
+  initLanguageSelector()
   initProfileAvatar()
   adaptPlatformCommands()
   initThemeSwitcher()

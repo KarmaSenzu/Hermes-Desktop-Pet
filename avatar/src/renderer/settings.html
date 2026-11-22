@@ -80,6 +80,20 @@
           <h1>Home</h1>
           <p class="subtitle">Status sistem & mulai avatar.</p>
 
+          <!-- Bahasa Antarmuka (i18n) -->
+          <div class="setting-card" style="margin-bottom:16px;">
+            <div class="row" style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;">
+              <div style="min-width:0;">
+                <div class="row-label" data-i18n="settings.language.title">Bahasa Antarmuka</div>
+                <p class="hint" data-i18n="settings.language.desc" style="margin:2px 0 0;">Pilih bahasa tampilan aplikasi. Perubahan langsung diterapkan.</p>
+              </div>
+              <select id="ui-language-select" aria-label="Interface language">
+                <option value="id" data-i18n="settings.language.id">Bahasa Indonesia</option>
+                <option value="en" data-i18n="settings.language.en">English</option>
+              </select>
+            </div>
+          </div>
+
           <!-- UPDATE BANNER: Muncul otomatis bila ada update baru di GitHub -->
           <div id="home-update-banner" class="settings-alert-banner update-banner hidden" style="border-left: 4px solid #3b82f6; background: rgba(59, 130, 246, 0.1);">
             <div class="format-emblem theme-blue" style="color:#60a5fa;">

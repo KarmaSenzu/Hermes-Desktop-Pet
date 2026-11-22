@@ -3,6 +3,7 @@ import { HermesClient } from './hermes-client.js'
 import { AudioPlayer } from './audio-player.js'
 import { synthesize } from './tts.js'
 import { renderIcon, hydrateIcons } from './icons.js'
+import { t, tList, onLocaleChange } from './i18n.js'
 import { toSpeechText, splitSpeechChunks } from './speech-normalizer.js'
 import { computeHeadBubblePosition, getDefaultAvatarBounds } from './bubble-position.js'
 import { MusicPlayer } from './music-player.js'
@@ -97,6 +98,14 @@ window.addEventListener('pagehide', () => {
     musicPlayer.pause?.()
     musicPlayer.stopBackgroundEngine?.()
     window.hermesAvatar?.controlBackgroundMusic?.('stop')
+  } catch { /* abaikan */ }
+})
+
+// Saat bahasa antarmuka berubah (dari Settings), perbarui teks dinamis & jadwal idle chatter.
+onLocaleChange(() => {
+  try {
+    if (!busy) input.placeholder = t('avatar.input.placeholder')
+    if (typeof scheduleNextIdleChatter === 'function') scheduleNextIdleChatter()
   } catch { /* abaikan */ }
 })
 
@@ -294,7 +303,7 @@ window.hermesAvatar.onLoadModel(async (modelPath) => {
 
       // Putar sapaan awal saat aplikasi dibuka + tampilkan balon dialog
       voiceManager.playStateVoice('welcome')
-      showSpeechBubble('Halo! Selamat datang di Hermes Desktop Pet', 5000)
+      showSpeechBubble(t('avatar.welcome'), 5000)
       requestAnimationFrame(() => updateAllBubblePositions())
 
       const exprNames = controller.availableExpressions()
@@ -1866,7 +1875,7 @@ muteBtn?.addEventListener('click', () => {
   if (live2dPet?.model) {
     live2dPet.spawnHeart(live2dPet.model.x, live2dPet.model.y - 120)
   }
-  showSpeechBubble(ttsEnabled ? 'Suara diaktifkan.' : 'Suara dibisukan.', 2500)
+  showSpeechBubble(ttsEnabled ? t('avatar.voice.on') : t('avatar.voice.off'), 2500)
 })
 
 // --- Kontrol Zoom / Skala & Reset Posisi ---
@@ -1986,6 +1995,8 @@ async function playCustomEmote(anim) {
 }
 
 // --- Idle Chatter Berkala ala YourMother (motherSpeakFrequency) & Pengaturan Dinamis ---
+// Cadangan bawaan (dilokalkan via i18n). Daftar kustom pengguna (idleReminder.lines)
+// tetap diutamakan bila diisi.
 const DEFAULT_IDLE_CHATTER_LINES = [
   'Jangan lupa minum air putih ya',
   'Postur tubuhnya ditegakkan dulu yuk, biar punggung tidak pegal',
@@ -1994,6 +2005,11 @@ const DEFAULT_IDLE_CHATTER_LINES = [
   'Ada yang bisa kubantu dengan AI Hermes? Buka chat kapan saja ya',
   'Tarik napas dalam-dalam... hembuskan perlahan'
 ]
+
+function getIdleChatterLines() {
+  const localized = tList('avatar.idle.lines')
+  return Array.isArray(localized) && localized.length > 0 ? localized : DEFAULT_IDLE_CHATTER_LINES
+}
 
 function getIdleReminderConfig() {
   try {
@@ -2006,7 +2022,7 @@ function getIdleReminderConfig() {
           intervalMinutes: Math.max(1, parseInt(s.idleReminder.intervalMinutes, 10) || 10),
           lines: Array.isArray(s.idleReminder.lines) && s.idleReminder.lines.length > 0
             ? s.idleReminder.lines
-            : DEFAULT_IDLE_CHATTER_LINES
+            : getIdleChatterLines()
         }
       }
     }
@@ -2014,7 +2030,7 @@ function getIdleReminderConfig() {
   return {
     enabled: true,
     intervalMinutes: 10,
-    lines: DEFAULT_IDLE_CHATTER_LINES
+    lines: getIdleChatterLines()
   }
 }
 
@@ -2082,7 +2098,7 @@ function setInputLocked(locked) {
   input.disabled = locked
   sendBtn.disabled = locked
   micBtn.disabled = locked
-  input.placeholder = locked ? 'Hermes sedang bekerja…' : 'Ketik pesan...'
+  input.placeholder = locked ? t('avatar.thinking') : t('avatar.input.placeholder')
   form.classList.toggle('is-busy', locked)
   if (!locked && !chatSheet?.classList.contains('hidden')) input.focus()
   syncBackgroundChatIndicators()

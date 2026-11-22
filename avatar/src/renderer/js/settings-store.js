@@ -19,6 +19,9 @@ const KEY = 'hermes-avatar-settings'
 
 const DEFAULT_SETTINGS = {
   uiMode: 'simple', // 'simple' (ramah pemula) | 'advanced' (opsi teknis developer)
+  ui: {
+    language: 'id' // 'id' | 'en' — bahasa antarmuka (i18n)
+  },
   tts: {
     enabled: true,
     provider: 'edge',           // 'edge' (Cloud, Zero-Install) | 'kokoro' (Lokal AI Opsional)
@@ -186,6 +189,14 @@ export function loadSettings() {
     merged.stateAnimations = {
       ...DEFAULT_SETTINGS.stateAnimations,
       ...(parsed.stateAnimations || {})
+    }
+    // Merge nested `ui` agar field baru (mis. language) tidak hilang pada settings lama.
+    merged.ui = {
+      ...DEFAULT_SETTINGS.ui,
+      ...(parsed.ui || {})
+    }
+    if (merged.ui.language !== 'en' && merged.ui.language !== 'id') {
+      merged.ui.language = DEFAULT_SETTINGS.ui.language
     }
     merged.idleReminder = {
       ...DEFAULT_SETTINGS.idleReminder,

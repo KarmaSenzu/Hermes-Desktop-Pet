@@ -439,7 +439,12 @@ async function startKokoro() {
       return { ok: false, error: 'Script kokoro_server.py tidak ditemukan' }
     }
 
-    const pyCmd = await resolveWindowlessPythonBinary()
+    let pyCmd = await resolveWindowlessPythonBinary()
+    // POSIX: utamakan virtualenv tempat kokoro-onnx benar-benar terpasang (hindari PEP-668).
+    if (process.platform !== 'win32') {
+      const venvPy = join(homedir(), '.hermes-avatar', 'venv', 'bin', 'python')
+      try { if (existsSync(venvPy)) pyCmd = venvPy } catch { /* abaikan */ }
+    }
     const kokoroDirInfo = resolveKokoroModelDir()
     const scriptDir = dirname(validScript)
     let spawnError = null

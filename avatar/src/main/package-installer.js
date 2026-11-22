@@ -585,10 +585,33 @@ export async function installPython({ onProgress, deps: depsOverride } = {}) {
   }
 
   if (d.platform === 'darwin') {
+    // 1) Bila Python yang BERFUNGSI sudah ada (bukan stub CLT), tak perlu Homebrew.
+    const pre = await d.resolvePythonBinary()
+    if (pre?.ok) {
+      emit(100, `Python sudah siap (${pre.version})`, 'done')
+      return { ok: true, already: true, version: pre.version, cmd: pre.cmd }
+    }
+
+    // 2) Cari Homebrew dari lokasi umum (Intel & Apple Silicon) sebelum menyerah.
+    const brewCandidates = ['/opt/homebrew/bin/brew', '/usr/local/bin/brew', 'brew']
+    let brewCmd = null
+    for (const b of brewCandidates) {
+      if (b === 'brew' || d.existsSync(b)) {
+        const probe = await d.runCommand(b, ['--version'], { timeoutMs: 6000 })
+        if (probe?.code === 0) { brewCmd = b; break }
+      }
+    }
+
+    if (!brewCmd) {
+      const err = 'Homebrew belum terpasang. Pasang dulu Homebrew (https://brew.sh) atau Python 3.10+ dari python.org, lalu coba lagi.'
+      emit(0, err, 'failed', { error: err })
+      return { ok: false, error: err }
+    }
+
     emit(30, 'Memasang Python 3.12 via Homebrew...')
     const brewRes = await runWithDynamicProgress(d, {
       pkgId: 'python',
-      cmd: 'brew',
+      cmd: brewCmd,
       args: ['install', 'python@3.12'],
       timeoutMs: 300000,
       startPct: 30,
@@ -847,11 +870,31 @@ export async function installKokoro({ onProgress, deps: depsOverride } = {}) {
   }
 
   const pyCmd = py?.cmd || (d.platform === 'win32' ? 'py' : 'python3')
+
+  // POSIX: gunakan virtualenv agar tidak kena PEP-668 (externally-managed Homebrew/Debian).
+  // Windows: pakai interpreter langsung (venv tak wajib, pip ke user biasanya OK).
+  let pipPython = pyCmd
+  if (d.platform !== 'win32') {
+    try {
+      const venvDir = join(d.homedir(), '.hermes-avatar', 'venv')
+      const venvPy = join(venvDir, 'bin', 'python')
+      if (!d.existsSync(venvPy)) {
+        emit(48, 'Menyiapkan virtualenv untuk Kokoro-TTS...')
+        await d.runCommand(pyCmd, ['-m', 'venv', venvDir], { timeoutMs: 120000 })
+      }
+      if (d.existsSync(venvPy)) {
+        pipPython = venvPy
+      }
+    } catch {
+      // Jika venv gagal, fallback ke interpreter sistem (perilaku lama).
+    }
+  }
+
   const basePipArgs = ['-m', 'pip', 'install', '--prefer-binary', '--disable-pip-version-check', '--no-warn-script-location', 'kokoro-onnx', 'soundfile']
   emit(52, 'Memasang paket kokoro-onnx & soundfile (mode binary cepat)...')
   let pipRes = await runWithDynamicProgress(d, {
     pkgId: 'kokoro',
-    cmd: pyCmd,
+    cmd: pipPython,
     args: basePipArgs,
     timeoutMs: 300000,
     startPct: 54,
@@ -894,7 +937,7 @@ export async function installKokoro({ onProgress, deps: depsOverride } = {}) {
       emit(78, 'Mengunduh model suara Kokoro ONNX (~310 MB, sekali saja)...')
       await runWithDynamicProgress(d, {
         pkgId: 'kokoro',
-        cmd: pyCmd,
+        cmd: pipPython,
         args: [kokoroScript, '--download-models'],
         timeoutMs: 360000,
         startPct: 79,

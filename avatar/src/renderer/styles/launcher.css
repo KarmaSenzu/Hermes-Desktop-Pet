@@ -6,6 +6,22 @@
 :root {
   color-scheme: dark;
 
+  /* ── Tipografi Fluid (Responsive Typography) ───────────────────────────
+     Ukuran teks pakai clamp(px↔rem + vw) agar menyesuaikan lebar jendela.
+     Fallback px tetap ada di dekat nilai lama agar tampilan tak melompat. */
+  --font-ui: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, 'Helvetica Neue',
+             'PingFang SC', 'Hiragino Sans', 'Microsoft YaHei', 'Noto Sans CJK SC',
+             Arial, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji';
+  --font-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
+  --fs-2xs: 0.625rem;                                  /* ~10px   */
+  --fs-xs: 0.6875rem;                                  /* ~11px   */
+  --fs-sm: clamp(0.71875rem, 0.70rem + 0.15vw, 0.75rem);  /* ~11.5→12px */
+  --fs-base: clamp(0.8125rem, 0.79rem + 0.15vw, 0.875rem); /* ~13→14px */
+  --fs-md: clamp(0.875rem, 0.85rem + 0.2vw, 0.9375rem);    /* ~14→15px */
+  --fs-lg: clamp(0.9375rem, 0.9rem + 0.3vw, 1.0625rem);    /* ~15→17px */
+  --fs-xl: clamp(1.125rem, 1rem + 0.6vw, 1.375rem);        /* heading */
+  --fs-2xl: clamp(1.375rem, 1.1rem + 1.2vw, 1.75rem);      /* display */
+
   /* Background & surfaces (Dark Mode) */
   --bg: #1e1e20;
   --sidebar-bg: #28282b;
@@ -99,6 +115,8 @@
 
 html {
   height: 100%;
+  font-size: 100%; /* basis rem deterministik */
+  -webkit-text-size-adjust: 100%;
 }
 
 body {
@@ -106,8 +124,8 @@ body {
   min-height: 0;
   background: var(--bg);
   color: var(--text);
-  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', 'Segoe UI', Roboto, sans-serif;
-  font-size: 13.5px;
+  font-family: var(--font-ui);
+  font-size: var(--fs-base);
   line-height: 1.45;
   -webkit-font-smoothing: antialiased;
   overflow: hidden;
@@ -4616,6 +4634,29 @@ body[data-ui-mode="simple"] [data-terminal-cmd]:not(.force-visible) {
   align-items: center;
   gap: 6px;
   flex-shrink: 0;
+}
+
+/* ── Fix konsistensi tipografi & text wrapping (global) ── */
+input, select, textarea, button, code, pre, kbd {
+  font-family: inherit;
+}
+code, pre, kbd, .command-box code {
+  font-family: var(--font-mono);
+}
+/* Teks panjang mematahkan baris alih-alih meluber */
+p, li, dd, td, .modal-message, .brain-msg-bubble, .format-desc-text, .prereq-card-desc {
+  overflow-wrap: break-word;
+}
+/* Judul ringkas: hindari "orphan" satu kata */
+.panel > h1, h1, h2, h3 {
+  text-wrap: balance;
+}
+.panel > .subtitle {
+  text-wrap: pretty;
+}
+/* Modal: teks panjang/URL bisa wrap */
+.modal-message {
+  overflow-wrap: anywhere;
 }
 
 
