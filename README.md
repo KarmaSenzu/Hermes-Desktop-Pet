@@ -402,6 +402,21 @@ Proyek ini menerapkan lisensi terpisah antara kode sumber program dan aset multi
   * Hanya diperuntukkan bagi pembelajaran pemrograman, eksperimen AI, dan penggunaan pribadi. **Dilarang keras mengomersialkan atau memperjualbelikan aset karakter tersebut dalam bentuk apa pun.**
 * **Model Kustom Pengguna:** Model 3D (`.vrm`/`.glb`/`.pmx`) atau Live2D pihak ketiga yang Anda pasang sendiri tunduk pada lisensi kreator masing-masing.
 
+#### Atribusi Model Live2D Pihak Ketiga (Penting)
+Beberapa model contoh di folder `avatar/assets/live2d/*` **bukan karya proyek ini** dan **tidak** berada di bawah MIT. Setiap folder model memiliki `NOTICE.md` yang menyebutkan sumber & status lisensinya secara jujur. Ringkasannya:
+
+| Folder | Sumber / Hak Cipta | Status Lisensi |
+| :--- | :--- | :--- |
+| `mother` | Game indie *Your Mother* (Steam App 3399950) | Non-komersial / fan tribute — lihat `NOTICE.md` |
+| `ellen` | Karakter *Ellen Joe* — © **miHoYo / HoYoverse** (ZZZ) | **Redistribusi DILARANG** (teks ketentuan asli: *"Redistribution and resale are strictly prohibited"*) |
+| `sparkle` | Karakter *Sparkle* — © **miHoYo / HoYoverse** (HSR) | **Distribusi sekunder DILARANG** |
+| `huohuo` | Karakter *Huohuo* — © **miHoYo / HoYoverse** (HSR) | **Distribusi sekunder DILARANG** |
+| `jane`, `camellya` | Pihak ketiga (tanpa teks lisensi; hanya catatan kontrol) | Tidak diketahui — jangan diasumsikan boleh redistribusi |
+| `allium`, `jingliu` | Pihak ketiga (tanpa lisensi terlampir) | Tidak diketahui — jangan diasumsikan boleh redistribusi |
+
+> **Catatan jujur:** Model `ellen`, `sparkle`, `huohuo` dibagikan oleh pihak ketiga untuk penggunaan pribadi/eksperimen, namun **ketentuan mereka melarang redistribusi publik**. Proyek ini **tidak mengklaim** maupun **memonetisasi** aset tersebut. Untuk penggunaan & kolaborasi yang sepenuhnya bebas, disarankan memakai model dengan lisensi yang jelas mengizinkan redistribusi (mis. model Cubism resmi, VRoid, atau CC0), dan **tidak membundel** model yang dilarang ke distribusi publik. Hak cipta tetap sepenuhnya milik masing-masing pemilik sah.
+
+
 ### Kontak Pengembang & Dukungan
 * **Pengelola Proyek:** [**KarmaSenzu**](https://github.com/KarmaSenzu)
 * **Repositori GitHub:** [KarmaSenzu/Hermes-Desktop-Pet](https://github.com/KarmaSenzu/Hermes-Desktop-Pet)
