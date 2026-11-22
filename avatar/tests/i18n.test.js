@@ -63,4 +63,15 @@ describe('i18n', () => {
     expect(t('panel.action.title')).toBe('Commands & Applications')
     expect(t('common.back')).toBe('Back')
   })
+
+  it('home/voice/modal keys berubah sesuai bahasa', () => {
+    setLocale('id', { persist: false })
+    expect(t('home.start')).toBe('Mulai Desktop Avatar')
+    expect(t('voice.title')).toBe('Suara')
+    setLocale('en', { persist: false })
+    expect(t('home.start')).toBe('Start Desktop Avatar')
+    expect(t('voice.title')).toBe('Voice')
+    expect(t('modal.update.title')).toBe('Application Update Available')
+    expect(t('home.engine.powerOn')).toBe('Turn On')
+  })
 })

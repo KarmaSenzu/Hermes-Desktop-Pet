@@ -39,16 +39,16 @@
           </div>
           <div class="profile-info">
             <div class="profile-name">Hermes Avatar</div>
-            <div class="profile-sub">Personal Companion</div>
+            <div class="profile-sub" data-i18n="shell.profileSub">Personal Companion</div>
           </div>
           <span class="profile-chevron">›</span>
         </div>
 
         <!-- Menu Navigasi -->
         <nav class="nav" id="nav"></nav>
-        <div class="sidebar-footer" id="sidebar-footer" title="Klik untuk memeriksa pembaruan aplikasi" style="cursor:pointer; display:flex; align-items:center; justify-content:space-between;">
+        <div class="sidebar-footer" id="sidebar-footer" data-i18n-attr="title:shell.footerTitle" title="Klik untuk memeriksa pembaruan aplikasi" style="cursor:pointer; display:flex; align-items:center; justify-content:space-between;">
           <span>Hermes 3D <span id="footer-version-tag">v1.1.2</span></span>
-          <span id="footer-update-badge" class="badge ready" style="display:none; font-size:9.5px; padding:1px 6px;">Update</span>
+          <span id="footer-update-badge" class="badge ready" data-i18n="shell.update" style="display:none; font-size:9.5px; padding:1px 6px;">Update</span>
         </div>
       </aside>
 
@@ -58,8 +58,8 @@
         <header class="content-header">
           <div class="header-left">
             <div class="nav-history-buttons">
-              <button type="button" id="nav-back-btn" class="nav-hist-btn" title="Sebelumnya" disabled>‹</button>
-              <button type="button" id="nav-forward-btn" class="nav-hist-btn" title="Berikutnya" disabled>›</button>
+              <button type="button" id="nav-back-btn" class="nav-hist-btn" title="Sebelumnya" data-i18n-attr="title:shell.prev" disabled>‹</button>
+              <button type="button" id="nav-forward-btn" class="nav-hist-btn" title="Berikutnya" data-i18n-attr="title:shell.next" disabled>›</button>
             </div>
             <h2 id="current-section-title" class="current-section-title">Home</h2>
           </div>
@@ -78,7 +78,7 @@
         <!-- HOME -->
         <section id="panel-home" class="panel active">
           <h1>Home</h1>
-          <p class="subtitle">Status sistem & mulai avatar.</p>
+          <p class="subtitle" data-i18n="home.subtitle">Status sistem & mulai avatar.</p>
 
           <!-- Bahasa Antarmuka (i18n) -->
           <div class="setting-card" style="margin-bottom:16px;">
@@ -101,24 +101,24 @@
             </div>
             <div class="alert-content">
               <div class="alert-head-row">
-                <strong id="update-banner-title" style="color:#60a5fa;">Pembaruan Aplikasi Tersedia</strong>
+                <strong id="update-banner-title" data-i18n="home.banner.title" style="color:#60a5fa;">Pembaruan Aplikasi Tersedia</strong>
                 <span id="update-banner-tag" class="badge ready" style="font-size:10.5px; padding:2px 8px;">v1.1.2</span>
               </div>
-              <p id="update-banner-desc">Versi baru telah rilis di GitHub dengan pembaruan stabilitas dan fitur.</p>
+              <p id="update-banner-desc" data-i18n="home.banner.desc">Versi baru telah rilis di GitHub dengan pembaruan stabilitas dan fitur.</p>
               <div id="banner-progress-wrap" class="hidden" style="margin-top:8px; width:100%;">
                 <div style="height:6px; background:rgba(255,255,255,0.1); border-radius:3px; overflow:hidden;">
                   <div id="banner-progress-bar" style="width:0%; height:100%; background:#3b82f6; transition:width 0.2s ease;"></div>
                 </div>
                 <div style="display:flex; justify-content:space-between; font-size:11px; color:var(--text-secondary); margin-top:4px;">
-                  <span id="banner-progress-status">Mengunduh pembaruan...</span>
+                  <span id="banner-progress-status" data-i18n="home.banner.downloading">Mengunduh pembaruan...</span>
                   <span id="banner-progress-percent">0%</span>
                 </div>
               </div>
             </div>
             <div class="alert-actions">
-              <button type="button" id="update-download-btn" class="mini-btn primary" style="background:#3b82f6; color:#fff;">Update Sekarang</button>
-              <button type="button" id="update-details-btn" class="mini-btn">Info Rilis</button>
-              <button type="button" id="update-dismiss-btn" class="mini-btn del" title="Tutup pemberitahuan ini" style="padding:4px 8px;" data-icon="x" data-icon-size="13"></button>
+              <button type="button" id="update-download-btn" class="mini-btn primary" data-i18n="home.banner.updateNow" style="background:#3b82f6; color:#fff;">Update Sekarang</button>
+              <button type="button" id="update-details-btn" class="mini-btn" data-i18n="home.banner.details">Info Rilis</button>
+              <button type="button" id="update-dismiss-btn" class="mini-btn del" title="Tutup pemberitahuan ini" data-i18n-attr="title:home.banner.closeTitle" style="padding:4px 8px;" data-icon="x" data-icon-size="13"></button>
             </div>
           </div>
 
@@ -128,18 +128,18 @@
               <svg class="lucide-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
             </div>
             <div class="alert-content">
-              <strong>Persiapan Paket Diperlukan</strong>
-              <p>Beberapa paket penting (Hermes atau mesin suara avatar) belum aktif atau belum terpasang. Buka menu Package Hub untuk melengkapi persiapan.</p>
+              <strong data-i18n="home.setup.title">Persiapan Paket Diperlukan</strong>
+              <p data-i18n="home.setup.desc">Beberapa paket penting (Hermes atau mesin suara avatar) belum aktif atau belum terpasang. Buka menu Package Hub untuk melengkapi persiapan.</p>
             </div>
             <div class="alert-actions">
-              <button type="button" id="alert-install-all-btn" class="mini-btn use">Install Otomatis 1-Klik</button>
-              <button type="button" id="alert-open-pkg-btn" class="mini-btn primary">Buka Package Hub</button>
+              <button type="button" id="alert-install-all-btn" class="mini-btn use" data-i18n="home.setup.install">Install Otomatis 1-Klik</button>
+              <button type="button" id="alert-open-pkg-btn" class="mini-btn primary" data-i18n="home.setup.openHub">Buka Package Hub</button>
             </div>
           </div>
 
           <div class="group-header" style="display:flex; justify-content:space-between; align-items:center;">
-            <span>Kondisi Prasyarat Memulai (Checklist)</span>
-            <span id="home-prereq-badge" class="badge" style="font-size:11px;">Pengecekan…</span>
+            <span data-i18n="home.prereq.group">Kondisi Prasyarat Memulai (Checklist)</span>
+            <span id="home-prereq-badge" class="badge" data-i18n="home.prereq.checking" style="font-size:11px;">Pengecekan…</span>
           </div>
           <div class="card">
             <!-- 1. Karakter Avatar -->
@@ -149,9 +149,9 @@
               </div>
               <div class="format-info-col">
                 <div class="format-title-line">
-                  <span class="format-title">Model Karakter Visual</span>
+                  <span class="format-title" data-i18n="home.model.title">Model Karakter Visual</span>
                 </div>
-                <p class="format-desc-text" id="home-char-desc">Model avatar 2D / 3D aktif</p>
+                <p class="format-desc-text" id="home-char-desc" data-i18n="home.model.desc">Model avatar 2D / 3D aktif</p>
               </div>
               <div class="row-control">
                 <div id="active-char" class="active-char"></div>
@@ -165,13 +165,13 @@
               </div>
               <div class="format-info-col">
                 <div class="format-title-line">
-                  <span class="format-title">Mesin Kecerdasan Avatar</span>
+                  <span class="format-title" data-i18n="home.engine.title">Mesin Kecerdasan Avatar</span>
                 </div>
-                <p class="format-desc-text">Otomatis aktif di latar belakang saat avatar berjalan</p>
+                <p class="format-desc-text" data-i18n="home.engine.desc">Otomatis aktif di latar belakang saat avatar berjalan</p>
               </div>
               <div class="row-control" style="display:flex; align-items:center; gap:8px;">
                 <span id="hermes-status" class="badge">…</span>
-                <button type="button" id="home-start-hermes-btn" class="mini-btn use" style="display:none;" title="Jalankan layanan AI otomatis">Nyalakan</button>
+                <button type="button" id="home-start-hermes-btn" class="mini-btn use" data-i18n="home.engine.powerOn" style="display:none;" title="Jalankan layanan AI otomatis" data-i18n-attr="title:home.engine.powerOnTitle">Nyalakan</button>
               </div>
             </div>
 
@@ -182,16 +182,16 @@
               </div>
               <div class="format-info-col">
                 <div class="format-title-line">
-                  <span class="format-title">Jalur Koneksi &amp; Uji Ping LLM (OAuth / 9Router Opsional)</span>
+                  <span class="format-title" data-i18n="home.llm.title">Jalur Koneksi &amp; Uji Ping LLM (OAuth / 9Router Opsional)</span>
                 </div>
-                <p class="format-desc-text" id="home-llm-route-desc">Bebas memakai Login OAuth Resmi atau 9Router Lokal (opsional) — yang penting uji ping ke model berhasil &amp; tidak RTO</p>
+                <p class="format-desc-text" id="home-llm-route-desc" data-i18n="home.llm.desc">Bebas memakai Login OAuth Resmi atau 9Router Lokal (opsional) — yang penting uji ping ke model berhasil &amp; tidak RTO</p>
               </div>
               <div class="row-control" style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; justify-content:flex-end;">
                 <input id="router-check" type="checkbox" class="mac-switch" style="display:none;" />
-                <span id="home-llm-ping-status" class="badge">Memeriksa…</span>
-                <button type="button" id="home-llm-ping-btn" class="mini-btn browse" title="Uji koneksi ping ke model LLM aktif untuk memastikan bukan RTO">
+                <span id="home-llm-ping-status" class="badge" data-i18n="home.llm.checking">Memeriksa…</span>
+                <button type="button" id="home-llm-ping-btn" class="mini-btn browse" title="Uji koneksi ping ke model LLM aktif untuk memastikan bukan RTO" data-i18n-attr="title:home.llm.pingTitle">
                   <span class="btn-svg-icon" data-icon="activity" data-icon-size="12"></span>
-                  <span>Tes Ping</span>
+                  <span data-i18n="home.llm.pingBtn">Tes Ping</span>
                 </button>
               </div>
             </div>
@@ -203,9 +203,9 @@
               </div>
               <div class="format-info-col">
                 <div class="format-title-line">
-                  <span class="format-title">Model LLM Terpilih</span>
+                  <span class="format-title" data-i18n="home.llmModel.title">Model LLM Terpilih</span>
                 </div>
-                <p class="format-desc-text">Model kecerdasan aktif (OAuth Resmi / API Key / 9Router Opsional)</p>
+                <p class="format-desc-text" data-i18n="home.llmModel.desc">Model kecerdasan aktif (OAuth Resmi / API Key / 9Router Opsional)</p>
               </div>
               <div class="row-control">
                 <div id="home-model" class="llm-active"></div>
@@ -219,9 +219,9 @@
               </div>
               <div class="format-info-col">
                 <div class="format-title-line">
-                  <span class="format-title">Mesin Suara Avatar (TTS)</span>
+                  <span class="format-title" data-i18n="home.tts.title">Mesin Suara Avatar (TTS)</span>
                 </div>
-                <p class="format-desc-text" id="home-tts-desc">Penyedia suara untuk respons audio</p>
+                <p class="format-desc-text" id="home-tts-desc" data-i18n="home.tts.desc">Penyedia suara untuk respons audio</p>
               </div>
               <div class="row-control">
                 <span id="home-tts-status" class="badge">…</span>
@@ -235,15 +235,15 @@
               </div>
               <div class="format-info-col">
                 <div class="format-title-line">
-                  <span class="format-title">Versi & Pembaruan Aplikasi</span>
+                  <span class="format-title" data-i18n="home.version.title">Versi & Pembaruan Aplikasi</span>
                 </div>
-                <p class="format-desc-text" id="home-version-desc">Versi terpasang: Memeriksa…</p>
+                <p class="format-desc-text" id="home-version-desc" data-i18n="home.version.desc">Versi terpasang: Memeriksa…</p>
               </div>
               <div class="row-control" style="display:flex; align-items:center; gap:8px;">
                 <span id="home-version-badge" class="badge">…</span>
-                <button type="button" id="home-check-update-btn" class="mini-btn" title="Periksa apakah ada pembaruan rilis baru di GitHub">
+                <button type="button" id="home-check-update-btn" class="mini-btn" title="Periksa apakah ada pembaruan rilis baru di GitHub" data-i18n-attr="title:home.version.checkTitle">
                   <span class="btn-svg-icon" data-icon="refresh-cw" data-icon-size="12"></span>
-                  <span>Cek Update</span>
+                  <span data-i18n="home.version.checkBtn">Cek Update</span>
                 </button>
               </div>
             </div>
@@ -252,7 +252,7 @@
           <div style="margin-top: 22px;">
             <button id="start-btn" class="mac-hero-btn primary">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 3 20 12 6 21 6 3"/></svg>
-              <span>Mulai Desktop Avatar</span>
+              <span data-i18n="home.start">Mulai Desktop Avatar</span>
             </button>
             <div id="status" class="status" style="margin-top: 10px;"></div>
           </div>
@@ -789,10 +789,10 @@
 
         <!-- SUARA -->
         <section id="panel-voice" class="panel">
-          <h1>Suara</h1>
-          <p class="subtitle">Pengaturan Text-to-Speech & Speech-to-Text.</p>
+          <h1 data-i18n="voice.title">Suara</h1>
+          <p class="subtitle" data-i18n="voice.subtitle">Pengaturan Text-to-Speech & Speech-to-Text.</p>
 
-          <div class="group-header">Text-to-Speech (TTS)</div>
+          <div class="group-header" data-i18n="voice.tts.group">Text-to-Speech (TTS)</div>
           <div class="card">
             <div class="settings-row">
               <div class="format-emblem theme-rose">
@@ -800,9 +800,9 @@
               </div>
               <div class="format-info-col">
                 <div class="format-title-line">
-                  <span class="format-title">Aktifkan Suara</span>
+                  <span class="format-title" data-i18n="voice.tts.enable">Aktifkan Suara</span>
                 </div>
-                <p class="format-desc-text">Narasikan teks respon melalui audio avatar</p>
+                <p class="format-desc-text" data-i18n="voice.tts.enableDesc">Narasikan teks respon melalui audio avatar</p>
               </div>
               <div class="row-control">
                 <input id="tts-enabled" type="checkbox" class="mac-switch" />
@@ -814,14 +814,14 @@
               </div>
               <div class="format-info-col">
                 <div class="format-title-line">
-                  <span class="format-title">Engine Suara (Provider)</span>
+                  <span class="format-title" data-i18n="voice.tts.engine">Engine Suara (Provider)</span>
                 </div>
-                <p class="format-desc-text">Modul pemroses sintesis ucapan</p>
+                <p class="format-desc-text" data-i18n="voice.tts.engineDesc">Modul pemroses sintesis ucapan</p>
               </div>
               <div class="row-control">
                 <select id="tts-provider" class="mac-select">
-                  <option value="kokoro">Kokoro-TTS (Lokal AI Anime)</option>
-                  <option value="edge">Edge-TTS (Microsoft Cloud)</option>
+                  <option value="kokoro" data-i18n="voice.tts.optKokoro">Kokoro-TTS (Lokal AI Anime)</option>
+                  <option value="edge" data-i18n="voice.tts.optEdge">Edge-TTS (Microsoft Cloud)</option>
                 </select>
               </div>
             </div>
@@ -831,13 +831,13 @@
               </div>
               <div class="format-info-col">
                 <div class="format-title-line">
-                  <span class="format-title">Negara & Intonasi Aksen</span>
+                  <span class="format-title" data-i18n="voice.accent.label">Negara & Intonasi Aksen</span>
                 </div>
-                <p class="format-desc-text">Filter karakter vokal berdasarkan rumpun bahasa & negara</p>
+                <p class="format-desc-text" data-i18n="voice.accent.desc">Filter karakter vokal berdasarkan rumpun bahasa & negara</p>
               </div>
               <div class="row-control">
                 <select id="tts-country-filter" class="mac-select">
-                  <option value="all">Semua Negara &amp; Aksen (56 Karakter)</option>
+                  <option value="all" data-i18n="voice.accent.all">Semua Negara &amp; Aksen (56 Karakter)</option>
                   <option value="jp">🇯🇵 Jepang (Anime Seiyuu)</option>
                   <option value="id">🇮🇩 Indonesia (Edge Natural)</option>
                   <option value="us">🇺🇸 Amerika Serikat (US English)</option>
@@ -857,10 +857,10 @@
               </div>
               <div class="format-info-col">
                 <div class="format-title-line">
-                  <span class="format-title">Pilihan Karakter Suara</span>
+                  <span class="format-title" data-i18n="voice.voice.label">Pilihan Karakter Suara</span>
                   <span id="tts-voice-badge" class="voice-badge-pill">🇯🇵 Jepang · Perempuan</span>
                 </div>
-                <p class="format-desc-text" id="tts-voice-match-count">Model timbre dan warna vokal aktif</p>
+                <p class="format-desc-text" id="tts-voice-match-count" data-i18n="voice.voice.desc">Model timbre dan warna vokal aktif</p>
               </div>
               <div class="row-control">
                 <select id="tts-voice" class="mac-select"></select>
@@ -872,9 +872,9 @@
               </div>
               <div class="format-info-col">
                 <div class="format-title-line">
-                  <span class="format-title">Gaya Intonasi & Pelafalan</span>
+                  <span class="format-title" data-i18n="voice.style.label">Gaya Intonasi & Pelafalan</span>
                 </div>
-                <p class="format-desc-text">Metode pengucapan fonem kata (vokal jernih tanpa eja per abjad)</p>
+                <p class="format-desc-text" data-i18n="voice.style.desc">Metode pengucapan fonem kata (vokal jernih tanpa eja per abjad)</p>
               </div>
               <div class="row-control">
                 <select id="tts-intonation" class="mac-select">
@@ -890,16 +890,16 @@
               </div>
               <div class="format-info-col">
                 <div class="format-title-line">
-                  <span class="format-title">Pengujian Suara (Audio Preview)</span>
+                  <span class="format-title" data-i18n="voice.preview.group">Pengujian Suara (Audio Preview)</span>
                 </div>
-                <p class="format-desc-text">Dengarkan sampel ucapan langsung dari karakter vokal yang dipilih</p>
+                <p class="format-desc-text" data-i18n="voice.preview.desc">Dengarkan sampel ucapan langsung dari karakter vokal yang dipilih</p>
               </div>
               <div class="row-control">
                 <div class="mac-input-action-group">
-                  <input id="tts-test-input" type="text" class="mac-input" value="Halo! Saya adalah avatar desktop pintar Anda." placeholder="Ketik kalimat tes..." />
-                  <button type="button" id="tts-test-btn" class="group-action-btn" title="Dengarkan pengujian suara">
+                  <input id="tts-test-input" type="text" class="mac-input" value="Halo! Saya adalah avatar desktop pintar Anda." placeholder="Ketik kalimat tes..." data-i18n-attr="placeholder:voice.preview.ph" />
+                  <button type="button" id="tts-test-btn" class="group-action-btn" title="Dengarkan pengujian suara" data-i18n-attr="title:voice.preview.title">
                     <span id="tts-test-icon" class="btn-svg-icon" data-icon="volume-2"></span>
-                    <span id="tts-test-text">Uji</span>
+                    <span id="tts-test-text" data-i18n="voice.preview.btn">Uji</span>
                   </button>
                 </div>
               </div>
@@ -910,9 +910,9 @@
               </div>
               <div class="format-info-col">
                 <div class="format-title-line">
-                  <span class="format-title">Endpoint Server Kokoro</span>
+                  <span class="format-title" data-i18n="voice.endpoint.label">Endpoint Server Kokoro</span>
                 </div>
-                <p class="format-desc-text">URL service daemon ONNX lokal</p>
+                <p class="format-desc-text" data-i18n="voice.endpoint.desc">URL service daemon ONNX lokal</p>
               </div>
               <div class="row-control">
                 <input id="tts-kokoro-endpoint" type="text" class="mac-input" placeholder="http://127.0.0.1:8880" />
@@ -924,9 +924,9 @@
               </div>
               <div class="format-info-col">
                 <div class="format-title-line">
-                  <span class="format-title">Kecepatan Bicara</span>
+                  <span class="format-title" data-i18n="voice.speed.label">Kecepatan Bicara</span>
                 </div>
-                <p class="format-desc-text">Laju tempo pelafalan kata</p>
+                <p class="format-desc-text" data-i18n="voice.speed.desc">Laju tempo pelafalan kata</p>
               </div>
               <div class="row-control">
                 <select id="tts-speed" class="mac-select">
@@ -943,20 +943,20 @@
               </div>
               <div class="format-info-col">
                 <div class="format-title-line">
-                  <span class="format-title">Panjang Jawaban Dibaca</span>
+                  <span class="format-title" data-i18n="voice.len.label">Panjang Jawaban Dibaca</span>
                 </div>
-                <p class="format-desc-text">Tingkat keringkasan respon yang disuarakan</p>
+                <p class="format-desc-text" data-i18n="voice.len.desc">Tingkat keringkasan respon yang disuarakan</p>
               </div>
               <div class="row-control">
                 <select id="tts-verbosity" class="mac-select">
-                  <option value="concise">Ringkas (ringkasan inti)</option>
-                  <option value="full">Lengkap (seluruh teks)</option>
+                  <option value="concise" data-i18n="voice.len.concise">Ringkas (ringkasan inti)</option>
+                  <option value="full" data-i18n="voice.len.full">Lengkap (seluruh teks)</option>
                 </select>
               </div>
             </div>
           </div>
 
-          <div class="group-header">Speech-to-Text (STT)</div>
+          <div class="group-header" data-i18n="voice.stt.group">Speech-to-Text (STT)</div>
           <div class="card">
             <div class="settings-row">
               <div class="format-emblem theme-amber">
@@ -964,14 +964,14 @@
               </div>
               <div class="format-info-col">
                 <div class="format-title-line">
-                  <span class="format-title">Model Whisper</span>
+                  <span class="format-title" data-i18n="voice.stt.model">Model Whisper</span>
                 </div>
-                <p class="format-desc-text">Keseimbangan kecepatan & akurasi transkripsi</p>
+                <p class="format-desc-text" data-i18n="voice.stt.modelDesc">Keseimbangan kecepatan & akurasi transkripsi</p>
               </div>
               <div class="row-control">
                 <select id="stt-model" class="mac-select">
-                  <option value="base">base (ringan & cepat)</option>
-                  <option value="small">small (lebih akurat)</option>
+                  <option value="base" data-i18n="voice.stt.modelBase">base (ringan & cepat)</option>
+                  <option value="small" data-i18n="voice.stt.modelSmall">small (lebih akurat)</option>
                 </select>
               </div>
             </div>
@@ -981,20 +981,20 @@
               </div>
               <div class="format-info-col">
                 <div class="format-title-line">
-                  <span class="format-title">Bahasa Pengenalan</span>
+                  <span class="format-title" data-i18n="voice.stt.lang">Bahasa Pengenalan</span>
                 </div>
-                <p class="format-desc-text">Bahasa utama yang dideteksi mikrofon</p>
+                <p class="format-desc-text" data-i18n="voice.stt.langDesc">Bahasa utama yang dideteksi mikrofon</p>
               </div>
               <div class="row-control">
                 <select id="stt-language" class="mac-select">
-                  <option value="id">Bahasa Indonesia</option>
-                  <option value="en">English (US)</option>
+                  <option value="id" data-i18n="voice.stt.langId">Bahasa Indonesia</option>
+                  <option value="en" data-i18n="voice.stt.langEn">English (US)</option>
                 </select>
               </div>
             </div>
           </div>
 
-          <div class="group-header">Interaksi & Percakapan</div>
+          <div class="group-header" data-i18n="voice.interact.group">Interaksi & Percakapan</div>
           <div class="card">
             <div class="settings-row">
               <div class="format-emblem theme-blue">
@@ -1002,9 +1002,9 @@
               </div>
               <div class="format-info-col">
                 <div class="format-title-line">
-                  <span class="format-title">Izinkan Interupsi (Barge-In)</span>
+                  <span class="format-title" data-i18n="voice.bargein.label">Izinkan Interupsi (Barge-In)</span>
                 </div>
-                <p class="format-desc-text">Otomatis jeda suara avatar saat Anda mulai berbicara</p>
+                <p class="format-desc-text" data-i18n="voice.bargein.desc">Otomatis jeda suara avatar saat Anda mulai berbicara</p>
               </div>
               <div class="row-control">
                 <input id="conv-barge-in" type="checkbox" class="mac-switch" />
@@ -1016,9 +1016,9 @@
               </div>
               <div class="format-info-col">
                 <div class="format-title-line">
-                  <span class="format-title">Mode Percakapan Berkelanjutan</span>
+                  <span class="format-title" data-i18n="voice.continuous.label">Mode Percakapan Berkelanjutan</span>
                 </div>
-                <p class="format-desc-text">Mikrofon otomatis aktif kembali setelah avatar selesai bicara</p>
+                <p class="format-desc-text" data-i18n="voice.continuous.desc">Mikrofon otomatis aktif kembali setelah avatar selesai bicara</p>
               </div>
               <div class="row-control">
                 <input id="conv-continuous" type="checkbox" class="mac-switch" />
@@ -1026,7 +1026,7 @@
             </div>
           </div>
 
-          <div class="group-header">Pustaka Musik & Playlist Favorit (Penyimpanan Permanen)</div>
+          <div class="group-header" data-i18n="voice.music.group">Pustaka Musik & Playlist Favorit (Penyimpanan Permanen)</div>
           <div class="card">
             <div class="settings-row">
               <div class="format-emblem theme-emerald">
@@ -1034,13 +1034,13 @@
               </div>
               <div class="format-info-col">
                 <div class="format-title-line">
-                  <span class="format-title">Ruang Penyimpanan Pustaka Musik</span>
-                  <span id="music-storage-badge" class="package-badge badge on">Tersimpan Permanen</span>
+                  <span class="format-title" data-i18n="voice.music.storage">Ruang Penyimpanan Pustaka Musik</span>
+                  <span id="music-storage-badge" class="package-badge badge on" data-i18n="voice.music.saved">Tersimpan Permanen</span>
                 </div>
-                <p class="format-desc-text" id="music-storage-desc">Berkas lokal: <code>~/.hermes-avatar/music_library.json</code></p>
+                <p class="format-desc-text" id="music-storage-desc"><span data-i18n="voice.music.local">Berkas lokal:</span> <code>~/.hermes-avatar/music_library.json</code></p>
               </div>
               <div class="row-control" style="display:flex; gap:8px;">
-                <button type="button" id="btn-open-music-folder" class="mini-btn"><span class="btn-svg-icon" data-icon="folder-open"></span> Buka Folder</button>
+                <button type="button" id="btn-open-music-folder" class="mini-btn"><span class="btn-svg-icon" data-icon="folder-open"></span> <span data-i18n="voice.music.openFolder">Buka Folder</span></button>
               </div>
             </div>
             <div class="settings-row">
@@ -1049,24 +1049,24 @@
               </div>
               <div class="format-info-col">
                 <div class="format-title-line">
-                  <span class="format-title">Status Pustaka & Playlist</span>
+                  <span class="format-title" data-i18n="voice.music.status">Status Pustaka & Playlist</span>
                 </div>
-                <p class="format-desc-text" id="music-stats-desc">Memuat status lagu stream dan favorit tersimpan...</p>
+                <p class="format-desc-text" id="music-stats-desc" data-i18n="voice.music.loading">Memuat status lagu stream dan favorit tersimpan...</p>
               </div>
               <div class="row-control">
-                <button type="button" id="btn-refresh-music-stats" class="mini-btn"><span class="btn-svg-icon" data-icon="refresh-cw"></span> Segarkan</button>
+                <button type="button" id="btn-refresh-music-stats" class="mini-btn"><span class="btn-svg-icon" data-icon="refresh-cw"></span> <span data-i18n="voice.music.refresh">Segarkan</span></button>
               </div>
             </div>
             <div class="settings-row" style="flex-direction: column; align-items: stretch; gap: 10px;">
-              <div style="display: flex; justify-content: space-between; align-items: center;">
-                <span style="font-size: 13px; font-weight: 600; color: #f1f5f9;">Tambah Link Stream / YouTube ke Penyimpanan</span>
-                <span style="font-size: 11px; color: #94a3b8;">Disimpan permanen ke perangkat Anda</span>
+              <div class="music-link-row-head" style="display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap;">
+                <span style="font-size: 13px; font-weight: 600; color: #f1f5f9;" data-i18n="voice.music.addStream">Tambah Link Stream / YouTube ke Penyimpanan</span>
+                <span style="font-size: 11px; color: #94a3b8;" data-i18n="voice.music.addStreamDesc">Disimpan permanen ke perangkat Anda</span>
               </div>
-              <div style="display: flex; gap: 8px;">
-                <input id="settings-music-url" type="url" class="mac-input" style="flex: 1;" placeholder="URL YouTube / Link Stream (https://...)" />
+              <div class="music-link-row-body" style="display: flex; gap: 8px; flex-wrap: wrap;">
+                <input id="settings-music-url" type="url" class="mac-input" style="flex: 1; min-width: 0;" placeholder="URL YouTube / Link Stream (https://...)" data-i18n-attr="placeholder:voice.music.urlPh" />
                 <button type="button" id="btn-settings-add-stream" class="group-action-btn primary">
                   <span class="btn-svg-icon" data-icon="plus"></span>
-                  <span>Simpan ke Pustaka</span>
+                  <span data-i18n="voice.music.save">Simpan ke Pustaka</span>
                 </button>
               </div>
               <div id="settings-music-feedback" style="font-size: 11px; color: #10b981; display: none;"></div>
@@ -2150,11 +2150,11 @@
     <!-- Modal konfirmasi (hapus, dll) — sesuai tema -->
     <div id="confirm-modal" class="modal-overlay" hidden>
       <div class="modal" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
-        <h2 id="confirm-title" class="modal-title">Konfirmasi</h2>
+        <h2 id="confirm-title" class="modal-title" data-i18n="modal.confirm.title">Konfirmasi</h2>
         <p id="confirm-message" class="modal-message"></p>
         <div class="modal-actions">
-          <button id="confirm-cancel" class="modal-btn secondary">Batal</button>
-          <button id="confirm-ok" class="modal-btn danger">Hapus</button>
+          <button id="confirm-cancel" class="modal-btn secondary" data-i18n="common.cancel">Batal</button>
+          <button id="confirm-ok" class="modal-btn danger" data-i18n="common.delete">Hapus</button>
         </div>
       </div>
     </div>
@@ -2165,8 +2165,8 @@
         <div style="display:flex; align-items:flex-start; gap:12px; margin-bottom:14px;">
           <div class="format-emblem theme-amber" style="width:40px; height:40px; flex-shrink:0;" data-icon="alert-triangle" data-icon-size="20"></div>
           <div>
-            <h2 id="prereq-modal-title" class="modal-title" style="margin:0 0 4px; font-size:16px;">Prasyarat Sistem Belum Siap</h2>
-            <div style="font-size:12.5px; color:var(--text-secondary); line-height:1.4;">
+            <h2 id="prereq-modal-title" class="modal-title" data-i18n="modal.prereq.title" style="margin:0 0 4px; font-size:16px;">Prasyarat Sistem Belum Siap</h2>
+            <div data-i18n="modal.prereq.desc" style="font-size:12.5px; color:var(--text-secondary); line-height:1.4;">
               Beberapa komponen belum aktif sebelum avatar dimulai:
             </div>
           </div>
@@ -2176,16 +2176,16 @@
           <!-- Dynamically populated checklist -->
         </div>
 
-        <p class="modal-message" style="margin:0 0 18px; font-size:12.5px; line-height:1.45; color:var(--text-secondary);">
+        <p class="modal-message" data-i18n="modal.prereq.hint" style="margin:0 0 18px; font-size:12.5px; line-height:1.45; color:var(--text-secondary);">
           Pilih salah satu opsi di bawah untuk menyalakan otomatis, membuka Package Hub, atau tetap menjalankan avatar dalam mode visual tampilan saja.
         </p>
 
         <div class="modal-actions" style="display:flex; flex-wrap:wrap; justify-content:flex-end; gap:8px;">
-          <button type="button" id="prereq-cancel-btn" class="modal-btn secondary">Batal</button>
-          <button type="button" id="prereq-hub-btn" class="modal-btn secondary">Buka Package Hub</button>
-          <button type="button" id="prereq-llm-btn" class="modal-btn secondary" style="border-color:rgba(139,92,246,0.5); color:#a78bfa;">Pilih Model LLM</button>
-          <button type="button" id="prereq-auto-btn" class="modal-btn primary" style="background:var(--accent,#3b82f6); color:#fff;">Nyalakan Otomatis</button>
-          <button type="button" id="prereq-force-btn" class="modal-btn" style="background:rgba(255,255,255,0.06); color:var(--text); border:1px solid var(--border);">Tetap Mulai Saja</button>
+          <button type="button" id="prereq-cancel-btn" class="modal-btn secondary" data-i18n="common.cancel">Batal</button>
+          <button type="button" id="prereq-hub-btn" class="modal-btn secondary" data-i18n="modal.prereq.openHub">Buka Package Hub</button>
+          <button type="button" id="prereq-llm-btn" class="modal-btn secondary" data-i18n="modal.prereq.pickLlm" style="border-color:rgba(139,92,246,0.5); color:#a78bfa;">Pilih Model LLM</button>
+          <button type="button" id="prereq-auto-btn" class="modal-btn primary" data-i18n="modal.prereq.auto" style="background:var(--accent,#3b82f6); color:#fff;">Nyalakan Otomatis</button>
+          <button type="button" id="prereq-force-btn" class="modal-btn" data-i18n="modal.prereq.force" style="background:rgba(255,255,255,0.06); color:var(--text); border:1px solid var(--border);">Tetap Mulai Saja</button>
         </div>
       </div>
     </div>
@@ -2195,30 +2195,30 @@
         <div style="display:flex; align-items:flex-start; gap:12px; margin-bottom:14px;">
           <div class="format-emblem theme-blue" style="width:40px; height:40px; flex-shrink:0;" data-icon="zap" data-icon-size="20"></div>
           <div style="flex:1;">
-            <h2 id="update-modal-title" class="modal-title" style="margin:0 0 4px; font-size:16px;">Pembaruan Aplikasi Tersedia</h2>
-            <div id="update-modal-subtitle" style="font-size:12.5px; color:var(--text-secondary); line-height:1.4;">
+            <h2 id="update-modal-title" class="modal-title" data-i18n="modal.update.title" style="margin:0 0 4px; font-size:16px;">Pembaruan Aplikasi Tersedia</h2>
+            <div id="update-modal-subtitle" data-i18n="modal.update.subtitle" style="font-size:12.5px; color:var(--text-secondary); line-height:1.4;">
               Versi baru telah rilis di GitHub.
             </div>
           </div>
-          <button type="button" id="update-modal-close" class="mini-btn del" style="padding:4px 8px;" title="Tutup" data-icon="x" data-icon-size="13"></button>
+          <button type="button" id="update-modal-close" class="mini-btn del" data-i18n-attr="title:common.close" style="padding:4px 8px;" title="Tutup" data-icon="x" data-icon-size="13"></button>
         </div>
 
         <div class="update-version-comparison" style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; background:rgba(255,255,255,0.04); border:1px solid var(--border); border-radius:8px; padding:10px 14px; margin-bottom:14px;">
           <div>
-            <span style="font-size:11px; color:var(--text-secondary); display:block;">Versi Terpasang:</span>
+            <span data-i18n="modal.update.currentVer" style="font-size:11px; color:var(--text-secondary); display:block;">Versi Terpasang:</span>
             <strong id="modal-current-ver" style="font-size:14px; color:var(--text);">v1.1.2</strong>
           </div>
           <span style="font-size:16px; color:var(--text-secondary);">→</span>
           <div>
-            <span style="font-size:11px; color:var(--text-secondary); display:block;">Versi Terbaru:</span>
+            <span data-i18n="modal.update.latestVer" style="font-size:11px; color:var(--text-secondary); display:block;">Versi Terbaru:</span>
             <strong id="modal-latest-ver" style="font-size:14px; color:#3b82f6;">v1.1.2</strong>
           </div>
-          <span id="modal-release-date" class="badge" style="font-size:11px;">Rilis Terbaru</span>
+          <span id="modal-release-date" class="badge" data-i18n="modal.update.latestBadge" style="font-size:11px;">Rilis Terbaru</span>
         </div>
 
         <div id="modal-progress-wrap" class="hidden" style="margin-bottom:14px; background:rgba(255,255,255,0.04); border:1px solid var(--border); border-radius:8px; padding:10px 14px;">
           <div style="display:flex; justify-content:space-between; font-size:11.5px; margin-bottom:6px;">
-            <span id="modal-progress-status" style="color:var(--text);">Mengunduh paket pembaruan...</span>
+            <span id="modal-progress-status" data-i18n="modal.update.downloading" style="color:var(--text);">Mengunduh paket pembaruan...</span>
             <span id="modal-progress-percent" style="color:#60a5fa; font-weight:bold;">0%</span>
           </div>
           <div style="height:6px; background:rgba(255,255,255,0.1); border-radius:3px; overflow:hidden;">
@@ -2227,23 +2227,23 @@
         </div>
 
         <div class="command-box-group" style="margin-bottom:14px;">
-          <span class="command-box-label">Catatan Perubahan (Changelog):</span>
+          <span class="command-box-label" data-i18n="modal.update.changelog">Catatan Perubahan (Changelog):</span>
           <div id="modal-changelog-content" style="max-height:160px; overflow-y:auto; background:var(--bg-primary, #18181b); border:1px solid var(--border); border-radius:6px; padding:10px 12px; font-size:12px; color:var(--text); line-height:1.5; white-space:pre-wrap; word-break:break-word;"></div>
         </div>
 
         <!-- Opsi update via terminal (One-liner CLI) -->
         <div class="command-box-group dev-only" style="margin-bottom:16px;">
-          <span class="command-box-label">Atau Update Otomatis lewat Terminal (1 Baris Perintah):</span>
+          <span class="command-box-label" data-i18n="modal.update.cli">Atau Update Otomatis lewat Terminal (1 Baris Perintah):</span>
           <div style="display:flex; gap:6px; align-items:center; margin-top:4px;">
             <code id="modal-cli-cmd" style="flex:1; background:rgba(0,0,0,0.3); border:1px solid var(--border); border-radius:6px; padding:8px 12px; font-size:11.5px; color:#a5d6ff; user-select:all; overflow-x:auto; white-space:nowrap;">curl -fsSL https://raw.githubusercontent.com/KarmaSenzu/Hermes-Desktop-Pet/main/update.sh | bash</code>
-            <button type="button" id="modal-copy-cli-btn" class="mini-btn" title="Salin perintah terminal"><span class="btn-svg-icon" data-icon="copy"></span> Salin</button>
+            <button type="button" id="modal-copy-cli-btn" class="mini-btn" title="Salin perintah terminal" data-i18n-attr="title:modal.update.copyTitle"><span class="btn-svg-icon" data-icon="copy"></span> <span data-i18n="common.copy">Salin</span></button>
           </div>
         </div>
 
         <div class="modal-actions" style="display:flex; flex-wrap:wrap; justify-content:flex-end; gap:8px;">
-          <button type="button" id="modal-cancel-btn" class="modal-btn secondary">Tutup</button>
-          <button type="button" id="modal-github-btn" class="modal-btn secondary">Halaman Rilis GitHub</button>
-          <button type="button" id="modal-download-btn" class="modal-btn primary" style="background:var(--accent,#3b82f6); color:#fff;">Update Otomatis Sekarang</button>
+          <button type="button" id="modal-cancel-btn" class="modal-btn secondary" data-i18n="common.close">Tutup</button>
+          <button type="button" id="modal-github-btn" class="modal-btn secondary" data-i18n="modal.update.githubPage">Halaman Rilis GitHub</button>
+          <button type="button" id="modal-download-btn" class="modal-btn primary" data-i18n="modal.update.autoNow" style="background:var(--accent,#3b82f6); color:#fff;">Update Otomatis Sekarang</button>
         </div>
       </div>
     </div>
