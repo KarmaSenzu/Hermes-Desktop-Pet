@@ -49,7 +49,21 @@ const DICT = {
     'settings.language.title': 'Bahasa Antarmuka',
     'settings.language.desc': 'Pilih bahasa tampilan aplikasi. Perubahan langsung diterapkan.',
     'settings.language.id': 'Bahasa Indonesia',
-    'settings.language.en': 'English'
+    'settings.language.en': 'English',
+    // ── Nav / sidebar (selalu terlihat) ──
+    'nav.home': 'Home',
+    'nav.package': 'Package Hub',
+    'nav.character': 'Karakter & Model',
+    'nav.animation': 'Animasi & Emote',
+    'nav.voice': 'Suara & TTS',
+    'nav.llm': 'LLM & Provider',
+    'nav.skill': 'Skill & Ekstensi',
+    'nav.brain': 'Hermes Brain & Otomasi',
+    'nav.storage': 'Penyimpanan',
+    'nav.action': 'Perintah & App',
+    'nav.shortcut': 'Shortcut Global',
+    // ── Shell / chrome ──
+    'shell.search': 'Cari',
   },
   en: {
     'common.save': 'Save',
@@ -81,7 +95,19 @@ const DICT = {
     'settings.language.title': 'Interface Language',
     'settings.language.desc': 'Choose the app display language. Changes apply instantly.',
     'settings.language.id': 'Bahasa Indonesia',
-    'settings.language.en': 'English'
+    'settings.language.en': 'English',
+    'nav.home': 'Home',
+    'nav.package': 'Package Hub',
+    'nav.character': 'Characters & Models',
+    'nav.animation': 'Animations & Emotes',
+    'nav.voice': 'Voice & TTS',
+    'nav.llm': 'LLM & Providers',
+    'nav.skill': 'Skills & Extensions',
+    'nav.brain': 'Hermes Brain & Automation',
+    'nav.storage': 'Storage',
+    'nav.action': 'Commands & Apps',
+    'nav.shortcut': 'Global Shortcuts',
+    'shell.search': 'Search'
   }
 }
 

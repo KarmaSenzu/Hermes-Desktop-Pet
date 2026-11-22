@@ -43,4 +43,13 @@ describe('i18n', () => {
     expect(setLocale('fr', { persist: false })).toBe('id')
     expect(setLocale('en-US', { persist: false })).toBe('en')
   })
+
+  it('label navigasi berubah sesuai bahasa', () => {
+    setLocale('id', { persist: false })
+    expect(t('nav.character')).toBe('Karakter & Model')
+    expect(t('nav.brain')).toContain('Otomasi')
+    setLocale('en', { persist: false })
+    expect(t('nav.character')).toBe('Characters & Models')
+    expect(t('nav.storage')).toBe('Storage')
+  })
 })

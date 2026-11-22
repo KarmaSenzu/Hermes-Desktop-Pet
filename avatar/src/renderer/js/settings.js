@@ -91,18 +91,23 @@ const FORMAT_INFO = [
 
 // --- Definisi sidebar (terpusat; icon = nama Lucide outline + color badge macOS) ---
 const SECTIONS = [
-  { id: 'home', icon: 'house', label: 'Home', color: 'blue' },
-  { id: 'package', icon: 'package', label: 'Package Hub', color: 'orange' },
-  { id: 'character', icon: 'user-round', label: 'Karakter & Model', color: 'green' },
-  { id: 'animation', icon: 'film', label: 'Animasi & Emote', color: 'purple' },
-  { id: 'voice', icon: 'mic', label: 'Suara & TTS', color: 'red' },
-  { id: 'llm', icon: 'brain', label: 'LLM & Provider', color: 'indigo' },
-  { id: 'skill', icon: 'puzzle', label: 'Skill & Ekstensi', color: 'teal' },
-  { id: 'brain', icon: 'cpu', label: 'Hermes Brain & Otomasi', color: 'purple' },
-  { id: 'storage', icon: 'hard-drive', label: 'Penyimpanan', color: 'teal' },
-  { id: 'action', icon: 'terminal', label: 'Perintah & App', color: 'slate' },
-  { id: 'shortcut', icon: 'keyboard', label: 'Shortcut Global', color: 'amber' }
+  { id: 'home', icon: 'house', key: 'nav.home', label: 'Home', color: 'blue' },
+  { id: 'package', icon: 'package', key: 'nav.package', label: 'Package Hub', color: 'orange' },
+  { id: 'character', icon: 'user-round', key: 'nav.character', label: 'Karakter & Model', color: 'green' },
+  { id: 'animation', icon: 'film', key: 'nav.animation', label: 'Animasi & Emote', color: 'purple' },
+  { id: 'voice', icon: 'mic', key: 'nav.voice', label: 'Suara & TTS', color: 'red' },
+  { id: 'llm', icon: 'brain', key: 'nav.llm', label: 'LLM & Provider', color: 'indigo' },
+  { id: 'skill', icon: 'puzzle', key: 'nav.skill', label: 'Skill & Ekstensi', color: 'teal' },
+  { id: 'brain', icon: 'cpu', key: 'nav.brain', label: 'Hermes Brain & Otomasi', color: 'purple' },
+  { id: 'storage', icon: 'hard-drive', key: 'nav.storage', label: 'Penyimpanan', color: 'teal' },
+  { id: 'action', icon: 'terminal', key: 'nav.action', label: 'Perintah & App', color: 'slate' },
+  { id: 'shortcut', icon: 'keyboard', key: 'nav.shortcut', label: 'Shortcut Global', color: 'amber' }
 ]
+
+// Label nav sesuai bahasa aktif (fallback ke label asli bila kunci tak ada).
+function sectionLabel(s) {
+  return s.key ? i18nT(s.key) : s.label
+}
 
 // --- Navigasi sidebar & history ala macOS ---
 const nav = document.getElementById('nav')
@@ -124,7 +129,7 @@ function renderNav() {
       <span class="nav-icon-badge badge-${s.color}">
         <span class="nav-icon">${renderIcon(s.icon, { size: 14 })}</span>
       </span>
-      <span class="nav-label">${escapeHtml(s.label)}</span>
+      <span class="nav-label">${escapeHtml(sectionLabel(s))}</span>
       <span class="nav-chevron">›</span>
     </button>`
   }).join('')
@@ -156,7 +161,7 @@ function navigateToSection(sectionId, pushHistory = true) {
 
   const titleEl = document.getElementById('current-section-title')
   if (titleEl) {
-    titleEl.textContent = sec.label
+    titleEl.textContent = sectionLabel(sec)
   }
 
   if (sectionId === 'package') {
@@ -4747,8 +4752,21 @@ function initLanguageSelector() {
     if (!settings.ui) settings.ui = {}
     settings.ui.language = lang
     saveSettings(settings)
-    setLocale(lang)
-    try { applyTranslations(document) } catch { /* abaikan */ }
+    // Terapkan locale lalu MUAT ULANG window agar SELURUH panel (nav + string JS/HTML)
+    // konsisten dalam bahasa baru. Reload = paling stabil & menghindari cangkupan
+    // setengah-terjemahan (sebagian panel belum ter-tag i18n).
+    try {
+      setLocale(lang)
+      showToast?.('Bahasa diterapkan', 'Memuat ulang antarmuka...', 'running', '🌐', 1200)
+    } catch { /* abaikan */ }
+    setTimeout(() => {
+      try {
+        window.location.reload()
+      } catch {
+        setLocale(lang)
+        applyTranslations(document)
+      }
+    }, 250)
   })
 }
 
