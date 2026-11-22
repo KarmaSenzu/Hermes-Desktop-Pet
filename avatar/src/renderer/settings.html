@@ -749,12 +749,12 @@
 
         <!-- KARAKTER -->
         <section id="panel-character" class="panel">
-          <h1>Karakter</h1>
-          <p class="subtitle">Kelola & pilih avatar.</p>
+          <h1 data-i18n="panel.character.title">Karakter</h1>
+          <p class="subtitle" data-i18n="panel.character.subtitle">Kelola & pilih avatar.</p>
 
           <!-- VIEW 1: daftar format (bisa diklik) -->
           <div id="format-view">
-            <div class="group-header">Format yang Didukung</div>
+            <div class="group-header" data-i18n="panel.character.group.formats">Format yang Didukung</div>
             <div class="card">
               <div id="format-list" class="format-list"></div>
             </div>
@@ -762,19 +762,19 @@
 
           <!-- VIEW 2: detail format (info lengkap + tambah + galeri karakter) -->
           <div id="format-detail-view" class="hidden">
-            <button id="back-to-formats" class="back-btn">‹ Kembali</button>
+            <button id="back-to-formats" class="back-btn">‹ <span data-i18n="common.back">Kembali</span></button>
             <div id="format-detail" class="format-detail"></div>
           </div>
         </section>
 
         <!-- ANIMASI -->
         <section id="panel-animation" class="panel">
-          <h1>Animasi</h1>
-          <p class="subtitle">Atur gaya avatar saat berpikir, megang jam/timer, memproses, serta kelola animasi kustom.</p>
+          <h1 data-i18n="panel.animation.title">Animasi</h1>
+          <p class="subtitle" data-i18n="panel.animation.subtitle">Atur gaya avatar saat berpikir, megang jam/timer, memproses, serta kelola animasi kustom.</p>
 
           <!-- VIEW 1: menu sub-item -->
           <div id="anim-menu-view">
-            <div class="group-header">Kategori Animasi & Pose</div>
+            <div class="group-header" data-i18n="panel.animation.group.categories">Kategori Animasi & Pose</div>
             <div class="card">
               <div id="anim-menu" class="anim-menu"></div>
             </div>
@@ -782,7 +782,7 @@
 
           <!-- VIEW 2: detail sub-item -->
           <div id="anim-detail-view" class="hidden">
-            <button id="anim-back-btn" class="back-btn">‹ Kembali</button>
+            <button id="anim-back-btn" class="back-btn">‹ <span data-i18n="common.back">Kembali</span></button>
             <div id="anim-detail"></div>
           </div>
         </section>
@@ -1531,33 +1531,33 @@
 
         <!-- SKILL -->
         <section id="panel-skill" class="panel">
-          <h1>Skill & Ekstensi</h1>
-          <p class="subtitle">Kelola kemampuan AI, alat bantu, dan integrasi Hermes.</p>
+          <h1 data-i18n="panel.skill.title">Skill & Ekstensi</h1>
+          <p class="subtitle" data-i18n="panel.skill.subtitle">Kelola kemampuan AI, alat bantu, dan integrasi Hermes.</p>
 
-          <div class="group-header">Pustaka Skill Terpasang</div>
+          <div class="group-header" data-i18n="panel.skill.group.installed">Pustaka Skill Terpasang</div>
           <div class="card padded">
             <div class="skill-toolbar" style="margin-bottom: 12px;">
-              <input id="skill-search" type="text" class="mac-input" placeholder="Cari skill terpasang..." />
-              <button id="skill-refresh-btn" class="mini-btn browse" title="Muat ulang daftar skill dari disk"><span class="btn-svg-icon" data-icon="refresh-cw"></span> Muat Ulang</button>
+              <input id="skill-search" type="text" class="mac-input" placeholder="Cari skill terpasang..." data-i18n-attr="placeholder:panel.skill.searchPh" />
+              <button id="skill-refresh-btn" class="mini-btn browse" title="Muat ulang daftar skill dari disk" data-i18n-attr="title:panel.skill.reloadTitle"><span class="btn-svg-icon" data-icon="refresh-cw"></span> <span data-i18n="panel.skill.reload">Muat Ulang</span></button>
             </div>
             <div id="skill-list" class="skill-list"></div>
           </div>
 
-          <div class="group-header">Install Skill dari Hub Resmi</div>
+          <div class="group-header" data-i18n="panel.skill.group.install">Install Skill dari Hub Resmi</div>
           <div class="card">
             <div class="settings-row">
               <div class="row-label">
-                <span class="row-title">Skill Identifier</span>
+                <span class="row-title" data-i18n="panel.skill.idLabel">Skill Identifier</span>
                 <span class="row-desc">Contoh: <code>official/research/duckduckgo-search</code>, <code>official/devops/watchers</code></span>
               </div>
               <div class="row-control">
-                <input id="skill-install-id" type="text" class="mac-input" style="width: min(260px, 40vw);" placeholder="official/research/..." />
-                <button id="skill-install-btn" class="mini-btn primary" style="margin-left: 6px;">Install Skill</button>
+                <input id="skill-install-id" type="text" class="mac-input" style="width: min(260px, 40vw);" placeholder="official/research/..." data-i18n-attr="placeholder:panel.skill.idPh" />
+                <button id="skill-install-btn" class="mini-btn primary" style="margin-left: 6px;" data-i18n="panel.skill.installBtn">Install Skill</button>
               </div>
             </div>
           </div>
 
-          <div class="group-header">Buat / Unggah Skill Kustom (Opsional)</div>
+          <div class="group-header" data-i18n="panel.skill.group.create">Buat / Unggah Skill Kustom (Opsional)</div>
           <div class="pkg-card" id="skill-create-card">
             <div class="pkg-header">
               <div class="pkg-title-area">
@@ -1565,8 +1565,8 @@
                   <svg class="lucide-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
                 </div>
                 <div class="pkg-title-text">
-                  <span class="pkg-title">Buat Skill Baru (Tulis SKILL.md / Upload)</span>
-                  <span class="pkg-sub">Tambahkan instruksi AI, prompt kustom, atau file markdown sendiri</span>
+                  <span class="pkg-title" data-i18n="panel.skill.create.title">Buat Skill Baru (Tulis SKILL.md / Upload)</span>
+                  <span class="pkg-sub" data-i18n="panel.skill.create.sub">Tambahkan instruksi AI, prompt kustom, atau file markdown sendiri</span>
                 </div>
               </div>
               <div class="pkg-header-right">
@@ -1576,33 +1576,33 @@
             <div class="pkg-body">
               <div class="settings-row" style="padding-top:0;">
                 <div class="row-label">
-                  <span class="row-title">Nama Skill</span>
-                  <span class="row-desc">Identifier unik (huruf kecil & strip)</span>
+                  <span class="row-title" data-i18n="panel.skill.name.label">Nama Skill</span>
+                  <span class="row-desc" data-i18n="panel.skill.name.desc">Identifier unik (huruf kecil & strip)</span>
                 </div>
                 <div class="row-control">
-                  <input id="skill-name" type="text" class="mac-input" placeholder="cth. my-custom-skill" />
+                  <input id="skill-name" type="text" class="mac-input" placeholder="cth. my-custom-skill" data-i18n-attr="placeholder:panel.skill.name.ph" />
                 </div>
               </div>
               <div class="settings-row">
                 <div class="row-label">
-                  <span class="row-title">Kategori (Opsional)</span>
-                  <span class="row-desc">Pengelompokan folder skill</span>
+                  <span class="row-title" data-i18n="panel.skill.category.label">Kategori (Opsional)</span>
+                  <span class="row-desc" data-i18n="panel.skill.category.desc">Pengelompokan folder skill</span>
                 </div>
                 <div class="row-control">
-                  <input id="skill-category" type="text" class="mac-input" placeholder="cth. general / productivity" />
+                  <input id="skill-category" type="text" class="mac-input" placeholder="cth. general / productivity" data-i18n-attr="placeholder:panel.skill.category.ph" />
                 </div>
               </div>
               <div style="margin-top: 12px;">
-                <label style="display:block; font-size:12px; font-weight:600; margin-bottom:6px; color:var(--text);">Isi Instruksi (SKILL.md):</label>
-                <textarea id="skill-content" class="mac-input" style="width:100%; height:110px; font-family:'SF Mono', monospace; font-size:12px; resize:vertical; padding:10px;" placeholder="Tulis instruksi skill dan peran AI di sini..."></textarea>
+                <label data-i18n="panel.skill.content.label" style="display:block; font-size:12px; font-weight:600; margin-bottom:6px; color:var(--text);">Isi Instruksi (SKILL.md):</label>
+                <textarea id="skill-content" class="mac-input" style="width:100%; height:110px; font-family:'SF Mono', monospace; font-size:12px; resize:vertical; padding:10px;" placeholder="Tulis instruksi skill dan peran AI di sini..." data-i18n-attr="placeholder:panel.skill.content.ph"></textarea>
               </div>
               <div style="display:flex; justify-content:space-between; align-items:center; margin-top:12px; gap:8px; flex-wrap:wrap;">
                 <div class="skill-upload-row" style="margin:0;">
-                  <button type="button" id="skill-upload-btn" class="mini-btn browse"><span class="btn-svg-icon" data-icon="folder-open"></span> Unggah File .md</button>
+                  <button type="button" id="skill-upload-btn" class="mini-btn browse"><span class="btn-svg-icon" data-icon="folder-open"></span> <span data-i18n="panel.skill.upload">Unggah File .md</span></button>
                   <input id="skill-file" type="file" accept=".md,.markdown,text/markdown" hidden />
                   <span class="hint" id="skill-file-name" style="margin-left:8px;"></span>
                 </div>
-                <button id="skill-add-btn" class="mini-btn primary">Simpan Skill ke Disk</button>
+                <button id="skill-add-btn" class="mini-btn primary" data-i18n="panel.skill.save">Simpan Skill ke Disk</button>
               </div>
             </div>
           </div>
@@ -2015,17 +2015,17 @@
         <!-- PENYIMPANAN (STORAGE MANAGER) -->
         <section id="panel-storage" class="panel">
           <div id="storage-overview-view">
-            <h1>Penyimpanan</h1>
-            <p class="subtitle">Lihat pemakaian ruang lokal sistem oleh obrolan, gambar, file lampiran, paket, dan cache Anda.</p>
+            <h1 data-i18n="panel.storage.title">Penyimpanan</h1>
+            <p class="subtitle" data-i18n="panel.storage.subtitle">Lihat pemakaian ruang lokal sistem oleh obrolan, gambar, file lampiran, paket, dan cache Anda.</p>
 
             <div class="card padded" style="margin-bottom: 18px;">
               <div class="storage-cap-header">
                 <div>
-                  <div id="storage-used-headline" class="storage-headline">Memindai penyimpanan lokal…</div>
-                  <div id="storage-disk-meta" class="storage-disk-meta">Menghitung rincian direktori...</div>
+                  <div id="storage-used-headline" class="storage-headline" data-i18n="panel.storage.scanning">Memindai penyimpanan lokal…</div>
+                  <div id="storage-disk-meta" class="storage-disk-meta" data-i18n="panel.storage.calc">Menghitung rincian direktori...</div>
                 </div>
                 <div class="storage-cap-controls">
-                  <label for="storage-soft-cap-select" class="hint" style="margin:0;">Batas Pengingat:</label>
+                  <label for="storage-soft-cap-select" class="hint" data-i18n="panel.storage.capLabel" style="margin:0;">Batas Pengingat:</label>
                   <select id="storage-soft-cap-select" class="mac-select" style="width:auto; min-width:105px;">
                     <option value="512">512 MB</option>
                     <option value="1024">1 GB</option>
@@ -2035,7 +2035,7 @@
                   </select>
                   <button type="button" id="storage-refresh-btn" class="mini-btn secondary">
                     <span class="btn-svg-icon" data-icon="refresh-cw" data-icon-size="13"></span>
-                    <span>Segarkan</span>
+                    <span data-i18n="panel.storage.refresh">Segarkan</span>
                   </button>
                 </div>
               </div>
@@ -2046,28 +2046,28 @@
               <div class="storage-options-row">
                 <label class="storage-check-label">
                   <input type="checkbox" id="storage-archive-uploads-toggle" checked />
-                  <span>Arsipkan otomatis screenshot &amp; file yang dijatuhkan ke avatar</span>
+                  <span data-i18n="panel.storage.archive">Arsipkan otomatis screenshot &amp; file yang dijatuhkan ke avatar</span>
                 </label>
                 <button type="button" id="storage-quick-clean-cache-btn" class="mini-btn secondary">
                   <span class="btn-svg-icon" data-icon="trash-2" data-icon-size="13"></span>
-                  <span>Bersihkan Cache &amp; Log</span>
+                  <span data-i18n="panel.storage.cleanCache">Bersihkan Cache &amp; Log</span>
                 </button>
               </div>
             </div>
 
-            <div class="group-header">Kelola penyimpanan</div>
-            <p class="hint" style="margin: 0 0 8px 4px;">Klik kategori di bawah untuk melihat rincian isi folder, pratinjau gambar, atau mengosongkan ruang.</p>
+            <div class="group-header" data-i18n="panel.storage.group.manage">Kelola penyimpanan</div>
+            <p class="hint" data-i18n="panel.storage.manageHint" style="margin: 0 0 8px 4px;">Klik kategori di bawah untuk melihat rincian isi folder, pratinjau gambar, atau mengosongkan ruang.</p>
             <div id="storage-category-list" class="card storage-cat-card" style="margin-bottom: 18px;"></div>
 
-            <div class="group-header">Engine &amp; Runtime (Info Saja)</div>
+            <div class="group-header" data-i18n="panel.storage.group.engine">Engine &amp; Runtime (Info Saja)</div>
             <div id="storage-engine-card" class="card padded"></div>
           </div>
 
           <div id="storage-detail-view" class="hidden">
             <div class="subpanel-nav" style="margin-bottom: 12px;">
-              <button type="button" id="storage-back-btn" class="mini-btn secondary">← Kembali ke Penyimpanan</button>
+              <button type="button" id="storage-back-btn" class="mini-btn secondary">← <span data-i18n="panel.storage.backToStorage">Kembali ke Penyimpanan</span></button>
             </div>
-            <h1 id="storage-detail-title" style="margin-bottom: 4px;">Rincian Kategori</h1>
+            <h1 id="storage-detail-title" data-i18n="panel.storage.detailTitle" style="margin-bottom: 4px;">Rincian Kategori</h1>
             <p id="storage-detail-meta" class="subtitle" style="margin-bottom: 12px; word-break: break-all;"></p>
             <div id="storage-detail-actions" class="storage-detail-actions"></div>
             <div id="storage-detail-items" class="card padded"></div>
@@ -2076,18 +2076,18 @@
 
         <!-- PERINTAH -->
         <section id="panel-action" class="panel">
-          <h1>Perintah & Aplikasi</h1>
-          <p class="subtitle">Atur izin aksi sistem & integrasi peluncuran aplikasi lokal.</p>
+          <h1 data-i18n="panel.action.title">Perintah & Aplikasi</h1>
+          <p class="subtitle" data-i18n="panel.action.subtitle">Atur izin aksi sistem & integrasi peluncuran aplikasi lokal.</p>
 
-          <div class="group-header">Hak Akses & Izin Sistem</div>
+          <div class="group-header" data-i18n="panel.action.group.permissions">Hak Akses & Izin Sistem</div>
           <div class="card">
             <div id="action-list"></div>
-            <p class="hint" style="padding: 10px 14px; margin: 0; border-top: 1px solid var(--border-soft);">
+            <p class="hint" data-i18n="panel.action.hint" style="padding: 10px 14px; margin: 0; border-top: 1px solid var(--border-soft);">
               Aksi berisiko tinggi (terminal/shell) otomatis meminta dialog konfirmasi sebelum dijalankan.
             </p>
           </div>
 
-          <div class="group-header">Aplikasi Lokal Terintegrasi</div>
+          <div class="group-header" data-i18n="panel.action.group.apps">Aplikasi Lokal Terintegrasi</div>
           <div class="card">
             <div class="settings-row">
               <div class="format-emblem theme-blue">
@@ -2095,12 +2095,12 @@
               </div>
               <div class="format-info-col">
                 <div class="format-title-line">
-                  <span class="format-title">Pindai Aplikasi Otomatis</span>
+                  <span class="format-title" data-i18n="panel.action.scan.title">Pindai Aplikasi Otomatis</span>
                 </div>
-                <p class="format-desc-text" id="app-scan-desc">Deteksi otomatis seluruh aplikasi terpasang (Windows / macOS / Linux)</p>
+                <p class="format-desc-text" id="app-scan-desc" data-i18n="panel.action.scan.desc">Deteksi otomatis seluruh aplikasi terpasang (Windows / macOS / Linux)</p>
               </div>
               <div class="row-control">
-                <button type="button" id="app-scan-btn" class="mini-btn secondary" title="Pindai semua aplikasi terpasang secara otomatis">Pindai Aplikasi</button>
+                <button type="button" id="app-scan-btn" class="mini-btn secondary" title="Pindai semua aplikasi terpasang secara otomatis" data-i18n="panel.action.scan.btn">Pindai Aplikasi</button>
               </div>
             </div>
             <div class="settings-row app-add-row">
@@ -2109,22 +2109,22 @@
               </div>
               <div class="format-info-col">
                 <div class="format-title-line">
-                  <span class="format-title">Tambah Aplikasi Manual</span>
+                  <span class="format-title" data-i18n="panel.action.add.title">Tambah Aplikasi Manual</span>
                 </div>
-                <p class="format-desc-text">Daftarkan file .exe, .lnk, atau .app aplikasi lokal</p>
+                <p class="format-desc-text" data-i18n="panel.action.add.desc">Daftarkan file .exe, .lnk, atau .app aplikasi lokal</p>
               </div>
               <div class="row-control app-add-control-group">
-                <input id="app-name" type="text" class="mac-input app-name-input" placeholder="Nama aplikasi" />
+                <input id="app-name" type="text" class="mac-input app-name-input" placeholder="Nama aplikasi" data-i18n-attr="placeholder:panel.action.add.namePh" />
                 <div class="app-path-wrapper">
-                  <input id="app-command" type="text" class="mac-input app-path-input" placeholder="Path .exe / .lnk / .app" />
-                  <button type="button" id="app-pick-btn" class="mini-btn browse" title="Pilih file aplikasi">Pilih…</button>
+                  <input id="app-command" type="text" class="mac-input app-path-input" placeholder="Path .exe / .lnk / .app" data-i18n-attr="placeholder:panel.action.add.pathPh" />
+                  <button type="button" id="app-pick-btn" class="mini-btn browse" title="Pilih file aplikasi" data-i18n="panel.action.add.pick">Pilih…</button>
                 </div>
-                <button id="app-add-btn" class="mini-btn primary">Tambah</button>
+                <button id="app-add-btn" class="mini-btn primary" data-i18n="panel.action.add.btn">Tambah</button>
               </div>
             </div>
           </div>
 
-          <div class="group-header">Daftar Aplikasi Terdaftar</div>
+          <div class="group-header" data-i18n="panel.action.group.registered">Daftar Aplikasi Terdaftar</div>
           <div class="card">
             <div id="app-list" class="app-list"></div>
           </div>
@@ -2132,14 +2132,14 @@
 
         <!-- SHORTCUT -->
         <section id="panel-shortcut" class="panel">
-          <h1>Shortcut Global</h1>
-          <p class="subtitle">Kombinasi tombol pintasan yang dapat ditekan di aplikasi manapun.</p>
+          <h1 data-i18n="panel.shortcut.title">Shortcut Global</h1>
+          <p class="subtitle" data-i18n="panel.shortcut.subtitle">Kombinasi tombol pintasan yang dapat ditekan di aplikasi manapun.</p>
 
-          <div class="group-header">Daftar Pintasan Keyboard</div>
+          <div class="group-header" data-i18n="panel.shortcut.group.list">Daftar Pintasan Keyboard</div>
           <div class="card">
             <div id="shortcut-list"></div>
           </div>
-          <p class="hint" style="margin: 8px 10px 16px; font-size: 11.5px; color: var(--text-secondary);">Shortcut global tetap aktif di latar belakang (background) saat Anda sedang membuka aplikasi lain.</p>
+          <p class="hint" data-i18n="panel.shortcut.hint" style="margin: 8px 10px 16px; font-size: 11.5px; color: var(--text-secondary);">Shortcut global tetap aktif di latar belakang (background) saat Anda sedang membuka aplikasi lain.</p>
         </section>
       </main>
     </div>

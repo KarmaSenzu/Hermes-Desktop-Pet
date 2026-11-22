@@ -4067,12 +4067,6 @@ body[data-ui-mode="simple"] [data-terminal-cmd]:not(.force-visible) {
   min-width: 0;
 }
 
-@media (max-width: 820px) {
-  .brain-split {
-    grid-template-columns: 1fr;
-  }
-}
-
 .brain-scroll-list {
   display: flex;
   flex-direction: column;
@@ -4657,6 +4651,113 @@ p, li, dd, td, .modal-message, .brain-msg-bubble, .format-desc-text, .prereq-car
 /* Modal: teks panjang/URL bisa wrap */
 .modal-message {
   overflow-wrap: anywhere;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   RESPONSIVE PANELS — perbaikan tumpang-tindih saat jendela dipersempit.
+   (Ditempel paling akhir agar menang cascade atas aturan sebelumnya.)
+   Fokus: baris "ikon + teks + kontrol" kini DAPAT wrap sehingga teks tidak
+   tertindih tombol/label saat sempit (LLM, Skill, Package, OAuth, Kuota, dll).
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Pola baris umum (settings-row / row-control) ── */
+.settings-row { flex-wrap: wrap; row-gap: 8px; }
+.row-control {
+  flex-shrink: 1;
+  min-width: 0;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  row-gap: 8px;
+}
+
+/* ── Item format/kartu (LLM provider, karakter, animasi) ── */
+.format-item { flex-wrap: wrap; row-gap: 10px; }
+.format-info-col { flex: 1 1 220px; min-width: 0; }
+.format-title-line { flex-wrap: wrap; row-gap: 4px; }
+.format-title { min-width: 0; overflow-wrap: anywhere; }
+/* Deskripsi: mengalir (wrap) alih-alih terpotong "…" permanen */
+.format-desc-text { white-space: normal; overflow-wrap: anywhere; text-overflow: clip; overflow: visible; }
+.format-status-col {
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  row-gap: 6px;
+  margin-left: auto;
+}
+
+/* Full button, model chip & preset: jangan memaksa melebar */
+.mini-btn { max-width: 100%; }
+.llm-model-chip { white-space: normal; overflow-wrap: anywhere; max-width: 100%; }
+.llm-preset-title, .llm-preset-sub { overflow-wrap: anywhere; }
+
+/* ── Package ── */
+.pkg-header { flex-wrap: wrap; row-gap: 8px; margin: 0; }
+.pkg-header-right { flex-shrink: 1; flex-wrap: wrap; justify-content: flex-end; row-gap: 6px; }
+.pkg-sub { white-space: normal; overflow-wrap: anywhere; text-overflow: clip; overflow: visible; }
+
+/* ── Skill ── */
+.skill-acc-head { flex-wrap: wrap; row-gap: 4px; }
+.skill-acc-cat { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.skill-chip { max-width: 100%; }
+.skill-chip-name { min-width: 0; overflow-wrap: anywhere; word-break: break-word; }
+
+/* ── OAuth / Kuota ── */
+.oauth-card-top { flex-wrap: wrap; row-gap: 6px; }
+.oauth-card-name { white-space: normal; overflow-wrap: anywhere; }
+.oauth-quick-paste-row { flex-wrap: wrap; row-gap: 6px; }
+.oauth-inline-key { flex: 1 1 140px; min-width: 0; }
+.oauth-limit-row { flex-wrap: wrap; row-gap: 6px; }
+.oauth-limit-texts { flex: 1; min-width: 0; }
+.oauth-limit-title, .oauth-limit-sub { overflow-wrap: anywhere; }
+.acc-quota-row { grid-template-columns: minmax(70px, 38%) minmax(60px, 1fr) auto; }
+.acc-quota-label-col { white-space: normal; overflow-wrap: anywhere; }
+.acc-reset-text, .acc-quotas-subhead, .acc-bar-meta, .acc-pagination-meta, .acc-plan-tag {
+  flex-wrap: wrap;
+  row-gap: 4px;
+}
+
+/* ── Brain: judul kartu list ── */
+.brain-list-card-head { flex-wrap: wrap; row-gap: 2px; }
+.brain-list-card-title { flex: 1; min-width: 0; }
+.brain-entry-text { min-width: 0; }
+
+/* ── Voice / Shortcut / Home ── */
+.mac-input-action-group { width: 100%; min-width: 0; max-width: 240px; flex: 1 1 180px; }
+.voice-badge-pill { white-space: normal; }
+.shortcut-card-row { flex-wrap: wrap; row-gap: 8px; }
+.shortcut-action-group { flex-shrink: 1; flex-wrap: wrap; justify-content: flex-end; }
+.active-char-info { min-width: 0; overflow-wrap: anywhere; }
+.group-header { flex-wrap: wrap; row-gap: 4px; }
+.app-item-main { flex-wrap: wrap; }
+.app-cmd { min-width: 0; flex: 0 1 auto; max-width: 100%; }
+
+/* ── Header aplikasi (chrome) ── */
+.content-header { flex-wrap: wrap; row-gap: 8px; }
+.current-section-title { min-width: 0; overflow-wrap: anywhere; }
+
+/* ── Breakpoint utama (jendela Settings bisa menyempit) ── */
+@media (max-width: 1180px) {
+  .format-status-col { justify-content: flex-start; }
+}
+
+@media (max-width: 900px) {
+  .card, .card.padded { padding: 14px 16px; }
+  .settings-alert-banner .alert-actions { flex-wrap: wrap; }
+  /* Kuota: kolom label/bar/reset ditumpuk agar tidak berhimpit */
+  .acc-quota-row { grid-template-columns: 1fr; row-gap: 4px; }
+  .acc-reset-text { text-align: left; }
+  /* Brain dua kolom → satu kolom SEBELUM kolom saling menghimpit */
+  .brain-split { grid-template-columns: 1fr; }
+  /* OAuth paste button full-width saat sempit */
+  .oauth-paste-activate-btn { flex: 1 1 100%; }
+  /* Header: sembunyikan teks toggle tema (ikon tetap, judul via title) */
+  .header-right .theme-text { display: none; }
+}
+
+@media (max-width: 780px) {
+  .format-status-col { width: 100%; justify-content: flex-start; }
+  .shortcut-action-group { width: 100%; justify-content: flex-start; }
+  .quota-view-tabs { flex-wrap: wrap; }
 }
 
 

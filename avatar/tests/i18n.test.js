@@ -52,4 +52,15 @@ describe('i18n', () => {
     expect(t('nav.character')).toBe('Characters & Models')
     expect(t('nav.storage')).toBe('Storage')
   })
+
+  it('judul panel kecil (skill/storage/action) berubah sesuai bahasa', () => {
+    setLocale('id', { persist: false })
+    expect(t('panel.skill.title')).toBe('Skill & Ekstensi')
+    expect(t('panel.storage.title')).toBe('Penyimpanan')
+    setLocale('en', { persist: false })
+    expect(t('panel.skill.title')).toBe('Skills & Extensions')
+    expect(t('panel.storage.title')).toBe('Storage')
+    expect(t('panel.action.title')).toBe('Commands & Applications')
+    expect(t('common.back')).toBe('Back')
+  })
 })
