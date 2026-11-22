@@ -11,9 +11,14 @@ import {
   statSync,
   mkdirSync,
   renameSync,
-  unlinkSync
+  unlinkSync,
+  openSync,
+  readSync,
+  closeSync,
+  createWriteStream
 } from 'node:fs'
 import { Readable } from 'node:stream'
+import { pipeline } from 'node:stream/promises'
 import { execFile } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { homedir } from 'node:os'
@@ -66,23 +71,67 @@ export function getAudioCacheDir() {
   return dir
 }
 
+/**
+ * Deteksi format audio nyata berdasarkan magic bytes di header berkas.
+ * Mencegah kesalahan CoreAudio (macOS) & Chromium Demuxer (Windows) akibat
+ * file WebM Opus yang salah diberi ekstensi .m4a / audio/mp4.
+ */
+export function detectAudioFileType(filePath) {
+  try {
+    if (!filePath || !existsSync(filePath)) return null
+    const fd = openSync(filePath, 'r')
+    const buffer = Buffer.alloc(16)
+    const bytesRead = readSync(fd, buffer, 0, 16, 0)
+    closeSync(fd)
+    if (bytesRead < 4) return null
+
+    // WebM / Matroska: 0x1A 0x45 0xDF 0xA3
+    if (buffer[0] === 0x1a && buffer[1] === 0x45 && buffer[2] === 0xdf && buffer[3] === 0xa3) {
+      return { ext: 'webm', mimeType: 'audio/webm' }
+    }
+    // Ogg / Opus: 0x4F 0x67 0x67 0x53 ('OggS')
+    if (buffer[0] === 0x4f && buffer[1] === 0x67 && buffer[2] === 0x67 && buffer[3] === 0x53) {
+      return { ext: 'ogg', mimeType: 'audio/ogg' }
+    }
+    // MP3: ID3 tag ('ID3') atau sync header (0xFF 0xFB/0xFA/0xF3/0xF2)
+    if ((buffer[0] === 0x49 && buffer[1] === 0x44 && buffer[2] === 0x33) ||
+        (buffer[0] === 0xff && (buffer[1] & 0xe0) === 0xe0)) {
+      return { ext: 'mp3', mimeType: 'audio/mpeg' }
+    }
+    // MP4 / M4A: 'ftyp' at offset 4
+    if (buffer[4] === 0x66 && buffer[5] === 0x74 && buffer[6] === 0x79 && buffer[7] === 0x70) {
+      return { ext: 'm4a', mimeType: 'audio/mp4' }
+    }
+    // WAV: 'RIFF'
+    if (buffer[0] === 0x52 && buffer[1] === 0x49 && buffer[2] === 0x46 && buffer[3] === 0x46) {
+      return { ext: 'wav', mimeType: 'audio/wav' }
+    }
+    // FLAC: 'fLaC'
+    if (buffer[0] === 0x66 && buffer[1] === 0x4c && buffer[2] === 0x61 && buffer[3] === 0x43) {
+      return { ext: 'flac', mimeType: 'audio/flac' }
+    }
+  } catch {}
+  return null
+}
+
 export function findCachedAudioFile(videoId) {
   if (!videoId || typeof videoId !== 'string') return null
   const cleanId = videoId.replace(/[^a-zA-Z0-9_-]/g, '')
   if (!cleanId) return null
   const dir = getAudioCacheDir()
-  const extensions = ['m4a', 'mp4', 'webm', 'mp3', 'opus']
+  const extensions = ['m4a', 'mp4', 'webm', 'mp3', 'opus', 'ogg', 'wav', 'flac']
   for (const ext of extensions) {
     const candidate = join(dir, `${cleanId}.${ext}`)
     try {
       if (existsSync(candidate)) {
         const stat = statSync(candidate)
         if (stat.isFile() && stat.size > 32 * 1024) {
+          const detected = detectAudioFileType(candidate)
           return {
             path: candidate,
             size: stat.size,
-            ext,
-            mimeType: MIME_BY_EXT[ext] || 'audio/mp4'
+            ext: detected?.ext || ext,
+            mimeType: detected?.mimeType || MIME_BY_EXT[ext] || 'audio/mp4'
           }
         }
       }
@@ -91,50 +140,67 @@ export function findCachedAudioFile(videoId) {
   return null
 }
 
-export async function downloadAudioToCache(videoId, watchUrl, { resolvePythonCmd, execFileImpl } = {}) {
+export async function downloadAudioToCache(videoId, watchUrl, { resolvePythonCmd, execFileImpl, fetchImpl = globalThis.fetch } = {}) {
   if (!videoId || activeCacheDownloads.has(videoId)) return null
   const alreadyCached = findCachedAudioFile(videoId)
   if (alreadyCached) return alreadyCached
 
   activeCacheDownloads.add(videoId)
   try {
-    const ytdlp = await resolveYtDlpCommand({ resolvePythonCmd, execFileImpl })
-    if (!ytdlp) return null
-
     const dir = getAudioCacheDir()
-    const targetPath = join(dir, `${videoId}.m4a`)
     const tempPath = join(dir, `${videoId}.part`)
     const execImpl = execFileImpl || execFileAsync
-    const nodeBin = execFileImpl ? null : await resolveNodeBinary(execImpl)
-    const runtimeArgs = nodeBin ? ['--js-runtimes', nodeBin === 'node' ? 'node' : `node:${nodeBin}`] : []
 
     try {
       if (existsSync(tempPath)) unlinkSync(tempPath)
     } catch {}
 
-    const args = [
-      ...ytdlp.baseArgs,
-      '--no-update',
-      ...runtimeArgs,
-      '--no-playlist',
-      '-f', 'bestaudio[ext=m4a]/bestaudio/ba/18/b',
-      '-o', tempPath,
-      watchUrl || `https://www.youtube.com/watch?v=${videoId}`
-    ]
+    const ytdlp = await resolveYtDlpCommand({ resolvePythonCmd, execFileImpl })
+    if (ytdlp) {
+      const nodeBin = execFileImpl ? null : await resolveNodeBinary(execImpl)
+      const runtimeArgs = nodeBin ? ['--js-runtimes', nodeBin === 'node' ? 'node' : `node:${nodeBin}`] : []
 
-    await execImpl(ytdlp.cmd, args, { timeout: 35000, maxBuffer: 10 * 1024 * 1024, windowsHide: true })
+      const args = [
+        ...ytdlp.baseArgs,
+        '--no-update',
+        ...runtimeArgs,
+        '--no-playlist',
+        '-f', 'bestaudio[ext=m4a]/bestaudio/ba/18/b',
+        '-o', tempPath,
+        watchUrl || `https://www.youtube.com/watch?v=${videoId}`
+      ]
+
+      await execImpl(ytdlp.cmd, args, { timeout: 45000, maxBuffer: 10 * 1024 * 1024, windowsHide: true })
+    } else {
+      // Fallback zero-install (lintas platform, terutama di macOS tanpa yt-dlp):
+      // Ambil stream langsung dari resolveMusicStream lalu unduh lewat fetch
+      const streamInfo = await resolveMusicStream({ videoId, url: watchUrl, resolvePythonCmd, execFileImpl, fetchImpl })
+      const directStreamUrl = streamInfo?.streamUrl || streamCache.get(`yt-${videoId}`)?.streamUrl
+      if (directStreamUrl && parseHttpUrl(directStreamUrl)) {
+        const resp = await fetchImpl(directStreamUrl, {
+          headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36' }
+        })
+        if (resp.ok && resp.body) {
+          const fileStream = createWriteStream(tempPath)
+          const nodeStream = Readable.fromWeb(resp.body)
+          await pipeline(nodeStream, fileStream)
+        }
+      }
+    }
 
     if (existsSync(tempPath)) {
       const st = statSync(tempPath)
       if (st.size > 32 * 1024) {
-        renameSync(tempPath, targetPath)
-        return { path: targetPath, size: st.size, ext: 'm4a', mimeType: 'audio/mp4' }
+        const detected = detectAudioFileType(tempPath) || { ext: 'm4a', mimeType: 'audio/mp4' }
+        const realTargetPath = join(dir, `${videoId}.${detected.ext}`)
+        renameSync(tempPath, realTargetPath)
+        return { path: realTargetPath, size: st.size, ext: detected.ext, mimeType: detected.mimeType }
       } else {
         try { unlinkSync(tempPath) } catch {}
       }
     }
-  } catch {
-    // Abaikan kegagalan download cache, fallback ke streaming proxy langsung
+  } catch (err) {
+    console.warn(`[MusicCache] Unduh audio ${videoId} gagal:`, err?.message || err)
   } finally {
     activeCacheDownloads.delete(videoId)
   }
@@ -1052,7 +1118,7 @@ export async function handleMusicStreamProtocolRequest(request, corsHeaders = {}
 
               const nextEnd = Math.min(finalEnd, cursor + YOUTUBE_CHUNK_BYTES - 1)
               const nextRange = `bytes=${cursor}-${nextEnd}`
-              let { resp: nextResp } = await fetchUpstreamChunk(activeEntry, nextRange)
+              let { resp: nextResp } = await fetchUpstreamChunk(activeEntry, nextRange).catch(() => ({ resp: { status: 502 } }))
 
               if ((nextResp.status === 403 || nextResp.status === 410) && videoId) {
                 streamCache.delete(streamId)
@@ -1062,21 +1128,22 @@ export async function handleMusicStreamProtocolRequest(request, corsHeaders = {}
                   resolvePythonCmd: deps.resolvePythonCmd,
                   execFileImpl: deps.execFileImpl,
                   forceRefresh: true
-                })
+                }).catch(() => null)
                 if (refreshed?.ok) {
                   const updatedEntry = getValidCachedStream(refreshed.streamId)
                   if (updatedEntry && parseHttpUrl(updatedEntry.streamUrl)) {
                     activeEntry = updatedEntry
-                    ;({ resp: nextResp } = await fetchUpstreamChunk(updatedEntry, nextRange))
+                    ;({ resp: nextResp } = await fetchUpstreamChunk(updatedEntry, nextRange).catch(() => ({ resp: { status: 502 } })))
                   }
                 }
               }
 
               if ((nextResp.status !== 206 && nextResp.status !== 200) || !nextResp.body) {
-                controller.error(new Error(`Upstream chunk error (HTTP ${nextResp.status})`))
+                console.warn(`[MusicStream] Chunk range ${nextRange} selesai atau tidak tersedia (HTTP ${nextResp?.status}). Menutup stream secara halus.`)
+                controller.close()
                 return
               }
-              const nextCr = nextResp.headers.get('content-range') || ''
+              const nextCr = nextResp.headers?.get?.('content-range') || ''
               const nextM = nextCr.match(/bytes\s+(\d+)-(\d+)\/(\d+)/i)
               cursor = nextM ? (Number(nextM[2]) + 1) : (nextEnd + 1)
               currentReader = nextResp.body.getReader()

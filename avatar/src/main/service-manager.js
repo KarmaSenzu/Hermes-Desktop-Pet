@@ -470,30 +470,57 @@ async function startKokoro() {
   }
 }
 
+let isStartingRouter = false
+
 /**
  * Jalankan 9Router daemon jika belum jalan di port 20128.
+ * Menjamin eksekusi headless murni (TRAY_MODE: 0) tanpa memicu crash systray2 di macOS.
  */
 async function startRouter() {
   if (await isPortOpen(ROUTER_PORT)) {
     return { already: true, ok: true }
   }
-  fixSystemPath()
-  const routerInfo = resolveRouterBinary()
-  if (!routerInfo.ok || !routerInfo.cmd) {
-    return { already: false, ok: false, error: 'Binary atau script 9Router belum terpasang di sistem' }
+  if (isStartingRouter) {
+    const ok = await waitForPort(ROUTER_PORT, 8000)
+    return { already: ok, ok }
   }
-  console.log(`[ServiceManager] Starting 9Router daemon via: ${routerInfo.cmd}`)
+  isStartingRouter = true
   try {
+    fixSystemPath()
+    const routerInfo = resolveRouterBinary()
+    if (!routerInfo.ok || !routerInfo.cmd) {
+      return { already: false, ok: false, error: 'Binary atau script 9Router belum terpasang di sistem' }
+    }
+    console.log(`[ServiceManager] Starting 9Router daemon via: ${routerInfo.cmd}`)
+
+    // Mode headless murni tanpa systray Cocoa agar stabil di macOS/Linux dan tidak membuka jendela terminal
+    const routerArgs = ['-n', '-p', String(ROUTER_PORT)]
+    const routerEnv = {
+      ...process.env,
+      TRAY_MODE: '0'
+    }
+
     let spawnError = null
-    const child = spawn(routerInfo.cmd, ['-n', '--skip-update'], {
+    const isScript = typeof routerInfo.cmd === 'string' && routerInfo.cmd.endsWith('.js')
+    const spawnBin = isScript ? (process.platform === 'win32' ? 'node.exe' : 'node') : routerInfo.cmd
+    const spawnArgs = isScript ? [routerInfo.cmd, ...routerArgs] : routerArgs
+
+    const child = spawn(spawnBin, spawnArgs, {
       stdio: 'ignore',
       shell: process.platform === 'win32',
       windowsHide: true,
-      env: process.env
+      env: routerEnv
     })
     child.on('error', (err) => {
       console.warn('[ServiceManager] 9Router spawn error:', err.message)
       spawnError = err
+    })
+    child.on('exit', (code) => {
+      const idx = children.findIndex((c) => c.child === child)
+      if (idx !== -1) children.splice(idx, 1)
+      if (code !== 0 && code !== null) {
+        console.warn(`[ServiceManager] 9Router daemon keluar dengan kode: ${code}`)
+      }
     })
     children.push({ name: '9router', child })
     const ok = await waitForPort(ROUTER_PORT, 9000)
@@ -503,6 +530,8 @@ async function startRouter() {
     return { already: false, ok, child }
   } catch (err) {
     return { already: false, ok: false, error: err.message }
+  } finally {
+    isStartingRouter = false
   }
 }
 

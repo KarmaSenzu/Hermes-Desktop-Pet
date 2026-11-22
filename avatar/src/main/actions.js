@@ -24,7 +24,7 @@ export const TERMINAL_ACTIONS = {
   'start-router': {
     label: 'Jalankan 9Router (Debugging)',
     cmd: '9router',
-    args: ['-n', '--skip-update']
+    args: ['-n', '-p', '20128']
   },
   'install-kokoro': {
     label: 'Install Dependensi Kokoro TTS',

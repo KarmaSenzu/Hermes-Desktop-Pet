@@ -1665,10 +1665,21 @@ export class MusicPlayer {
 
         this.clearNetworkRecovery()
         this._activePlaybackEngine = 'html-audio'
-        this.htmlAudio.volume = this.isMuted ? 0 : (this.isDucked ? this.volume * 0.2 : this.volume)
+        const effVol = this.isMuted ? 0 : (this.isDucked ? this.volume * 0.2 : this.volume)
+        this.htmlAudio.volume = Math.max(0, Math.min(1, effVol))
+        this.htmlAudio.muted = this.isMuted || effVol === 0
         this.htmlAudio.src = res.proxyUrl
         this.htmlAudio.load()
-        await this.htmlAudio.play()
+        try {
+          await this.htmlAudio.play()
+        } catch (playErr) {
+          if (playErr?.name === 'NotAllowedError') {
+            await this.audioCtx?.resume?.().catch(() => {})
+            await this.htmlAudio.play().catch(() => {})
+          } else {
+            throw playErr
+          }
+        }
         if (reqId === this._playReqId && this.dom.badge) {
           this.dom.badge.textContent = track.badge || 'YouTube ▶'
         }
@@ -1761,14 +1772,21 @@ export class MusicPlayer {
     }
 
     if (audioSrc) {
-      this.htmlAudio.volume = this.isMuted ? 0 : (this.isDucked ? this.volume * 0.2 : this.volume)
+      const effVol = this.isMuted ? 0 : (this.isDucked ? this.volume * 0.2 : this.volume)
+      this.htmlAudio.volume = Math.max(0, Math.min(1, effVol))
+      this.htmlAudio.muted = this.isMuted || effVol === 0
       this.htmlAudio.src = audioSrc
       this.htmlAudio.load()
       try {
         await this.htmlAudio.play()
       } catch (err) {
-        if (reqId !== this._playReqId) return
-        console.warn('[MusicPlayer] Gagal memutar link/file audio:', err)
+        if (err?.name === 'NotAllowedError') {
+          await this.audioCtx?.resume?.().catch(() => {})
+          await this.htmlAudio.play().catch(() => {})
+        } else {
+          if (reqId !== this._playReqId) return
+          console.warn('[MusicPlayer] Gagal memutar link/file audio:', err)
+        }
       }
     }
   }
@@ -2326,7 +2344,9 @@ export class MusicPlayer {
 
       const res = await window.hermesAvatar.downloadMusicTrack({
         videoId: ytId,
-        url: track.url || `https://www.youtube.com/watch?v=${ytId}`
+        url: track.url || `https://www.youtube.com/watch?v=${ytId}`,
+        title: track.title,
+        artist: track.artist
       })
 
       if (res?.ok) {

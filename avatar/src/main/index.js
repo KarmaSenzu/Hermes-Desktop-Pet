@@ -2,7 +2,7 @@ import { app, BrowserWindow, ipcMain, protocol, dialog, screen, safeStorage, she
 import { join, resolve, extname, isAbsolute, basename, dirname } from 'path'
 import { homedir } from 'os'
 import { readFile, writeFile, mkdir, rm } from 'fs/promises'
-import { existsSync, statSync, readdirSync, cpSync, mkdirSync, readFileSync, writeFileSync, openSync, readSync, closeSync, createReadStream } from 'fs'
+import { existsSync, statSync, readdirSync, cpSync, mkdirSync, readFileSync, writeFileSync, openSync, readSync, closeSync, createReadStream, copyFileSync } from 'fs'
 import { Readable } from 'node:stream'
 
 
@@ -657,49 +657,151 @@ secureHandle('avatar:set-shortcut', (_event, id, accel) => {
 })
 
 /**
+ * Helper untuk mengekstrak subpath relatif aset (misal: 'live2d/mother/20250106.model3.json')
+ * jika sebuah modelPath adalah path absolut dari komputer pengembang atau instalasi lain.
+ */
+function extractAssetSubpath(rawPath) {
+  if (!rawPath || typeof rawPath !== 'string') return ''
+  const normalized = rawPath.replace(/\\/g, '/')
+  const assetsIdx = normalized.toLowerCase().indexOf('/assets/')
+  if (assetsIdx !== -1) {
+    return normalized.slice(assetsIdx + 8)
+  }
+  if (normalized.toLowerCase().startsWith('assets/')) {
+    return normalized.slice(7)
+  }
+  const live2dIdx = normalized.toLowerCase().indexOf('/live2d/')
+  if (live2dIdx !== -1) {
+    return 'live2d/' + normalized.slice(live2dIdx + 8)
+  }
+  if (normalized.toLowerCase().startsWith('live2d/')) {
+    return normalized
+  }
+  return ''
+}
+
+/**
+ * Mencari model alternatif bawaan di disk jika model yang diminta pengguna tidak ditemukan.
+ * Menjamin avatar selalu bisa terbuka tanpa crash atau gagal start.
+ */
+export function findFallbackModelPath() {
+  const defaultModelCandidates = [
+    'assets/live2d/mother/20250106.model3.json',
+    'assets/live2d/jingliu/jingliu.model3.json',
+    'assets/live2d/huohuo/huohuo.model3.json',
+    'assets/live2d/shizuku/shizuku.model3.json',
+    'assets/live2d/hiyori/hiyori_pro_t11.model3.json',
+    'assets/live2d/koharu/koharu.model3.json',
+    'assets/live2d/haru/haru_greeter_t03.model3.json',
+    'assets/live2d/tororo/tororo.model3.json',
+    'assets/models/default.vrm'
+  ]
+
+  const roots = [
+    app.getAppPath(),
+    join(__dirname, '../../'),
+    process.resourcesPath,
+    process.resourcesPath ? join(process.resourcesPath, 'app') : '',
+    process.resourcesPath ? join(process.resourcesPath, 'app.asar.unpacked') : '',
+    join(homedir(), '.hermes-avatar'),
+    process.cwd()
+  ].filter(Boolean)
+
+  for (const rel of defaultModelCandidates) {
+    for (const r of roots) {
+      const candidate = join(r, rel)
+      try {
+        if (existsSync(candidate)) return resolve(candidate)
+      } catch {}
+    }
+  }
+
+  // Scan folder assets/live2d untuk mencari model3.json apa pun yang ada
+  for (const r of roots) {
+    const l2dDir = join(r, 'assets', 'live2d')
+    try {
+      if (existsSync(l2dDir) && statSync(l2dDir).isDirectory()) {
+        for (const sub of readdirSync(l2dDir)) {
+          const subPath = join(l2dDir, sub)
+          if (existsSync(subPath) && statSync(subPath).isDirectory()) {
+            for (const file of readdirSync(subPath)) {
+              if (file.endsWith('.model3.json')) {
+                return resolve(join(subPath, file))
+              }
+            }
+          }
+        }
+      }
+    } catch {}
+  }
+
+  return ''
+}
+
+/**
  * Helper untuk me-resolve path model / aset baik dari relative path,
  * absolute path, dev environment (out/main), maupun packaged app (asar / resources).
+ * Tahan terhadap perbedaan path absolut lintas-perangkat (Windows / macOS / Linux).
  */
 export function resolveModelPath(modelPath) {
-  if (!modelPath) return ''
+  if (!modelPath) return findFallbackModelPath() || ''
 
-  // 1. Jika sudah absolute dan ada di filesystem, kembalikan langsung
+  // 1. Jika sudah absolute dan ada di filesystem lokal saat ini, kembalikan langsung
   if (isAbsolute(modelPath) && existsSync(modelPath)) {
     return resolve(modelPath)
   }
 
-  // 2. Daftar kandidat root untuk path relatif
+  // 2. Normalisasi dan ekstraksi subpath jika path berasal dari device lain
   const cleanRel = modelPath.replace(/^[/\\]+/, '')
-  const candidates = [
-    modelPath,
-    join(app.getAppPath(), modelPath),
-    join(app.getAppPath(), cleanRel),
-    join(__dirname, '../../', modelPath),
-    join(__dirname, '../../', cleanRel),
-    join(process.resourcesPath, modelPath),
-    join(process.resourcesPath, cleanRel),
-    join(process.resourcesPath, 'app', modelPath),
-    join(process.resourcesPath, 'app', cleanRel),
-    join(process.resourcesPath, 'app.asar', modelPath),
-    join(process.resourcesPath, 'app.asar', cleanRel),
-    join(process.resourcesPath, 'app.asar.unpacked', modelPath),
-    join(process.resourcesPath, 'app.asar.unpacked', cleanRel),
-    join(homedir(), '.hermes-avatar', modelPath),
-    join(homedir(), '.hermes-avatar', cleanRel),
-    join(process.cwd(), modelPath)
-  ]
+  const assetSub = extractAssetSubpath(modelPath)
 
-  for (const candidate of candidates) {
-    try {
-      if (candidate && existsSync(candidate)) {
-        return resolve(candidate)
+  const rootDirs = [
+    app.getAppPath(),
+    join(app.getAppPath(), 'assets'),
+    join(__dirname, '../../'),
+    join(__dirname, '../../', 'assets'),
+    process.resourcesPath,
+    process.resourcesPath ? join(process.resourcesPath, 'assets') : '',
+    process.resourcesPath ? join(process.resourcesPath, 'app') : '',
+    process.resourcesPath ? join(process.resourcesPath, 'app', 'assets') : '',
+    process.resourcesPath ? join(process.resourcesPath, 'app.asar') : '',
+    process.resourcesPath ? join(process.resourcesPath, 'app.asar', 'assets') : '',
+    process.resourcesPath ? join(process.resourcesPath, 'app.asar.unpacked') : '',
+    process.resourcesPath ? join(process.resourcesPath, 'app.asar.unpacked', 'assets') : '',
+    join(homedir(), '.hermes-avatar'),
+    join(homedir(), '.hermes-avatar', 'assets'),
+    process.cwd(),
+    join(process.cwd(), 'assets')
+  ].filter(Boolean)
+
+  const candidateRelPaths = [
+    modelPath,
+    cleanRel,
+    assetSub ? `assets/${assetSub}` : '',
+    assetSub,
+    assetSub ? `assets/live2d/${assetSub}` : ''
+  ].filter(Boolean)
+
+  for (const root of rootDirs) {
+    for (const rel of candidateRelPaths) {
+      try {
+        const candidate = isAbsolute(rel) ? rel : join(root, rel)
+        if (existsSync(candidate) && !statSync(candidate).isDirectory()) {
+          return resolve(candidate)
+        }
+      } catch {
+        // Abaikan error stat
       }
-    } catch {
-      // Abaikan error stat
     }
   }
 
-  // Fallback terbaik
+  // 3. Jika masih belum ditemukan namun ada fallback model yang siap, gunakan fallback
+  const fallback = findFallbackModelPath()
+  if (fallback && existsSync(fallback)) {
+    return fallback
+  }
+
+  // Fallback terbaik terakhir
   return isAbsolute(modelPath) ? resolve(modelPath) : resolve(app.getAppPath(), cleanRel)
 }
 
@@ -716,17 +818,22 @@ export function getFixedRoots() {
 // IPC: launcher → main → buka avatar window dengan model terpilih.
 secureHandle('avatar:start', async (_event, modelPath) => {
   const defaultRelPath = 'assets/live2d/mother/20250106.model3.json'
-  const resolvedPath = resolveModelPath(modelPath || defaultRelPath)
+  let resolvedPath = resolveModelPath(modelPath || defaultRelPath)
 
-  if (!existsSync(resolvedPath)) {
-    return { ok: false, error: `File model tidak ditemukan di disk: ${resolvedPath}` }
+  if (!resolvedPath || !existsSync(resolvedPath)) {
+    console.warn(`[AvatarStart] Model '${modelPath}' tidak ditemukan. Mencari model alternatif...`)
+    resolvedPath = findFallbackModelPath()
+  }
+
+  if (!resolvedPath || !existsSync(resolvedPath)) {
+    return { ok: false, error: `File model tidak ditemukan di disk. Pastikan aset model Live2D tersedia.` }
   }
   approveRoot(dirname(resolvedPath))
 
   if (avatarWindow && !avatarWindow.isDestroyed()) {
     avatarWindow.focus()
     avatarWindow.webContents.send('avatar:load-model', resolvedPath)
-    return { ok: true, reused: true }
+    return { ok: true, reused: true, resolvedPath }
   }
 
   // Buat window avatar lalu TUNGGU sampai halaman benar-benar selesai dimuat.
@@ -938,7 +1045,11 @@ secureHandle('avatar:run-in-terminal', async (_event, actionId) => {
         'on run argv',
         '  tell application "Terminal"',
         '    activate',
-        '    do script (item 1 of argv)',
+        '    if (count of windows) > 0 and not (busy of selected tab of front window) then',
+        '      do script (item 1 of argv) in front window',
+        '    else',
+        '      do script (item 1 of argv)',
+        '    end if',
         '  end tell',
         'end run'
       ].join('\n')
@@ -1186,7 +1297,7 @@ secureHandle('avatar:music-open-folder', async (_event, payload = {}) => {
   }
 })
 
-// IPC: Unduh track audio online ke cache/penyimpanan permanen lokal
+// IPC: Unduh track audio online ke cache/penyimpanan permanen lokal & folder Downloads pengguna
 secureHandle('avatar:music-download-track', async (_event, payload = {}) => {
   try {
     const vid = String(payload?.videoId || extractYouTubeVideoId(payload?.url) || '').trim()
@@ -1196,9 +1307,21 @@ secureHandle('avatar:music-download-track', async (_event, payload = {}) => {
     const watchUrl = String(payload?.url || `https://www.youtube.com/watch?v=${vid}`).trim()
     const result = await downloadAudioToCache(vid, watchUrl, { resolvePythonCmd })
     if (result && result.path) {
-      return { ok: true, cached: true, filePath: result.path, size: result.size }
+      let finalFilePath = result.path
+      try {
+        const userDownloadsDir = app.getPath('downloads')
+        const rawTitle = String(payload?.title || vid).trim()
+        const cleanTitle = rawTitle.replace(/[/\\?%*:|"<>]/g, '_').trim()
+        const ext = result.ext || 'm4a'
+        const exportPath = join(userDownloadsDir, `${cleanTitle}.${ext}`)
+        copyFileSync(result.path, exportPath)
+        finalFilePath = exportPath
+      } catch (copyErr) {
+        console.warn('[MusicDownload] Salin ke folder Downloads dilewati:', copyErr?.message || copyErr)
+      }
+      return { ok: true, cached: true, filePath: finalFilePath, size: result.size }
     }
-    return { ok: false, error: 'Gagal mengunduh audio ke komputer.' }
+    return { ok: false, error: 'Gagal mengunduh audio ke komputer. Pastikan koneksi internet tersedia.' }
   } catch (err) {
     return { ok: false, error: err?.message || String(err) }
   }
