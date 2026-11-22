@@ -1229,6 +1229,13 @@ export async function controlBackgroundMusicPlayer(action, payload = {}, { Brows
       return { ok: false, error: 'Video ID YouTube tidak valid.' }
     }
 
+    // Cegah DOUBLE-PLAY: bila window lama masih ada (mungkin memutar lagu sebelumnya),
+    // matikan dulu sepenuhnya sebelum memuat lagu baru. Navigasi ulang pada window yang
+    // sama tidak menjamin audio lama berhenti seketika (SPA YouTube).
+    if (bgMusicWindow && !bgMusicWindow.isDestroyed()) {
+      stopBackgroundMusicPlayer()
+    }
+
     if (!bgMusicWindow || bgMusicWindow.isDestroyed()) {
       bgMusicWindow = new BrowserWindow({
         show: false,

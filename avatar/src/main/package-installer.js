@@ -919,7 +919,11 @@ export async function installKokoro({ onProgress, deps: depsOverride } = {}) {
  * Menentukan apakah paket sudah terpasang/selesai saat menjalankan mode Continue/Resume.
  */
 async function isStepAlreadyDone(stepKey, d, queueItems) {
-  if (queueItems?.[stepKey]?.status === 'done') {
+  const item = queueItems?.[stepKey]
+  if (item?.status === 'done') {
+    // "Terpasang tapi layanan gagal menyala" → JANGAN dianggap selesai, agar Continue
+    // mencoba menyalakan ulang (installed != running).
+    if (item.startedOk === false && stepKey !== 'python') return false
     if (stepKey === 'python') return Boolean((await d.resolvePythonBinary())?.ok)
     if (stepKey === 'hermes') return Boolean(findHermesBinaryDirect(d))
     if (stepKey === '9router') return Boolean(d.resolveRouterBinary()?.ok)
@@ -947,10 +951,15 @@ export async function installPackageOneClick(pkgId, { onProgress, deps } = {}) {
 
   // Kunci re-entrancy: cegah dua instalasi berjalan bersamaan (menyebabkan checklist
   // lompat mundur / state korup bila user klik dua kali atau jendela di-reload).
+  // PENTING: kembalikan `ok:true, busy:true` (BUKAN error) agar UI tidak menampilkan
+  // toast "gagal" padahal instalasi lain sedang berjalan normal.
   if (activeInstallCount > 0) {
     return {
-      ok: false,
-      error: 'Instalasi lain sedang berjalan. Tunggu hingga selesai.',
+      ok: true,
+      busy: true,
+      skipped: true,
+      error: null,
+      message: 'Instalasi lain sedang berjalan. Menunggu hingga selesai.',
       queue: getInstallQueueState(d)
     }
   }
@@ -1040,6 +1049,11 @@ export async function installPackageOneClick(pkgId, { onProgress, deps } = {}) {
         })
 
         results[step.key] = res
+        // Simpan status "berhasil start layanan" agar Continue tidak melewati paket yang
+        // terpasang tapi layanannya gagal menyala (installed != running).
+        if (res && typeof res.started === 'boolean') {
+          updateQueueItem(step.key, { startedOk: res.started }, d)
+        }
         if (!res?.ok) {
           failed.push(`${step.label}: ${res?.error || 'gagal'}`)
         }
@@ -1093,6 +1107,16 @@ export async function installPackageOneClick(pkgId, { onProgress, deps } = {}) {
       ...res,
       queue: getInstallQueueState(d)
     }
+  } catch (err) {
+    // Pastikan item TIDAK tertinggal "running" bila sub-installer melempar error
+    // sebelum sempat meng-emit status. Tandai failed agar UI tidak berputar selamanya.
+    const msg = err?.message || String(err) || 'Instalasi gagal'
+    const queueKey = id === 'router' ? '9router' : id
+    try {
+      updateQueueItem(queueKey, { status: 'failed', percent: 0, message: msg, error: msg }, d)
+      onProgress?.({ pkgId: id, percent: 0, message: msg, status: 'failed', error: msg })
+    } catch { /* abaikan */ }
+    return { ok: false, error: msg, queue: getInstallQueueState(d) }
   } finally {
     activeInstallCount = Math.max(0, activeInstallCount - 1)
     installQueueState.active = activeInstallCount > 0

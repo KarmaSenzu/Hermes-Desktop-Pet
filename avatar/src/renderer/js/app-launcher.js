@@ -55,6 +55,33 @@ export const BUILTIN_DIRECT_APPS = [
   { name: 'Paint', command: 'mspaint.exe', keys: ['paint', 'mspaint', 'gambar'] }
 ]
 
+// Builtin khusus macOS: nama & perintah native (bukan .exe Windows yang tak ada di mac).
+const BUILTIN_DIRECT_APPS_DARWIN = [
+  { name: 'Terminal', command: 'Terminal', keys: ['terminal', 'iterm', 'iterm2'] },
+  { name: 'Finder', command: 'Finder', keys: ['finder', 'file explorer', 'berkas'] },
+  { name: 'Calculator', command: 'Calculator', keys: ['calc', 'calculator', 'kalkulator'] },
+  { name: 'Safari', command: 'Safari', keys: ['safari'] },
+  { name: 'Visual Studio Code', command: 'Visual Studio Code', keys: ['vscode', 'vs code', 'code', 'vsc', 'visual studio code'] },
+  { name: 'Activity Monitor', command: 'Activity Monitor', keys: ['task manager', 'activity monitor', 'taskmgr', 'pengelola tugas'] },
+  { name: 'System Settings', command: 'System Settings', keys: ['settings', 'preferences', 'pengaturan sistem'] },
+  { name: 'TextEdit', command: 'TextEdit', keys: ['textedit', 'notepad', 'catatan'] }
+]
+
+// Builtin khusus Linux.
+const BUILTIN_DIRECT_APPS_LINUX = [
+  { name: 'Terminal', command: 'x-terminal-emulator', keys: ['terminal', 'konsole', 'gnome-terminal'] },
+  { name: 'File Manager', command: 'xdg-open', keys: ['files', 'file manager', 'file explorer', 'nautilus'] },
+  { name: 'Calculator', command: 'gnome-calculator', keys: ['calc', 'calculator', 'kalkulator'] },
+  { name: 'Visual Studio Code', command: 'code', keys: ['vscode', 'vs code', 'code', 'vsc', 'visual studio code'] }
+]
+
+function getPlatformBuiltins() {
+  const plat = (typeof window !== 'undefined' && window.hermesAvatar && window.hermesAvatar.platform) || 'win32'
+  if (plat === 'darwin') return BUILTIN_DIRECT_APPS_DARWIN
+  if (plat === 'linux') return BUILTIN_DIRECT_APPS_LINUX
+  return BUILTIN_DIRECT_APPS
+}
+
 export function extractAppQueries(text) {
   if (!text) return []
   const cleaned = text.trim()
@@ -127,8 +154,8 @@ export function findMatchingApp(query, cachedInstalledApps = []) {
 
   let candidate = null
 
-  // 1. Cek aplikasi bawaan langsung
-  for (const b of BUILTIN_DIRECT_APPS) {
+  // 1. Cek aplikasi bawaan langsung (nama/perintah sesuai OS)
+  for (const b of getPlatformBuiltins()) {
     if (b.keys.includes(q) || b.keys.some((k) => k.replace(/[\s\-_]+/g, '') === qCompact)) {
       candidate = b
       break
@@ -166,6 +193,10 @@ export function findMatchingApp(query, cachedInstalledApps = []) {
       if (regMatch?.id) {
         return { ...candidate, id: regMatch.id }
       }
+      // Pada macOS/Linux, builtin memakai NAMA app (bukan id registry). Jika tak ada
+      // padanan di registry, jangan kembalikan id palsu — biarkan jatuh ke Hermes.
+      const plat = (typeof window !== 'undefined' && window.hermesAvatar && window.hermesAvatar.platform) || 'win32'
+      if (plat !== 'win32') return resolveRegistryIdFromCache(q, cachedInstalledApps)
     }
     return candidate
   }
@@ -181,15 +212,19 @@ export function getRegisteredApps(cachedInstalledApps = []) {
     if (raw) {
       const s = JSON.parse(raw)
       for (const a of s.actionApps || []) {
-        if (a.name) list.push(a.command ? `${a.name} (path: "${a.command}")` : a.name)
+        // actionApps.command sering berisi appId (bukan path) — jangan tampilkan seolah path.
+        const id = String(a.id || a.command || '').trim()
+        if (a.name) list.push(VALID_APP_ID_RE.test(id) ? `${a.name} [id:${id}]` : a.name)
       }
     }
   } catch {}
   if (cachedInstalledApps && cachedInstalledApps.length > 0) {
-    for (const a of cachedInstalledApps.slice(0, 25)) {
-      if (a.name && !list.some((x) => x.startsWith(a.name))) {
-        list.push(a.name)
-      }
+    // Kirim SEMUA aplikasi hasil pindai (bukan hanya 25) beserta id-nya, agar Hermes
+    // dapat merujuk aplikasi mana pun yang terdaftar dan app bisa dibuka lewat launcher.
+    for (const a of cachedInstalledApps) {
+      if (!a.name) continue
+      if (list.some((x) => x === a.name || x.startsWith(a.name + ' '))) continue
+      list.push(a.id && VALID_APP_ID_RE.test(String(a.id)) ? `${a.name} [id:${a.id}]` : a.name)
     }
   }
   return list
@@ -251,10 +286,11 @@ export async function tryFastLaunchApp(text, options = {}) {
   if (matchedApps.length === 0) {
     if (missingApps.length > 0) {
       const missingList = missingApps.map((q) => `"${q}"`).join(', ')
-      log('avatar', `Aplikasi ${missingList} belum ditemukan di sistem.`)
-      showSpeechBubble(`Aplikasi ${missingList} belum terdaftar.`, 3500)
-      speak(`Aku belum tahu lokasi aplikasi ${missingList}. Kamu bisa menambahkannya di Pengaturan.`, 'neutral')
-      return true
+      // PENTING: jangan menelan turn. Kembalikan `false` agar pesan diteruskan ke
+      // Hermes (LLM) — Hermes yang menjawab, bukan kalimat canned avatar. Ini mencegah
+      // gejala "Hermes tidak tahu lokasi aplikasi" saat nama tak persis cocok.
+      log('avatar', `Aplikasi ${missingList} tidak cocok dengan daftar lokal — meneruskan ke Hermes.`)
+      return false
     }
     return false
   }

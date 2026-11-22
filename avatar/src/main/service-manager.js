@@ -257,6 +257,28 @@ async function waitForPortToClose(port, timeoutMs = 6000) {
   return false
 }
 
+/**
+ * Spawn sebuah layanan secara aman lintas-OS.
+ * Di Windows, file `.cmd`/`.bat` TIDAK boleh di-spawn dengan `shell:true` + path ber-spasi
+ * (menyebabkan "'C:\Users\First' is not recognized"). Gunakan `cmd.exe /d /s /c "..."` dengan
+ * quoting eksplisit + windowsVerbatimArguments (pola yang sama dengan package-installer).
+ */
+function spawnService(cmd, args, options = {}) {
+  const isWin = process.platform === 'win32'
+  const isBatch = isWin && typeof cmd === 'string' && /\.(cmd|bat)$/i.test(cmd)
+  if (isBatch) {
+    const quoted = `"${cmd}" ${args.map((a) => (/\s/.test(String(a)) ? `"${a}"` : String(a))).join(' ')}`
+    return spawn('cmd.exe', ['/d', '/s', '/c', quoted], {
+      ...options,
+      windowsHide: true,
+      windowsVerbatimArguments: true,
+      shell: false
+    })
+  }
+  // Non-batch: tidak perlu shell sama sekali (hindari re-parsing/quoting yang merusak).
+  return spawn(cmd, args, { ...options, shell: false })
+}
+
 async function findPidByPort(port) {
   return new Promise((resolve) => {
     if (process.platform === 'win32') {
@@ -326,12 +348,11 @@ async function startHermes() {
   console.log(`[ServiceManager] Starting Hermes daemon via: ${cmd}`)
   try {
     let spawnError = null
-    const child = spawn(
+    const child = spawnService(
       cmd,
       ['serve', '--host', HERMES_HOST, '--port', String(HERMES_PORT)],
       {
         stdio: 'ignore',
-        shell: process.platform === 'win32',
         windowsHide: true,
         env: {
           ...process.env,
@@ -505,9 +526,8 @@ async function startRouter() {
     const spawnBin = isScript ? (process.platform === 'win32' ? 'node.exe' : 'node') : routerInfo.cmd
     const spawnArgs = isScript ? [routerInfo.cmd, ...routerArgs] : routerArgs
 
-    const child = spawn(spawnBin, spawnArgs, {
+    const child = spawnService(spawnBin, spawnArgs, {
       stdio: 'ignore',
-      shell: process.platform === 'win32',
       windowsHide: true,
       env: routerEnv
     })

@@ -86,29 +86,16 @@ export class Live2DAvatar {
   setPerfMode(mode) {
     if (!this.app || !this.app.ticker) return
     // Mode: 'active' | 'idle' | 'unfocused'
+    // Hemat utama via FPS (murah & tanpa efek samping visual). Mengubah resolusi render
+    // (DPR) saat runtime di Pixi v6 berisiko menggeser posisi/ukuran model pada layar
+    // HiDPI, jadi TIDAK dilakukan di sini — stabilitas visual diprioritaskan.
     let targetFps = PERF.ACTIVE_FPS
-    let targetDpr = Math.min(window.devicePixelRatio || 1, PERF.MAX_DPR)
     if (mode === 'idle') {
       targetFps = PERF.IDLE_FPS
-      targetDpr = Math.min(window.devicePixelRatio || 1, PERF.MAX_DPR, PERF.IDLE_DPR)
     } else if (mode === 'unfocused') {
       targetFps = PERF.UNFOCUSED_FPS
-      targetDpr = Math.min(window.devicePixelRatio || 1, PERF.MAX_DPR, PERF.IDLE_DPR)
     }
     this.app.ticker.maxFPS = targetFps
-
-    // Turunkan/menaikkan resolusi render hanya bila berubah (hemat GPU fill-rate saat idle).
-    try {
-      const r = this.app.renderer
-      if (r && Number.isFinite(targetDpr) && Math.abs((r.resolution || 0) - targetDpr) > 0.01) {
-        r.resolution = targetDpr
-        const w = this.container?.clientWidth || window.innerWidth || 1920
-        const h = this.container?.clientHeight || window.innerHeight || 1080
-        r.resize(w, h)
-      }
-    } catch (e) {
-      /* abaikan: resolusi gagal diubah tidak boleh merusak render */
-    }
   }
 
   async load(url) {

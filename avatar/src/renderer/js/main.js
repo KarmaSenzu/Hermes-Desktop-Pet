@@ -90,6 +90,16 @@ voiceManager.setAudioPlayer(audioPlayer)
 const musicPlayer = new MusicPlayer()
 musicPlayer.init()
 
+// Teardown audio saat renderer ditutup/reload: hentikan <audio>, lofi, DAN pemutar
+// background Electron agar suara tidak "nyangkut" setelah window hilang.
+window.addEventListener('pagehide', () => {
+  try {
+    musicPlayer.pause?.()
+    musicPlayer.stopBackgroundEngine?.()
+    window.hermesAvatar?.controlBackgroundMusic?.('stop')
+  } catch { /* abaikan */ }
+})
+
 // TTS on/off — dibaca dari pengaturan bersama (localStorage) agar sinkron dengan Settings.
 let ttsEnabled = (() => {
   try {
@@ -2099,7 +2109,7 @@ function cleanText(text) {
     .trim()
 }
 
-function log(who, text) {
+function log(who, text, { renderOnly = false } = {}) {
   const line = document.createElement('div')
   line.className = who
   if (who === 'user') {
@@ -2111,12 +2121,15 @@ function log(who, text) {
   chatLog.appendChild(line)
   chatLog.scrollTop = chatLog.scrollHeight
 
-  // Simpan riwayat percakapan sesi untuk Notulen / Executive Summary
-  sessionChatHistory.push({
-    role: who === 'user' ? 'user' : 'assistant',
-    text: String(text || '').trim(),
-    time: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
-  })
+  // Simpan riwayat percakapan sesi untuk Notulen / Executive Summary.
+  // Saat replay riwayat lama (resume sesi), JANGAN push ulang — mencegah duplikasi Notulen.
+  if (!renderOnly) {
+    sessionChatHistory.push({
+      role: who === 'user' ? 'user' : 'assistant',
+      text: String(text || '').trim(),
+      time: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
+    })
+  }
 }
 
 // Inisialisasi client Hermes (connect + buat session).
@@ -2957,8 +2970,12 @@ async function buildPrompt(text, options = {}) {
   const timeContext = `[WAKTU & TANGGAL SISTEM SAAT INI: ${dateStr}, pukul ${timeStr} WIB.\n` +
     `ATURAN MUTLAK: Hari ini adalah ${dateStr}. Seluruh jawaban, ramalan cuaca, atau rangkuman berita WAJIB mengacu pada hari ini (${dateStr}). Jangan pernah memberikan tanggal lampau/lama seolah-olah itu hari ini!]\n`
 
-  const apps = getRegisteredApps()
-  const appCtx = apps.length > 0 ? `[Aplikasi terdaftar di sistem pengguna: ${apps.join(', ')}]\n` : ''
+  const apps = getRegisteredApps(cachedInstalledApps)
+  const appCtx = apps.length > 0
+    ? `[Aplikasi yang terdaftar & bisa dibuka di sistem pengguna: ${apps.join(', ')}. ` +
+      `Bila pengguna minta membuka aplikasi, sebutkan NAMA aplikasi persis seperti pada daftar ini; ` +
+      `avatar akan menjalankan peluncur aplikasi otomatis.]\n`
+    : ''
 
   // Cek apakah pertanyaan pengguna terkait cuaca
   let liveWeatherCtx = ''
@@ -3575,13 +3592,13 @@ async function resumeHermesSessionById(sessionId) {
         const cleaned = stripAvatarPromptEnvelope(sanitizeHistoryText(rawContent))
         // Lewati pesan yang isinya HANYA preambel sistem (kosong setelah dibersihkan).
         if (cleaned) {
-          log('user', cleaned)
+          log('user', cleaned, { renderOnly: true })
           renderedCount++
         }
       } else if (ASSISTANT_ROLES.has(role)) {
         const cleaned = cleanText(sanitizeHistoryText(rawContent))
         if (cleaned) {
-          log('avatar', cleaned)
+          log('avatar', cleaned, { renderOnly: true })
           renderedCount++
         }
       }

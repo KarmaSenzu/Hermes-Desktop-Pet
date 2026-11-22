@@ -1618,6 +1618,13 @@ export class MusicPlayer {
         // Mode fallback bawaan Electron (tanpa yt-dlp)
         if (res.mode === 'electron-bg' && typeof window.hermesAvatar?.controlBackgroundMusic === 'function') {
           this._activePlaybackEngine = 'electron-bg'
+          // Pastikan engine renderer (<audio>) benar-benar berhenti agar tidak dobel
+          // dengan pemutar background Electron (dua sumber suara sekaligus).
+          try {
+            this.htmlAudio?.pause()
+            this.htmlAudio?.removeAttribute?.('src')
+            this.lofiEngine?.stop?.()
+          } catch { /* abaikan */ }
           const bgVol = this.isMuted ? 0 : (this.isDucked ? this.volume * 0.2 : this.volume)
           const bgRes = await window.hermesAvatar.controlBackgroundMusic('load', { videoId: ytId, volume: bgVol })
           if (reqId !== this._playReqId || !this.isPlaying) return

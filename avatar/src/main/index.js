@@ -589,6 +589,8 @@ function createAvatarWindow(modelPath) {
     }
     avatarWindow = null
     stopMotion()
+    // Hentikan pemutar musik background saat jendela avatar benar-benar tertutup.
+    try { stopBackgroundMusicPlayer() } catch { /* abaikan */ }
   })
 }
 
@@ -902,6 +904,9 @@ secureHandle('avatar:start-hermes-server', async () => {
 
 // IPC: avatar window bisa minta fokus/drag via OS-native (drag region).
 secureHandle('avatar:close', () => {
+  // Hentikan SEMUA audio (termasuk pemutar background tersembunyi) sebelum window ditutup,
+  // agar musik tidak terus berputar setelah avatar "ditutup".
+  try { stopBackgroundMusicPlayer() } catch { /* abaikan */ }
   if (avatarWindow && !avatarWindow.isDestroyed()) avatarWindow.close()
   showLauncherWindow()
 })
@@ -981,6 +986,8 @@ secureHandle('avatar:window-close', (event) => {
       win.hide()
       return { ok: true, hiddenInBackground: true }
     }
+    // Hentikan pemutar musik background agar tidak lanjut berbunyi setelah window ditutup.
+    try { stopBackgroundMusicPlayer() } catch { /* abaikan */ }
     win.destroy()
     if (win === launcherWindow) {
       launcherWindow = null
