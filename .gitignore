@@ -69,7 +69,8 @@ chat_history/
 # ------------------------------------------------------------------------------
 # 5. DOKUMEN PRIBADI, INFORMASI INTERNAL, PATH LOKAL, & CATATAN DEV
 # ------------------------------------------------------------------------------
-docs/
+docs/*
+!docs/assets/
 hermes-qa/
 ANALISIS_*.md
 PANDUAN_*.md

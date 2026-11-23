@@ -9,10 +9,10 @@
 
 **Pendamping AI Visual Interaktif (Live2D & 3D WebGL) yang Hidup di Atas Layar Kerja Anda**
 
-[![Version](https://img.shields.io/badge/Version-v0.1.9-0284c7.svg?style=for-the-badge)](https://github.com/KarmaSenzu/Hermes-Desktop-Pet/releases/latest)
+[![Version](https://img.shields.io/badge/Version-v1.1.2-0284c7.svg?style=for-the-badge)](https://github.com/KarmaSenzu/Hermes-Desktop-Pet/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge)](LICENSE)
 [![CI Pipeline](https://github.com/KarmaSenzu/Hermes-Desktop-Pet/actions/workflows/ci.yml/badge.svg)](https://github.com/KarmaSenzu/Hermes-Desktop-Pet/actions/workflows/ci.yml)
-[![Vitest Suite](https://img.shields.io/badge/Tests-190%2B%20Passed%20(27%20Suites)-10b981.svg?style=for-the-badge)](#7-panduan-instalasi-installation--setup)
+[![Vitest Suite](https://img.shields.io/badge/Tests-219%20Passed%20(31%20Suites)-10b981.svg?style=for-the-badge)](#7-panduan-instalasi-installation--setup)
 
 [![Electron](https://img.shields.io/badge/Electron-45.1.0-47848F.svg?logo=electron&logoColor=white)](https://www.electronjs.org/)
 [![Node.js](https://img.shields.io/badge/Node.js-%3E%3D24.0.0%20LTS-339933.svg?logo=node.js&logoColor=white)](https://nodejs.org/)
@@ -23,7 +23,11 @@
 
 <br />
 
-<img src="docs/assets/hero-banner.svg" alt="Hermes Desktop Pet Showcase Banner" width="100%" />
+<a href="https://github.com/KarmaSenzu/Hermes-Desktop-Pet/releases/latest">
+  <img src="docs/assets/hero-desktop-live.jpeg" alt="Hermes Desktop Pet Live on macOS Desktop" width="100%" style="border-radius: 10px; box-shadow: 0 10px 30px rgba(0,0,0,0.4);" />
+</a>
+<br />
+<sub><i>Tampilan nyata Hermes Desktop Pet di desktop: Karakter Live2D Camellya, Dock HUD vertikal, Chat Hermes AI interaktif, Screen Vision Snipping Tool, dan Lo-Fi Music Player tersusun rapi berdampingan.</i></sub>
 
 <br /><br />
 
@@ -72,18 +76,54 @@ flowchart LR
 
 ## 3. Tangkapan Layar (Screenshots / Visual Showcase)
 
-<div align="center">
-  <img src="docs/assets/showcase-ui.svg" alt="Showcase 4 Panel Utama Hermes Desktop Pet" width="100%" />
-</div>
+<table width="100%">
+  <tr>
+    <td width="50%" align="center" valign="top">
+      <a href="docs/assets/showcase-home-status.jpeg">
+        <img src="docs/assets/showcase-home-status.jpeg" alt="Home - Checklist Status Kesiapan Sistem 5/5" width="100%" style="border-radius: 8px; box-shadow: 0 4px 14px rgba(0,0,0,0.25);" />
+      </a>
+      <br />
+      <b>🏠 Home & Checklist Prasyarat 5/5 Siap Memulai</b>
+      <p align="left"><sub>Status terpadu kesiapan model Live2D, daemon Hermes Agent, jalur LLM (OAuth/9Router), suara Kokoro-TTS, dan tombol <i>Mulai Desktop Avatar</i> instan tanpa konfigurasi manual yang rumit.</sub></p>
+    </td>
+    <td width="50%" align="center" valign="top">
+      <a href="docs/assets/showcase-characters.jpeg">
+        <img src="docs/assets/showcase-characters.jpeg" alt="Pustaka Karakter & Model Live2D" width="100%" style="border-radius: 8px; box-shadow: 0 4px 14px rgba(0,0,0,0.25);" />
+      </a>
+      <br />
+      <b>🎭 Pustaka Karakter & Galeri Live2D</b>
+      <p align="left"><sub>Galeri thumbnail visual karakter Live2D tersimpan (Mother, Jingliu, HuoHuo, Sparkle, Ellen Joe, Jane Doe, Camellya, Allium) dengan aksi 1-klik gunakan, kustomisasi model, dan simpan karakter.</sub></p>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" align="center" valign="top">
+      <a href="docs/assets/showcase-voice-tts.jpeg">
+        <img src="docs/assets/showcase-voice-tts.jpeg" alt="Pengaturan Suara Anime Kokoro-TTS & STT Whisper" width="100%" style="border-radius: 8px; box-shadow: 0 4px 14px rgba(0,0,0,0.25);" />
+      </a>
+      <br />
+      <b>🎙️ Vokal Neural Anime Kokoro-TTS & Whisper STT</b>
+      <p align="left"><sub>Sintesis vokal anime lokal dengan intonasi Seiyuu Jepang/Indonesia, pengujian suara langsung, pengaturan tempo bicara, serta pengenalan input suara mikrofon via Whisper STT.</sub></p>
+    </td>
+    <td width="50%" align="center" valign="top">
+      <a href="docs/assets/showcase-llm-provider.jpeg">
+        <img src="docs/assets/showcase-llm-provider.jpeg" alt="Pengaturan LLM & Provider Multi-Akun" width="100%" style="border-radius: 8px; box-shadow: 0 4px 14px rgba(0,0,0,0.25);" />
+      </a>
+      <br />
+      <b>⚡ Dual-Track AI, 9Router & Monitor Kuota</b>
+      <p align="left"><sub>Model AI aktif (DeepSeek, Gemini, dll), uji latensi ping manual, integrasi 9Router lokal port 20128, login 1-klik OAuth resmi, serta pemantauan kuota & sisa kredit secara transparan.</sub></p>
+    </td>
+  </tr>
+</table>
 
 <br />
 
 | Modul Antarmuka | Deskripsi Visual & Fungsionalitas Utama |
 | :--- | :--- |
-| **1. Pengaturan macOS-Style, Dual-Track OAuth & Quota Monitor** | Sidebar kiri yang terstruktur dengan panel kanan untuk login 1-klik **OpenRouter OAuth PKCE**, pengaturan **Google Gemini**, jembatan lokal **9Router**, serta pemantauan sisa kredit & *rate-limit* multi-akun ala *CreditBuddy*. |
-| **2. Interactive Screen Vision (Snipping Tool) & Kartu Chat** | Panel pemilihan mode tangkapan (*Snip Kotak Area*, *Seluruh Layar*, atau *Pilih Jendela Aplikasi*), overlay potong layar berdimensi real-time, serta kartu pratinjau chat lengkap dengan tombol **Analisis AI**, **Tangkap Ulang**, dan **Batalkan**. |
-| **3. Desktop Pet Overlay & Tiling Window Manager (TWM)** | Karakter Live2D/3D transparan tanpa bingkai (*frameless*) dilengkapi dock HUD vertikal dan penataan otomatis (*bilateral auto-tiling*) agar jendela Chat, Timer, dan Musik tersusun rapi tanpa saling menumpuk. |
-| **4. Mini Music Player & Pomodoro Focus Timer** | Pemutar musik bernuansa *dark glassmorphism* dengan piringan vinyl berputar, equalizer, generator Lo-Fi Web Audio prosedural, *Smart Audio Ducking*, serta timer fokus interaktif. |
+| **1. Pengaturan macOS-Style & Home Checklist 5/5** | Panel kontrol terpadu yang memverifikasi kesiapan model, mesin AI Hermes, koneksi LLM, dan TTS secara otomatis sebelum avatar dimulai. |
+| **2. Pustaka Model Multi-Karakter Live2D & 3D** | Manajemen karakter lengkap dengan kartu thumbnail foto profil, format model `.model3.json` maupun 3D (`.vrm`, `.glb`, `.pmx`, `.fbx`). |
+| **3. Sintesis Suara Anime (Kokoro-TTS) & Whisper STT** | Pengaturan mesin vokal neural lokal bebas kuota, pilihan seiyuu Jepang & aksen Indonesia, pengujian suara instan, serta transkripsi mikrofon. |
+| **4. Dual-Track Provider LLM, 9Router & Quota Monitor** | Dukungan fleksibel untuk Login OAuth Resmi (OpenRouter, Gemini) atau jembatan 9Router Lokal (`:20128`), dilengkapi uji ping latensi dan monitor sisa kredit. |
+| **5. Desktop Pet Overlay, Tiling Window & Lo-Fi Music** | Karakter transparan tanpa bingkai dengan HUD dock, penataan jendela otomatis (*auto-tiling*), pemotong layar (*Screen Vision*), dan pemutar musik. |
 
 ---
 
@@ -166,13 +206,13 @@ flowchart LR
 
 | Sistem Operasi | Kegunaan | Nama Asset Rilis | Pembaruan Cepat (Terminal) |
 | :--- | :--- | :--- | :--- |
-| **Windows 10 / 11 (64-bit)** | Installer Setup (Disarankan) | `WINDOWS-Installer-Hermes-Desktop-Pet-v0.1.9-x64.exe` | `irm https://raw.githubusercontent.com/KarmaSenzu/Hermes-Desktop-Pet/main/update.ps1 \| iex` |
-| **Windows 10 / 11 (64-bit)** | Portabel (Tanpa Install) | `WINDOWS-Portable-Hermes-Desktop-Pet-v0.1.9-x64.zip` | — |
-| **macOS Apple Silicon (M1–M4)** | Installer DMG (Disarankan) | `MACOS-M-Series-Hermes-Desktop-Pet-v0.1.9-arm64.dmg` | `curl -fsSL https://raw.githubusercontent.com/KarmaSenzu/Hermes-Desktop-Pet/main/update.sh \| bash` |
-| **macOS Apple Silicon (M1–M4)** | Arsip Aplikasi (`.app`) | `MACOS-M-Series-Hermes-Desktop-Pet-v0.1.9-arm64.zip` | — |
-| **Linux (`x86_64`)** | AppImage Universal | `LINUX-Hermes-Desktop-Pet-v0.1.9-x86_64.AppImage` | `curl -fsSL https://raw.githubusercontent.com/KarmaSenzu/Hermes-Desktop-Pet/main/update.sh \| bash` |
-| **Linux (`x86_64`)** | Arsip Portabel (`.tar.gz`) | `LINUX-Hermes-Desktop-Pet-v0.1.9-x86_64.tar.gz` | — |
-| **Pembaruan Ringan (OTA)** | Patch Internal Aplikasi | `OTA-Patch-Hermes-Desktop-Pet-v0.1.9.zip` | Lewat menu **Home → Cek Update** |
+| **Windows 10 / 11 (64-bit)** | Installer Setup (Disarankan) | `WINDOWS-Installer-Hermes-Desktop-Pet-v1.1.2-x64.exe` | `irm https://raw.githubusercontent.com/KarmaSenzu/Hermes-Desktop-Pet/main/update.ps1 \| iex` |
+| **Windows 10 / 11 (64-bit)** | Portabel (Tanpa Install) | `WINDOWS-Portable-Hermes-Desktop-Pet-v1.1.2-x64.zip` | — |
+| **macOS Apple Silicon (M1–M4)** | Installer DMG (Disarankan) | `MACOS-M-Series-Hermes-Desktop-Pet-v1.1.2-arm64.dmg` | `curl -fsSL https://raw.githubusercontent.com/KarmaSenzu/Hermes-Desktop-Pet/main/update.sh \| bash` |
+| **macOS Apple Silicon (M1–M4)** | Arsip Aplikasi (`.app`) | `MACOS-M-Series-Hermes-Desktop-Pet-v1.1.2-arm64.zip` | — |
+| **Linux (`x86_64`)** | AppImage Universal | `LINUX-Hermes-Desktop-Pet-v1.1.2-x86_64.AppImage` | `curl -fsSL https://raw.githubusercontent.com/KarmaSenzu/Hermes-Desktop-Pet/main/update.sh \| bash` |
+| **Linux (`x86_64`)** | Arsip Portabel (`.tar.gz`) | `LINUX-Hermes-Desktop-Pet-v1.1.2-x86_64.tar.gz` | — |
+| **Pembaruan Ringan (OTA)** | Patch Internal Aplikasi | `OTA-Patch-Hermes-Desktop-Pet-v1.1.2.zip` | Lewat menu **Home → Cek Update** |
 
 [**Buka Halaman Rilis Resmi GitHub**](https://github.com/KarmaSenzu/Hermes-Desktop-Pet/releases/latest)
 
@@ -181,14 +221,18 @@ flowchart LR
 > curl -fsSL https://raw.githubusercontent.com/KarmaSenzu/Hermes-Desktop-Pet/main/install.sh | bash
 > ```
 
-<details>
-<summary><strong>Catatan Penting macOS Gatekeeper & Windows SmartScreen</strong></summary>
+> [!IMPORTANT]
+> **Khusus Pengguna macOS (MacBook Apple Silicon M1 / M2 / M3 / M4):**  
+> Jika setelah mengunduh file `.dmg` dan menyeret aplikasi ke folder *Applications* muncul peringatan ***"Hermes Desktop Pet is damaged and can't be opened"*** atau aplikasi tidak bisa dibuka karena kebijakan proteksi Gatekeeper Apple, buka aplikasi **Terminal** di Mac Anda lalu jalankan perintah berikut sekali saja:
+> ```bash
+> xattr -cr "/Applications/Hermes Desktop Pet.app"
+> ```
+> Perintah di atas akan menghapus atribut karantina (*quarantine flag*) macOS secara tuntas sehingga aplikasi dapat langsung dibuka dengan mulus dan normal.
 
-* **macOS ("Aplikasi rusak dan tidak dapat dibuka"):** Karena rilis komunitas belum memakai sertifikat berbayar Apple Developer ID, hapus atribut karantina sekali saja via Terminal:
-  ```bash
-  xattr -cr "/Applications/Hermes Desktop Pet.app"
-  ```
-* **Windows SmartScreen:** Jika muncul layar *"Windows protected your PC"*, klik **More info** → **Run anyway**.
+<details>
+<summary><strong>Catatan Tambahan Windows SmartScreen</strong></summary>
+
+* **Windows SmartScreen:** Jika saat pertama kali menjalankan installer muncul layar *"Windows protected your PC"*, cukup klik **More info** → **Run anyway**.
 
 </details>
 
