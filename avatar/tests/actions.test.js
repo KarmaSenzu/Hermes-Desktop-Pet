@@ -32,10 +32,20 @@ describe('actions: resolveTerminalAction', () => {
     }
   })
 
-  it('id yang valid berhasil diselesaikan ke cmd dan args statis', () => {
-    const res = resolveTerminalAction('install-hermes')
-    expect(res).not.toBeNull()
-    expect(res.cmd).toBe('npm')
-    expect(res.args).toEqual(['install', '-g', '@nousresearch/hermes'])
+  it('id yang valid berhasil diselesaikan ke cmd dan args statis standar resmi', () => {
+    const routerAction = resolveTerminalAction('install-router')
+    expect(routerAction).not.toBeNull()
+    expect(routerAction.cmd).toBe('npm')
+    expect(routerAction.args).toEqual(['install', '-g', '9router'])
+
+    const hermesAction = resolveTerminalAction('install-hermes')
+    expect(hermesAction).not.toBeNull()
+    if (process.platform === 'win32') {
+      expect(hermesAction.cmd).toBe('powershell.exe')
+      expect(hermesAction.args.join(' ')).toContain('https://hermes-agent.nousresearch.com/install.ps1')
+    } else {
+      expect(hermesAction.cmd).toBe('bash')
+      expect(hermesAction.args.join(' ')).toContain('https://hermes-agent.nousresearch.com/install.sh')
+    }
   })
 })

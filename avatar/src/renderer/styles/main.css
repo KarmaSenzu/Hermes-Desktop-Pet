@@ -1816,6 +1816,13 @@ body {
   word-break: break-word;
 }
 
+.chat-log .user .user-msg-text {
+  white-space: pre-wrap;
+  word-break: break-word;
+  tab-size: 2;
+  line-height: 1.5;
+}
+
 .chat-log .avatar {
   align-self: flex-start;
   background: rgba(30, 41, 59, 0.72);
@@ -2524,18 +2531,28 @@ body {
 .chat-form {
   display: flex;
   gap: 6px;
-  align-items: center;
+  align-items: flex-end;
 }
 
+.chat-form textarea,
 .chat-form input {
   flex: 1;
   min-width: 0;
+  min-height: 36px;
+  max-height: 132px;
   background: rgba(255, 255, 255, 0.08);
   border: 1px solid rgba(255, 255, 255, 0.1);
   color: #fff;
   border-radius: 12px;
   padding: 8px 12px;
+  font-family: inherit;
   font-size: 13px;
+  line-height: 1.45;
+  resize: none;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  tab-size: 2;
   outline: none;
   transition: border-color 0.2s;
   user-select: text !important;
@@ -2544,8 +2561,18 @@ body {
   pointer-events: auto !important;
 }
 
+.chat-form textarea:focus,
 .chat-form input:focus {
   border-color: #6366f1;
+}
+
+.chat-form button.abort-btn {
+  background: #ef4444;
+  color: #fff;
+}
+
+.chat-form button.abort-btn:hover {
+  background: #dc2626;
 }
 
 .chat-form button {

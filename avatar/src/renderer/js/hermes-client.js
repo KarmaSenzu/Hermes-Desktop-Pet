@@ -167,11 +167,33 @@ export class HermesClient {
   }
 
   /**
-   * Kirim teks user ke Hermes.
+   * Kirim teks user ke Hermes. Tolak lebih awal bila kosong agar tidak memicu turn gantung.
    */
   async submitPrompt(text) {
     if (!this.sessionId) throw new Error('Session belum dibuat. Panggil createSession() dulu.')
-    return this.request('prompt.submit', { session_id: this.sessionId, text })
+    const clean = String(text ?? '')
+    if (!clean.replace(/[\s\u200B-\u200D\uFEFF]/g, '')) {
+      throw new Error('Pesan kosong — tidak ada yang dikirim.')
+    }
+    return this.request('prompt.submit', { session_id: this.sessionId, text: clean })
+  }
+
+  /**
+   * Hentikan turn yang sedang berjalan di server (session.interrupt).
+   */
+  async interruptSession(sessionId = this.sessionId) {
+    if (!sessionId) return null
+    return this.request('session.interrupt', { session_id: sessionId }, 5000)
+  }
+
+  /**
+   * Jawab permintaan persetujuan eksekusi tool terminal/code (approval.respond).
+   */
+  async respondApproval(choice = 'session', sessionId = this.sessionId) {
+    return this.request('approval.respond', {
+      choice,
+      ...(sessionId ? { session_id: sessionId } : {})
+    }, 8000)
   }
 
   /**

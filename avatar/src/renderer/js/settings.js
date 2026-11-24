@@ -169,6 +169,7 @@ function navigateToSection(sectionId, pushHistory = true) {
     syncInstallStateFromMain()
   } else if (sectionId === 'llm') {
     closeLlmSubpanel()
+    refreshModelOptions({ fetchLive: true })
     refreshProviderQuota(false)
   } else if (sectionId === 'brain') {
     refreshHermesBrainPanel()
@@ -302,6 +303,11 @@ function initUiModeSwitcher() {
 
 // --- Status service & Package Hub & Home Prerequisites ---
 const homeSetupAlert = document.getElementById('home-setup-alert')
+const homePingAlert = document.getElementById('home-ping-alert')
+const homePingAlertEmblem = document.getElementById('home-ping-alert-emblem')
+const homePingAlertTitle = document.getElementById('home-ping-alert-title')
+const homePingAlertDesc = document.getElementById('home-ping-alert-desc')
+const alertTestPingBtn = document.getElementById('alert-test-ping-btn')
 const alertOpenPkgBtn = document.getElementById('alert-open-pkg-btn')
 const alertInstallAllBtn = document.getElementById('alert-install-all-btn')
 const homePrereqBadge = document.getElementById('home-prereq-badge')
@@ -497,6 +503,31 @@ function resetLlmPingState() {
     error: null,
     checkedAt: 0
   }
+  if (settings?.llmPingVerified) {
+    delete settings.llmPingVerified
+    saveSettings(settings)
+  }
+}
+
+function persistVerifiedLlmPing(key, latencyMs) {
+  if (!key) return
+  settings.llmPingVerified = {
+    key,
+    latencyMs: typeof latencyMs === 'number' ? latencyMs : null,
+    verifiedAt: Date.now(),
+    disconnected: false
+  }
+  saveSettings(settings)
+}
+
+function markVerifiedLlmPingDisconnected() {
+  if (settings?.llmPingVerified && !settings.llmPingVerified.disconnected) {
+    settings.llmPingVerified = {
+      ...settings.llmPingVerified,
+      disconnected: true
+    }
+    saveSettings(settings)
+  }
 }
 
 function isLocal9RouterUrl(u) {
@@ -589,6 +620,69 @@ function updateHomeLlmRouteUi(s, llmInfo = null, pingState = llmPingState) {
       homeLlmPingStatus.className = 'badge ready'
     }
   }
+
+  // Kelola Alert Instruksi "Tes Ping Cukup Sekali Saja" di Menu Home:
+  // - Sembunyikan bila sudah pernah dites & terhubung (status === 'ok') DAN indikator layanan aktif.
+  // - Tampilkan kembali bila indikator status mati (Hermes / 9Router offline) atau koneksi gagal/terputus.
+  // - Tampilkan instruksi ramah sekali saja bila belum pernah di-Tes Ping.
+  if (homePingAlert) {
+    if (!info.ok || !target.model) {
+      homePingAlert.classList.add('hidden')
+    } else {
+      const routerOffline = Boolean(target.usesRouter && !s?.router)
+      const hermesOffline = !s?.hermes
+      const pingFailed = Boolean(sameKey && pingState.status === 'failed')
+      const wasDisconnected = Boolean(settings?.llmPingVerified?.disconnected)
+      const isConnectedAndHealthy = Boolean(
+        sameKey &&
+        pingState.status === 'ok' &&
+        !routerOffline &&
+        !hermesOffline &&
+        !wasDisconnected
+      )
+
+      if (isConnectedAndHealthy || (sameKey && pingState.status === 'checking')) {
+        homePingAlert.classList.add('hidden')
+      } else if (routerOffline || hermesOffline || pingFailed || wasDisconnected) {
+        homePingAlert.classList.remove('hidden')
+        homePingAlert.style.borderLeft = '4px solid #f59e0b'
+        homePingAlert.style.background = 'rgba(245, 158, 11, 0.1)'
+        if (homePingAlertEmblem) {
+          homePingAlertEmblem.className = 'format-emblem theme-amber'
+          homePingAlertEmblem.style.color = '#fbbf24'
+        }
+        if (homePingAlertTitle) {
+          homePingAlertTitle.textContent = i18nT('home.pingAlert.lostTitle')
+          homePingAlertTitle.style.color = '#fbbf24'
+        }
+        if (homePingAlertDesc) {
+          if (routerOffline) {
+            homePingAlertDesc.textContent = i18nT('home.pingAlert.lostRouterDesc')
+          } else if (hermesOffline) {
+            homePingAlertDesc.textContent = i18nT('home.pingAlert.lostHermesDesc')
+          } else {
+            const detail = sameKey && pingState.error ? ` (${pingState.error})` : ''
+            homePingAlertDesc.textContent = `${i18nT('home.pingAlert.lostConnDesc')}${detail}`
+          }
+        }
+      } else {
+        homePingAlert.classList.remove('hidden')
+        homePingAlert.style.borderLeft = '4px solid #38bdf8'
+        homePingAlert.style.background = 'rgba(56, 189, 248, 0.08)'
+        if (homePingAlertEmblem) {
+          homePingAlertEmblem.className = 'format-emblem theme-blue'
+          homePingAlertEmblem.style.color = '#38bdf8'
+        }
+        if (homePingAlertTitle) {
+          homePingAlertTitle.textContent = i18nT('home.pingAlert.onceTitle')
+          homePingAlertTitle.style.color = ''
+        }
+        if (homePingAlertDesc) {
+          homePingAlertDesc.textContent = i18nT('home.pingAlert.onceDesc')
+        }
+      }
+    }
+  }
 }
 
 async function verifyActiveLlmPing({ interactive = false, force = false } = {}) {
@@ -646,17 +740,19 @@ async function verifyActiveLlmPing({ interactive = false, force = false } = {}) 
     try {
       const res = await window.hermesAvatar.testConnection(target.baseUrl, target.model, target.apiKey || '')
       if (res?.ok) {
+        const latencyMs = typeof res.latencyMs === 'number' ? res.latencyMs : null
         llmPingState = {
           key,
           status: 'ok',
           ok: true,
           rto: false,
-          latencyMs: typeof res.latencyMs === 'number' ? res.latencyMs : null,
+          latencyMs,
           error: null,
           checkedAt: Date.now()
         }
+        persistVerifiedLlmPing(key, latencyMs)
         if (interactive) {
-          const latNote = typeof res.latencyMs === 'number' ? ` (${res.latencyMs}ms)` : ''
+          const latNote = typeof latencyMs === 'number' ? ` (${latencyMs}ms)` : ''
           showToast('Ping Model LLM Berhasil', `${target.model} merespons normal${latNote} — bukan RTO.`, 'success', '⚡', 4500)
         }
       } else {
@@ -671,6 +767,7 @@ async function verifyActiveLlmPing({ interactive = false, force = false } = {}) 
           error: errText,
           checkedAt: Date.now()
         }
+        markVerifiedLlmPingDisconnected()
         if (interactive) {
           showToast(isRto ? 'Ping Model LLM RTO (Timeout)' : 'Ping Model LLM Gagal', errText, 'error', '❌', 6000)
         }
@@ -687,6 +784,7 @@ async function verifyActiveLlmPing({ interactive = false, force = false } = {}) 
         error: errText,
         checkedAt: Date.now()
       }
+      markVerifiedLlmPingDisconnected()
       if (interactive) {
         showToast(isRto ? 'Ping Model LLM RTO (Timeout)' : 'Ping Model LLM Gagal', errText, 'error', '❌', 6000)
       }
@@ -1197,8 +1295,37 @@ async function refreshServiceStatus({ skipAutoPing = false } = {}) {
     const isLlmOk = !!llmInfo.ok
     const llmTarget = resolveActiveLlmTarget(llmInfo)
     const targetKey = buildLlmTargetKey(llmTarget)
-    const hasSameKeyPing = Boolean(targetKey && llmPingState.key === targetKey)
     const isRouterBlocking = Boolean(llmTarget.usesRouter && !s.router)
+    const serviceHealthy = Boolean(s.hermes) && !isRouterBlocking
+
+    // Bila indikator layanan mati (Hermes / 9Router offline), tandai status ping terputus
+    // agar alert peringatan muncul kembali sampai user menyalakan layanan & Tes Ping ulang.
+    if (!serviceHealthy) {
+      if (llmPingState.status === 'ok') {
+        llmPingState = { key: targetKey, status: 'idle', ok: false, rto: false, latencyMs: null, error: null, checkedAt: 0 }
+      }
+      if (settings?.llmPingVerified?.key === targetKey) {
+        markVerifiedLlmPingDisconnected()
+      }
+    } else if (
+      targetKey &&
+      llmPingState.status === 'idle' &&
+      settings?.llmPingVerified?.key === targetKey &&
+      !settings.llmPingVerified.disconnected
+    ) {
+      // Pulihkan hasil Tes Ping sebelumnya yang sudah sukses tanpa menembak API ulang!
+      llmPingState = {
+        key: targetKey,
+        status: 'ok',
+        ok: true,
+        rto: false,
+        latencyMs: settings.llmPingVerified.latencyMs ?? null,
+        error: null,
+        checkedAt: settings.llmPingVerified.verifiedAt || Date.now()
+      }
+    }
+
+    const hasSameKeyPing = Boolean(targetKey && llmPingState.key === targetKey)
     const isPingFailed = hasSameKeyPing && llmPingState.status === 'failed'
     const isLlmConnectionOk = Boolean(isLlmOk && !isRouterBlocking && !isPingFailed)
     const isTtsOk = !!(s.kokoro || settings.tts?.provider === 'edge')
@@ -2186,9 +2313,15 @@ startBtn.addEventListener('click', async () => {
     // Bila menggunakan Kokoro TTS dan servernya belum aktif, coba nyalakan otomatis; fallback aman ke Edge-TTS
     if (settings.tts?.provider === 'kokoro' && !s.kokoro) {
       showToast('Menyiapkan Vokal Kokoro...', 'Menyalakan server Kokoro TTS...', 'running', '🎙️')
-      await window.hermesAvatar.startKokoroServer()
-      await new Promise((r) => setTimeout(r, 1400))
+      const startRes = await window.hermesAvatar.startKokoroServer()
       s = await window.hermesAvatar.getServiceStatus()
+      if (!s.kokoro && startRes?.ok !== false) {
+        for (let attempt = 0; attempt < 6; attempt++) {
+          await new Promise((r) => setTimeout(r, 500))
+          s = await window.hermesAvatar.getServiceStatus()
+          if (s.kokoro) break
+        }
+      }
       if (!s.kokoro) {
         settings.tts.provider = 'edge'
         if (/^[a-z]{2}_/i.test(settings.tts.voice || '')) {
@@ -3919,9 +4052,9 @@ async function refreshLlmActive() {
   }
 }
 
-// Ambil daftar model aktual dari SEMUA provider tersimpan (mis. Google & 9Router) & provider RPC.
-// Tujuannya: model 9Router tetap muncul di dropdown walau provider Google sedang aktif.
-async function refreshModelOptions() {
+// Ambil daftar model dari cache lokal secara default (0 auto-fetch saat membuka Home!).
+// Fetch live ke endpoint hanya dilakukan bila `fetchLive === true` (mis. saat membuka panel LLM / klik Segarkan).
+async function refreshModelOptions({ fetchLive = false } = {}) {
   try {
     const provs = settings.llm.providers || []
     const activeProv = provs.find((p) => p.id === settings.llm.activeId) || provs[0]
@@ -3941,9 +4074,9 @@ async function refreshModelOptions() {
       })
     }
 
-    // 1. Ambil daftar model LIVE dari SEMUA provider tersimpan sekaligus (paralel).
+    // 1. Ambil daftar model LIVE dari endpoint HANYA bila fetchLive === true (tidak auto-fetch di Home!).
     let fetchedAny = false
-    if (typeof window.hermesAvatar?.fetchAllProviderModels === 'function' && provs.length > 0) {
+    if (fetchLive && typeof window.hermesAvatar?.fetchAllProviderModels === 'function' && provs.length > 0) {
       try {
         const multi = await window.hermesAvatar.fetchAllProviderModels(
           provs.map((p) => ({ id: p.id, name: p.name, baseUrl: p.baseUrl, apiKey: p.apiKey || '' }))
@@ -3973,8 +4106,8 @@ async function refreshModelOptions() {
       }
     }
 
-    // 1b. Fallback: bila IPC batch tidak tersedia, tetap coba endpoint provider aktif secara tunggal.
-    if (!fetchedAny && activeProv?.baseUrl) {
+    // 1b. Fallback: bila IPC batch tidak tersedia dan mode fetchLive aktif, coba endpoint provider aktif secara tunggal.
+    if (fetchLive && !fetchedAny && activeProv?.baseUrl) {
       try {
         const epRes = await window.hermesAvatar.fetchEndpointModels(activeProv.baseUrl, activeProv.apiKey || '')
         if (epRes && !epRes.ok && epRes.error) {
@@ -3994,23 +4127,25 @@ async function refreshModelOptions() {
       }
     }
 
-    // 3. Tambahkan custom provider dari RPC model.options jika ada
-    try {
-      const res = await window.hermesAvatar.rpc('model.options', {})
-      if (res && res.ok) {
-        const providers = res.result?.providers || []
-        for (const p of providers) {
-          const slug = p.slug || 'custom'
-          const name = p.name || slug
-          const isCustom = p.is_user_defined || slug === 'custom' || /^custom(:|$)/.test(slug) || /localhost|127\.0\.0\.1/.test(p.base_url || '')
-          if (isCustom) {
-            for (const m of (p.models || [])) {
-              pushOption(m, name, '', p.base_url || '')
+    // 3. Tambahkan custom provider dari RPC model.options hanya bila fetchLive === true
+    if (fetchLive) {
+      try {
+        const res = await window.hermesAvatar.rpc('model.options', {})
+        if (res && res.ok) {
+          const providers = res.result?.providers || []
+          for (const p of providers) {
+            const slug = p.slug || 'custom'
+            const name = p.name || slug
+            const isCustom = p.is_user_defined || slug === 'custom' || /^custom(:|$)/.test(slug) || /localhost|127\.0\.0\.1/.test(p.base_url || '')
+            if (isCustom) {
+              for (const m of (p.models || [])) {
+                pushOption(m, name, '', p.base_url || '')
+              }
             }
           }
         }
-      }
-    } catch (_) {}
+      } catch (_) {}
+    }
 
     // Fallback bila sama sekali belum terdeteksi
     let options = custom
@@ -4039,7 +4174,7 @@ async function refreshModelOptions() {
 
 llmRefreshBtn.addEventListener('click', () => {
   refreshLlmActive()
-  refreshModelOptions()
+  refreshModelOptions({ fetchLive: true })
   refreshProviderQuota(false)
 })
 
@@ -4064,6 +4199,7 @@ async function handleManualLlmPing(btnEl) {
 
 homeLlmPingBtn?.addEventListener('click', () => handleManualLlmPing(homeLlmPingBtn))
 llmPingActiveBtn?.addEventListener('click', () => handleManualLlmPing(llmPingActiveBtn))
+alertTestPingBtn?.addEventListener('click', () => handleManualLlmPing(alertTestPingBtn))
 
 // --- Skill Hermes ---
 const skillList = document.getElementById('skill-list')
@@ -4598,7 +4734,9 @@ function showUpdateModal() {
   const changelog = cachedUpdateInfo?.changelog || 'Pembaruan stabilitas dan perbaikan bug.'
   const sizeBadge = cachedUpdateInfo?.isPatchUpdate && cachedUpdateInfo?.assetSizeMb
     ? ` · Patch Ringan (${cachedUpdateInfo.assetSizeMb} MB)`
-    : (cachedUpdateInfo?.assetSizeMb ? ` · ${cachedUpdateInfo.assetSizeMb} MB` : '')
+    : (cachedUpdateInfo?.isMajorOrMinor && cachedUpdateInfo?.assetSizeMb
+        ? ` · Pembaruan Lengkap (${cachedUpdateInfo.assetSizeMb} MB)`
+        : (cachedUpdateInfo?.assetSizeMb ? ` · ${cachedUpdateInfo.assetSizeMb} MB` : ''))
 
   if (curVerEl) curVerEl.textContent = cur.startsWith('v') ? cur : `v${cur}`
   if (latVerEl) latVerEl.textContent = lat.startsWith('v') ? lat : `v${lat}`
@@ -4805,7 +4943,7 @@ function init() {
     settingsMusicFeedback: document.getElementById('settings-music-feedback')
   })
 
-  initAnimationsPanel({ settings, saveSettings, statusEl })
+  initAnimationsPanel({ settings, saveSettings, statusEl, showConfirm })
   renderAnimationSettings()
 
   initAppsPanel({

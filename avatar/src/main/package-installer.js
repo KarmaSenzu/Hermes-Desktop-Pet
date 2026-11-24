@@ -29,16 +29,14 @@ import {
   startKokoro
 } from './service-manager.js'
 
-const HERMES_INSTALL_PS1_URLS = [
-  'https://hermes-agent.nousresearch.com/install.ps1',
-  'https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.ps1'
-]
-const HERMES_INSTALL_SH_URLS = [
-  'https://hermes-agent.nousresearch.com/install.sh',
-  'https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh'
-]
+export const HERMES_WIN_INSTALL_CMD = "$ProgressPreference = 'SilentlyContinue'; irm https://hermes-agent.nousresearch.com/install.ps1 | iex"
+export const HERMES_WIN_FALLBACK_CMD = "$ProgressPreference = 'SilentlyContinue'; irm https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.ps1 | iex"
+export const HERMES_UNIX_INSTALL_CMD = 'curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash'
+export const HERMES_UNIX_FALLBACK_CMD = 'curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh | bash'
 
-export const PACKAGE_ORDER = ['python', 'hermes', '9router', 'kokoro']
+// Prioritaskan Hermes & 9Router terlebih dahulu agar inti AI langsung aktif cepat,
+// dan Python bawaan uv Hermes langsung terdeteksi tanpa perlu winget Python yang lambat.
+export const PACKAGE_ORDER = ['hermes', '9router', 'python', 'kokoro']
 
 const PACKAGE_META = {
   python: { label: 'Python 3.10+ Runtime', weight: 0.2 },
@@ -218,13 +216,14 @@ async function defaultDownloadFile(urls, destPath, timeoutMs = 120000) {
 }
 
 function defaultRunCommand(cmd, args = [], options = {}) {
-  const { timeoutMs = 420000, onOutput = null, shell = false } = options
+  const { timeoutMs = 420000, onOutput = null, shell = false, env: extraEnv = null } = options
   return new Promise((resolve) => {
     let stdout = ''
     let stderr = ''
     let settled = false
     const isCmdBat = process.platform === 'win32' && /\.(cmd|bat)$/i.test(cmd)
     const needsShell = shell || isCmdBat
+    const mergedEnv = extraEnv ? { ...process.env, ...extraEnv } : process.env
 
     let child
     try {
@@ -233,19 +232,19 @@ function defaultRunCommand(cmd, args = [], options = {}) {
         // dengan { shell: true } memicu bug cmd.exe: "'C:\Program' is not recognized as an internal or external command".
         // Solusi aman & andal: jalankan cmd.exe /d /s /c dengan seluruh baris perintah dibungkus tanda kutip ganda terluar
         // dan windowsVerbatimArguments: true.
-        const fullCmd = `"${cmd}" ${args.map((a) => (/[ \t\n\v"]/.test(a) ? `"${a.replace(/"/g, '\\"')}"` : a)).join(' ')}`
+        const fullCmd = `"${cmd}" ${args.map((a) => (/[ \t\n\v"]/.test(a) ? `"${String(a).replace(/"/g, '""')}"` : String(a))).join(' ')}`
         child = spawn(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', `"${fullCmd}"`], {
           windowsHide: true,
           windowsVerbatimArguments: true,
           stdio: ['ignore', 'pipe', 'pipe'],
-          env: process.env
+          env: mergedEnv
         })
       } else {
         child = spawn(cmd, args, {
           windowsHide: true,
           shell: needsShell,
           stdio: ['ignore', 'pipe', 'pipe'],
-          env: process.env
+          env: mergedEnv
         })
       }
     } catch (err) {
@@ -419,7 +418,7 @@ export function computeStageProgress(pkgId, line, currentPct = 15) {
 /**
  * Menjalankan perintah sub-proses sambil terus mengirim pembaruan progres dinamis + heartbeat waktu.
  */
-async function runWithDynamicProgress(d, { pkgId, cmd, args, timeoutMs, startPct, baseMsg, emit }) {
+async function runWithDynamicProgress(d, { pkgId, cmd, args, timeoutMs, startPct, baseMsg, emit, env = null }) {
   let pct = startPct
   let stageCap = Math.max(startPct + 10, 75)
   let lastLine = baseMsg
@@ -436,6 +435,7 @@ async function runWithDynamicProgress(d, { pkgId, cmd, args, timeoutMs, startPct
   try {
     return await d.runCommand(cmd, args, {
       timeoutMs,
+      ...(env ? { env } : {}),
       onOutput: (line) => {
         const mapped = computeStageProgress(pkgId, line, pct)
         pct = mapped.percent
@@ -636,8 +636,10 @@ export async function installPython({ onProgress, deps: depsOverride } = {}) {
 }
 
 /**
- * Memasang Hermes Agent CLI di latar belakang (melewati Chromium/CUA agar 3x-5x lebih cepat)
- * dan langsung menyalakan daemon port 9119.
+ * Memasang Hermes Agent CLI menggunakan perintah satu baris standar resmi:
+ * - Windows      : irm https://hermes-agent.nousresearch.com/install.ps1 | iex
+ * - macOS / Linux: curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash
+ * lalu langsung menyalakan daemon port 9119.
  */
 export async function installHermes({ onProgress, deps: depsOverride } = {}) {
   const d = getDefaultDeps(depsOverride)
@@ -656,14 +658,17 @@ export async function installHermes({ onProgress, deps: depsOverride } = {}) {
     return { ok: true, already: true, started: !!st?.ok, cmd: existingCmd }
   }
 
-  if (d.platform === 'win32') {
-    const ps1Path = join(d.tmpdir(), 'hermes-agent-install.ps1')
-    try {
-      emit(12, 'Mengunduh skrip resmi Hermes Agent (mode ringan tanpa Chromium)...')
-      await d.downloadFile(HERMES_INSTALL_PS1_URLS, ps1Path, 90000)
+  const nonInteractiveEnv = {
+    CI: '1',
+    NONINTERACTIVE: '1',
+    HERMES_NONINTERACTIVE: '1',
+    PYTHONUTF8: '1'
+  }
 
-      emit(22, 'Memasang Hermes Agent secara senyap (mode cepat)...')
-      const res = await runWithDynamicProgress(d, {
+  if (d.platform === 'win32') {
+    try {
+      emit(16, 'Menjalankan instalasi standar Hermes (irm https://hermes-agent.nousresearch.com/install.ps1 | iex)...')
+      let res = await runWithDynamicProgress(d, {
         pkgId: 'hermes',
         cmd: 'powershell.exe',
         args: [
@@ -671,26 +676,46 @@ export async function installHermes({ onProgress, deps: depsOverride } = {}) {
           '-NonInteractive',
           '-ExecutionPolicy',
           'Bypass',
-          '-File',
-          ps1Path,
-          '-SkipSetup',
-          '-NonInteractive',
-          '-SkipBrowser',
-          '-SkipComputerUse'
+          '-Command',
+          HERMES_WIN_INSTALL_CMD
         ],
-        timeoutMs: 600000,
-        startPct: 24,
-        baseMsg: 'Memasang Hermes Agent (uv & dependencies)...',
+        env: nonInteractiveEnv,
+        timeoutMs: 480000,
+        startPct: 20,
+        baseMsg: 'Memasang Hermes Agent...',
         emit
       })
 
       d.fixSystemPath({ refreshRegistry: true })
       d.invalidatePathCache()
-
       let detectedCmd = findHermesBinaryDirect(d)
+
+      if (!detectedCmd && res.code !== 0) {
+        emit(35, 'Mencoba ulang via mirror resmi GitHub NousResearch...')
+        res = await runWithDynamicProgress(d, {
+          pkgId: 'hermes',
+          cmd: 'powershell.exe',
+          args: [
+            '-NoProfile',
+            '-NonInteractive',
+            '-ExecutionPolicy',
+            'Bypass',
+            '-Command',
+            HERMES_WIN_FALLBACK_CMD
+          ],
+          env: nonInteractiveEnv,
+          timeoutMs: 480000,
+          startPct: 38,
+          baseMsg: 'Memasang Hermes Agent (mirror)...',
+          emit
+        })
+        d.fixSystemPath({ refreshRegistry: true })
+        d.invalidatePathCache()
+        detectedCmd = findHermesBinaryDirect(d)
+      }
+
       if (!detectedCmd) {
-        // Reload sekali lagi bila binary baru selesai ditulis ke disk
-        await new Promise((r) => setTimeout(r, 400))
+        await new Promise((r) => setTimeout(r, 350))
         d.fixSystemPath({ refreshRegistry: true })
         d.invalidatePathCache()
         detectedCmd = findHermesBinaryDirect(d)
@@ -711,32 +736,46 @@ export async function installHermes({ onProgress, deps: depsOverride } = {}) {
       emit(100, st?.ok ? 'Hermes terpasang dan aktif di port 9119!' : 'Hermes berhasil dipasang!', 'done')
       return { ok: true, already: false, started: !!st?.ok, cmd: detectedCmd }
     } catch (err) {
-      const errMsg = `Gagal mengunduh/memasang Hermes: ${err?.message || err}`
+      const errMsg = `Gagal memasang Hermes: ${err?.message || err}`
       emit(0, errMsg, 'failed', { error: errMsg })
       return { ok: false, error: errMsg }
-    } finally {
-      await d.rmFile(ps1Path)
     }
   }
 
-  const shPath = join(d.tmpdir(), 'hermes-agent-install.sh')
   try {
-    emit(12, 'Mengunduh installer Hermes Agent...')
-    await d.downloadFile(HERMES_INSTALL_SH_URLS, shPath, 90000)
-    emit(25, 'Memasang Hermes Agent (mode cepat tanpa browser)...')
-    const res = await runWithDynamicProgress(d, {
+    emit(16, 'Menjalankan instalasi standar Hermes (curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash)...')
+    let res = await runWithDynamicProgress(d, {
       pkgId: 'hermes',
       cmd: 'bash',
-      args: [shPath, '--skip-setup', '--skip-browser', '--skip-computer-use'],
-      timeoutMs: 600000,
-      startPct: 28,
+      args: ['-c', HERMES_UNIX_INSTALL_CMD],
+      env: nonInteractiveEnv,
+      timeoutMs: 480000,
+      startPct: 20,
       baseMsg: 'Memasang Hermes Agent...',
       emit
     })
 
     d.fixSystemPath()
     d.invalidatePathCache()
-    const detectedCmd = findHermesBinaryDirect(d)
+    let detectedCmd = findHermesBinaryDirect(d)
+
+    if (!detectedCmd && res.code !== 0) {
+      emit(35, 'Mencoba ulang via mirror resmi GitHub NousResearch...')
+      res = await runWithDynamicProgress(d, {
+        pkgId: 'hermes',
+        cmd: 'bash',
+        args: ['-c', HERMES_UNIX_FALLBACK_CMD],
+        env: nonInteractiveEnv,
+        timeoutMs: 480000,
+        startPct: 38,
+        baseMsg: 'Memasang Hermes Agent (mirror)...',
+        emit
+      })
+      d.fixSystemPath()
+      d.invalidatePathCache()
+      detectedCmd = findHermesBinaryDirect(d)
+    }
+
     if (!detectedCmd) {
       const errMsg = `Pemasangan Hermes gagal: ${tailLine(res)}`
       emit(0, errMsg, 'failed', { error: errMsg })
@@ -752,13 +791,45 @@ export async function installHermes({ onProgress, deps: depsOverride } = {}) {
     const errMsg = `Gagal memasang Hermes: ${err?.message || err}`
     emit(0, errMsg, 'failed', { error: errMsg })
     return { ok: false, error: errMsg }
-  } finally {
-    await d.rmFile(shPath)
   }
 }
 
 /**
- * Memasang 9Router via NPM di latar belakang & langsung menyalakan port 20128.
+ * Mencari lokasi binary 9router langsung dari direktori global prefix npm (`npm prefix -g`)
+ * agar instalasi di NVM, fnm, Volta, atau custom npm prefix tidak pernah gagal terdeteksi.
+ */
+async function probeRouterBinaryFromNpmPrefix(d, npmCmd, extraPrefixes = []) {
+  const prefixes = [...extraPrefixes]
+  try {
+    const prefRes = await d.runCommand(npmCmd, ['prefix', '-g'], { timeoutMs: 8000 })
+    const line = String(prefRes?.stdout || '').trim().split(/\r?\n/)[0]?.trim()
+    if (line) prefixes.unshift(line)
+  } catch { /* abaikan */ }
+
+  const isWin = d.platform === 'win32'
+  for (const rawPref of prefixes) {
+    if (!rawPref) continue
+    const candidates = isWin
+      ? [
+          join(rawPref, '9router.cmd'),
+          join(rawPref, 'bin', '9router.cmd'),
+          join(rawPref, '9router.exe'),
+          join(rawPref, 'node_modules', '9router', 'bin', '9router.js')
+        ]
+      : [
+          join(rawPref, 'bin', '9router'),
+          join(rawPref, '9router'),
+          join(rawPref, 'lib', 'node_modules', '9router', 'bin', '9router.js')
+        ]
+    for (const c of candidates) {
+      if (d.existsSync(c)) return { cmd: c, ok: true }
+    }
+  }
+  return { cmd: null, ok: false }
+}
+
+/**
+ * Memasang 9Router via perintah standar cepat `npm install -g 9router` & langsung menyalakan port 20128.
  */
 export async function installRouter({ onProgress, deps: depsOverride } = {}) {
   const d = getDefaultDeps(depsOverride)
@@ -799,34 +870,76 @@ export async function installRouter({ onProgress, deps: depsOverride } = {}) {
     return { ok: false, error: errMsg }
   }
 
-  emit(50, 'Memasang 9Router secara senyap (npm install -g 9router)...')
+  // Pastikan direktori npm global user & direktori node.exe masuk ke PATH (mencegah ENOENT & postinstall gagal)
+  const extraPrefixes = []
+  const delimiter = d.platform === 'win32' ? ';' : ':'
+  const npmDir = dirname(npmCmd)
+  let customPath = process.env.PATH || ''
+  if (npmDir && !customPath.includes(npmDir)) {
+    customPath = `${npmDir}${delimiter}${customPath}`
+  }
+
+  if (d.platform === 'win32') {
+    const winNpmDir = join(process.env.APPDATA || join(d.homedir(), 'AppData', 'Roaming'), 'npm')
+    try { d.mkdirSync(winNpmDir, { recursive: true }) } catch { /* abaikan */ }
+    extraPrefixes.push(winNpmDir)
+    if (!customPath.includes(winNpmDir)) {
+      customPath = `${winNpmDir}${delimiter}${customPath}`
+    }
+  } else {
+    const localBin = join(d.homedir(), '.local', 'bin')
+    try { d.mkdirSync(localBin, { recursive: true }) } catch { /* abaikan */ }
+    if (!customPath.includes(localBin)) {
+      customPath = `${localBin}${delimiter}${customPath}`
+    }
+  }
+
+  const npmEnv = {
+    PATH: customPath,
+    npm_config_audit: 'false',
+    npm_config_fund: 'false',
+    npm_config_update_notifier: 'false'
+  }
+
+  // Perintah standar ringkas & cepat (memanfaatkan cache npm lokal tanpa --prefer-online yang lambat)
+  emit(48, 'Memasang 9Router (npm install -g 9router)...')
   let npmRes = await runWithDynamicProgress(d, {
     pkgId: '9router',
     cmd: npmCmd,
-    args: ['install', '-g', '9router', '--prefer-online', '--no-audit', '--no-fund', '--progress=false'],
+    args: ['install', '-g', '9router', '--no-audit', '--no-fund'],
+    env: npmEnv,
     timeoutMs: 240000,
-    startPct: 52,
-    baseMsg: 'Mengunduh & memasang 9router...',
+    startPct: 50,
+    baseMsg: 'Memasang 9router...',
     emit
   })
 
-  if (npmRes.code !== 0 && d.platform !== 'win32') {
-    const localPrefix = join(d.homedir(), '.local')
-    emit(64, 'Mencoba ulang pemasangan 9Router di ~/.local (tanpa sudo)...')
+  // Fallback izin direktori: bila global prefix sistem menolak akses tulis (EACCES / EPERM),
+  // pasang ke prefix milik user (tanpa sudo / tanpa butuh Run as Admin).
+  if (npmRes.code !== 0) {
+    const userPrefix = d.platform === 'win32'
+      ? join(process.env.APPDATA || join(d.homedir(), 'AppData', 'Roaming'), 'npm')
+      : join(d.homedir(), '.local')
+    extraPrefixes.unshift(userPrefix)
+    emit(64, 'Mencoba ulang pemasangan 9Router di direktori pengguna...')
     npmRes = await runWithDynamicProgress(d, {
       pkgId: '9router',
       cmd: npmCmd,
-      args: ['install', '-g', '9router', '--prefix', localPrefix, '--prefer-online', '--no-audit', '--no-fund', '--progress=false'],
+      args: ['install', '-g', '9router', '--prefix', userPrefix, '--no-audit', '--no-fund'],
+      env: npmEnv,
       timeoutMs: 240000,
       startPct: 66,
-      baseMsg: 'Memasang 9router ke ~/.local/bin...',
+      baseMsg: 'Memasang 9router di direktori user...',
       emit
     })
   }
 
   d.fixSystemPath({ refreshRegistry: true })
   d.invalidatePathCache()
-  const after = d.resolveRouterBinary()
+  let after = d.resolveRouterBinary()
+  if (!after?.ok && npmRes.code === 0) {
+    after = await probeRouterBinaryFromNpmPrefix(d, npmCmd, extraPrefixes)
+  }
   if (!after?.ok) {
     const errMsg = `Gagal memasang 9Router: ${tailLine(npmRes)}`
     emit(0, errMsg, 'failed', { error: errMsg })
@@ -1031,9 +1144,9 @@ export async function installPackageOneClick(pkgId, { onProgress, deps } = {}) {
     persistQueueState(d)
 
     const steps = [
-      { key: 'python', label: PACKAGE_META.python.label, fn: installPython },
       { key: 'hermes', label: PACKAGE_META.hermes.label, fn: installHermes },
       { key: '9router', label: PACKAGE_META['9router'].label, fn: installRouter },
+      { key: 'python', label: PACKAGE_META.python.label, fn: installPython },
       { key: 'kokoro', label: PACKAGE_META.kokoro.label, fn: installKokoro }
     ]
 

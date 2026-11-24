@@ -137,6 +137,20 @@
             </div>
           </div>
 
+          <!-- ALERT INSTRUKSI TES PING: Muncul sekali saja bila belum pernah dites, atau muncul lagi bila status mati / koneksi terputus -->
+          <div id="home-ping-alert" class="settings-alert-banner hidden" style="border-left: 4px solid #38bdf8; background: rgba(56, 189, 248, 0.08);">
+            <div id="home-ping-alert-emblem" class="format-emblem theme-blue" style="color:#38bdf8;">
+              <svg class="lucide-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+            </div>
+            <div class="alert-content">
+              <strong id="home-ping-alert-title" data-i18n="home.pingAlert.onceTitle">Uji Koneksi LLM Manual (Cukup Sekali Saja)</strong>
+              <p id="home-ping-alert-desc" data-i18n="home.pingAlert.onceDesc">Silakan klik tombol "Tes Ping" cukup satu kali untuk memastikan koneksi model LLM siap digunakan. Jika sudah pernah dites dan terhubung, pesan ini tidak akan muncul lagi kecuali indikator status mati atau koneksi terputus.</p>
+            </div>
+            <div class="alert-actions">
+              <button type="button" id="alert-test-ping-btn" class="mini-btn browse" data-i18n="home.llm.pingBtn">Tes Ping</button>
+            </div>
+          </div>
+
           <div class="group-header" style="display:flex; justify-content:space-between; align-items:center;">
             <span data-i18n="home.prereq.group">Kondisi Prasyarat Memulai (Checklist)</span>
             <span id="home-prereq-badge" class="badge" data-i18n="home.prereq.checking" style="font-size:11px;">Pengecekan…</span>

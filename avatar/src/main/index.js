@@ -221,6 +221,39 @@ app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required')
 app.commandLine.appendSwitch('disable-http-cache')
 app.commandLine.appendSwitch('disable-gpu-shader-disk-cache')
 
+// Pembatasan Single Instance: pastikan hanya 1 aplikasi Hermes Desktop Pet berjalan.
+// Jika user membuka aplikasi lagi, fokuskan ke jendela yang sudah aktif.
+const hasSingleInstanceLock = app.requestSingleInstanceLock()
+
+function focusExistingInstanceWindow() {
+  const candidates = [
+    avatarWindow && !avatarWindow.isDestroyed() ? avatarWindow : null,
+    launcherWindow && !launcherWindow.isDestroyed() ? launcherWindow : null
+  ].filter(Boolean)
+
+  if (candidates.length === 0) {
+    if (app.isReady()) createLauncherWindow()
+    return
+  }
+
+  for (const win of candidates) {
+    try {
+      if (win.isMinimized()) win.restore()
+      if (!win.isVisible()) win.show()
+      win.focus()
+      break
+    } catch { /* abaikan */ }
+  }
+}
+
+if (!hasSingleInstanceLock) {
+  app.quit()
+} else {
+  app.on('second-instance', () => {
+    focusExistingInstanceWindow()
+  })
+}
+
 // Variabel penyimpan berkas installer sementara jika di Windows
 let pendingWindowsInstaller = null
 
@@ -691,6 +724,10 @@ export function findFallbackModelPath() {
     'assets/live2d/mother/20250106.model3.json',
     'assets/live2d/jingliu/jingliu.model3.json',
     'assets/live2d/huohuo/huohuo.model3.json',
+    'assets/live2d/frieren/frieren.model3.json',
+    'assets/live2d/fern/fern.model3.json',
+    'assets/live2d/changli/changli.model3.json',
+    'assets/live2d/asuka/asuka.model3.json',
     'assets/live2d/shizuku/shizuku.model3.json',
     'assets/live2d/hiyori/hiyori_pro_t11.model3.json',
     'assets/live2d/koharu/koharu.model3.json',
@@ -1400,7 +1437,9 @@ secureHandle('avatar:music-bg-control', async (_event, action, payload = {}) => 
 secureHandle('avatar:hermes-config', () => {
   return {
     wsUrl: process.env['HERMES_WS_URL'] || 'ws://127.0.0.1:9119/api/ws',
-    token: SESSION_TOKEN
+    token: SESSION_TOKEN,
+    cwd: homedir(),
+    platform: process.platform
   }
 })
 
@@ -2065,10 +2104,9 @@ secureHandle('avatar:delete-skill', async (_event, { name, category }) => {
   }
 })
 
-// IPC: tes koneksi model (chat completion sungguhan ke provider).
-// Kirim request "ping" ke model → verifikasi model benar-benar berfungsi.
+// IPC: tes koneksi model (chat completion sungguhan ke provider) — dipicu manual lewat tombol "Tes Ping".
+// Jangan paksa auto-spawn 9Router bila memang sedang dimatikan user.
 secureHandle('avatar:test-connection', async (_event, url, model, apiKey) => {
-  await ensureLocalRouterIfTarget(url)
   return await testProviderConnection({ url, model, apiKey, resolveApiKeyFor })
 })
 
@@ -2177,18 +2215,26 @@ secureHandle('avatar:restart-hermes', async () => {
 })
 
 // IPC: ambil model aktual langsung dari endpoint OpenAI-compatible (9Router, Ollama, dll)
+// Hanya membaca bila endpoint memang aktif — tidak memaksa menyalakan 9Router secara otomatis.
 secureHandle('avatar:fetch-endpoint-models', async (_event, baseUrl, apiKey) => {
-  await ensureLocalRouterIfTarget(baseUrl)
+  if (isLocalRouterUrl(baseUrl) && !(await isPortOpen(ROUTER_PORT))) {
+    return { ok: false, models: [], error: '9Router lokal (:20128) sedang tidak aktif.' }
+  }
   return await fetchEndpointModels({ baseUrl, apiKey, resolveApiKeyFor })
 })
 
 // IPC: ambil daftar model dari SEMUA provider tersimpan sekaligus (paralel).
-// Berguna agar model 9Router tetap muncul walau provider lain (mis. Google) sedang aktif.
+// Lewati endpoint 9Router lokal bila layanan 9Router sedang tidak berjalan agar tidak auto-spawn / lag.
 secureHandle('avatar:fetch-all-provider-models', async (_event, providers) => {
   try {
-    const urls = (Array.isArray(providers) ? providers : []).map((p) => p?.baseUrl)
-    await ensureLocalRouterIfTarget(urls)
-    const results = await fetchModelsForProviders({ providers, resolveApiKeyFor })
+    const routerOpen = await isPortOpen(ROUTER_PORT)
+    const activeList = (Array.isArray(providers) ? providers : []).filter(
+      (p) => p?.baseUrl && (!isLocalRouterUrl(p.baseUrl) || routerOpen)
+    )
+    if (activeList.length === 0) {
+      return { ok: true, results: [] }
+    }
+    const results = await fetchModelsForProviders({ providers: activeList, resolveApiKeyFor })
     return { ok: true, results }
   } catch (err) {
     return { ok: false, results: [], error: err?.message || String(err) }
@@ -2203,7 +2249,7 @@ secureHandle('avatar:start-oauth-login', async (_event, providerId = 'openrouter
   return await startOpenRouterOAuthFlow({ shell, secretStore })
 })
 
-// IPC: Periksa sisa kuota, limit, dan status paket provider aktif
+// IPC: Periksa sisa kuota, limit, dan status paket provider aktif (tanpa auto-spawn paksa 9Router)
 secureHandle('avatar:check-provider-quota', async (_event, baseUrl, apiKey) => {
   let hintUrl = String(baseUrl || '').trim()
   if (!hintUrl) {
@@ -2217,7 +2263,9 @@ secureHandle('avatar:check-provider-quota', async (_event, baseUrl, apiKey) => {
       // Abaikan kegagalan baca config.yaml opsional
     }
   }
-  await ensureLocalRouterIfTarget(hintUrl)
+  if (hintUrl && isLocalRouterUrl(hintUrl) && !(await isPortOpen(ROUTER_PORT))) {
+    return { ok: false, error: '9Router lokal (:20128) sedang belum aktif.' }
+  }
   return await checkProviderQuota({ baseUrl, apiKey, resolveApiKeyFor })
 })
 
@@ -3217,7 +3265,8 @@ app.on('web-contents-created', (_e, wc) => {
   wc.on('will-attach-webview', (e) => e.preventDefault())
 })
 
-app.whenReady().then(() => {
+if (hasSingleInstanceLock) {
+  app.whenReady().then(() => {
   if (process.env.HERMES_DEBUG) {
     console.log('[env]', process.versions.electron, process.versions.node, process.versions.chrome)
   }
@@ -3294,16 +3343,19 @@ app.whenReady().then(() => {
   })
   cronOutputWatcher.start()
 
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createLauncherWindow()
+    app.on('activate', () => {
+      if (BrowserWindow.getAllWindows().length === 0) createLauncherWindow()
+    })
   })
-})
+}
 
 app.on('before-quit', () => {
+  if (!hasSingleInstanceLock) return
   stopBackgroundMusicPlayer()
 })
 
 app.on('window-all-closed', () => {
+  if (!hasSingleInstanceLock) return
   stopMotion()
   stopBackgroundMusicPlayer()
   unregisterGlobalShortcuts()

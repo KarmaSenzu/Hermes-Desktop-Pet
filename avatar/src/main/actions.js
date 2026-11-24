@@ -6,11 +6,17 @@
  */
 
 export const TERMINAL_ACTIONS = {
-  'install-hermes': {
-    label: 'Install Hermes via NPM',
-    cmd: 'npm',
-    args: ['install', '-g', '@nousresearch/hermes']
-  },
+  'install-hermes': process.platform === 'win32'
+    ? {
+        label: 'Install Hermes Agent (Resmi)',
+        cmd: 'powershell.exe',
+        args: ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', 'Invoke-Expression (Invoke-RestMethod https://hermes-agent.nousresearch.com/install.ps1)']
+      }
+    : {
+        label: 'Install Hermes Agent (Resmi)',
+        cmd: 'bash',
+        args: ['-c', 'curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash']
+      },
   'start-hermes': {
     label: 'Jalankan Hermes Serve',
     cmd: 'hermes',

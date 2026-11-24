@@ -106,6 +106,38 @@ const DEFAULT_SETTINGS = {
       format: 'model3.json',
       image: CHARACTER_THUMBS.allium || '',
       active: false
+    },
+    {
+      id: 'asuka-live2d',
+      name: 'Asuka (Live2D)',
+      path: 'assets/live2d/asuka/asuka.model3.json',
+      format: 'model3.json',
+      image: CHARACTER_THUMBS.asuka || '',
+      active: false
+    },
+    {
+      id: 'fern-live2d',
+      name: 'Fern (Live2D)',
+      path: 'assets/live2d/fern/fern.model3.json',
+      format: 'model3.json',
+      image: CHARACTER_THUMBS.fern || '',
+      active: false
+    },
+    {
+      id: 'frieren-live2d',
+      name: 'Frieren (Live2D)',
+      path: 'assets/live2d/frieren/frieren.model3.json',
+      format: 'model3.json',
+      image: CHARACTER_THUMBS.frieren || '',
+      active: false
+    },
+    {
+      id: 'changli-live2d',
+      name: 'Changli (Live2D)',
+      path: 'assets/live2d/changli/changli.model3.json',
+      format: 'model3.json',
+      image: CHARACTER_THUMBS.changli || '',
+      active: false
     }
   ],
   routerChecked: false, // checklist pengingat 9Router (manual oleh user)

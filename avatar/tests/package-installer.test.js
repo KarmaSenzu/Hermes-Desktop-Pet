@@ -136,7 +136,7 @@ describe('package-installer', () => {
   })
 
   describe('installHermes', () => {
-    it('memakai flag -SkipBrowser -SkipComputerUse, menyegarkan registry PATH, dan mendeteksi %LOCALAPPDATA%\\hermes\\bin\\hermes.exe tanpa false error', async () => {
+    it('menjalankan perintah standar resmi irm https://hermes-agent.nousresearch.com/install.ps1 | iex di Windows dan mendeteksi hermes.exe', async () => {
       let binWritten = false
       const expectedExe = 'C:\\Users\\TestUser\\AppData\\Local\\hermes\\bin\\hermes.exe'
       const events = []
@@ -150,8 +150,8 @@ describe('package-installer', () => {
         }),
         runCommand: vi.fn(async (cmd, args, opts) => {
           if (cmd === 'powershell.exe') {
-            expect(args).toContain('-SkipBrowser')
-            expect(args).toContain('-SkipComputerUse')
+            expect(args).toContain('-Command')
+            expect(args.join(' ')).toContain('irm https://hermes-agent.nousresearch.com/install.ps1 | iex')
             opts?.onOutput?.('Cloning repo...')
             opts?.onOutput?.('Installing dependencies (uv.lock)...')
             opts?.onOutput?.('Publishing the hermes command')
@@ -174,15 +174,37 @@ describe('package-installer', () => {
       expect(deps.fixSystemPath).toHaveBeenCalledWith({ refreshRegistry: true })
       expect(deps.savePersistedPath).toHaveBeenCalledWith('hermes_bin', expect.stringContaining('hermes.exe'))
       expect(deps.startHermes).toHaveBeenCalledTimes(1)
-      // Pastikan progres bergerak (tidak stuck di 60%)
       const pcts = events.map((e) => e.percent)
       expect(Math.max(...pcts)).toBe(100)
       expect(new Set(pcts).size).toBeGreaterThan(3)
     })
+
+    it('menjalankan perintah standar resmi curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash di macOS/Linux', async () => {
+      let binWritten = false
+      const expectedBin = 'C:/Users/TestUser/.local/bin/hermes'
+      const deps = createBaseMockDeps({
+        platform: 'darwin',
+        resolveHermesBinary: vi.fn(() => ({ cmd: null })),
+        existsSync: vi.fn((p) => binWritten && String(p).replace(/\\/g, '/') === expectedBin),
+        runCommand: vi.fn(async (cmd, args) => {
+          if (cmd === 'bash') {
+            expect(args[0]).toBe('-c')
+            expect(args[1]).toBe('curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash')
+            binWritten = true
+          }
+          return { code: 0, stdout: 'OK', stderr: '' }
+        })
+      })
+
+      const res = await installHermes({ deps })
+      expect(res.ok).toBe(true)
+      expect(res.started).toBe(true)
+      expect(deps.startHermes).toHaveBeenCalledTimes(1)
+    })
   })
 
   describe('installRouter', () => {
-    it('memasang Node.js LTS via winget jika npm hilang lalu memasang 9router dengan flag cepat dan menyalakannya', async () => {
+    it('memasang Node.js LTS via winget jika npm hilang lalu memasang 9router dengan npm install -g 9router cepat (tanpa --prefer-online) dan menyalakannya', async () => {
       let hasNpm = false
       let hasRouter = false
       const deps = createBaseMockDeps({
@@ -197,8 +219,8 @@ describe('package-installer', () => {
             hasNpm = true
           }
           if (String(cmd).includes('npm.cmd') && args.includes('9router')) {
-            expect(args).toContain('--prefer-online')
-            expect(args).toContain('--progress=false')
+            expect(args).toEqual(['install', '-g', '9router', '--no-audit', '--no-fund'])
+            expect(args).not.toContain('--prefer-online')
             hasRouter = true
           }
           return { code: 0, stdout: 'OK', stderr: '' }
@@ -209,6 +231,27 @@ describe('package-installer', () => {
       expect(res.ok).toBe(true)
       expect(res.started).toBe(true)
       expect(deps.startRouter).toHaveBeenCalledTimes(1)
+    })
+
+    it('mendeteksi binary 9router dari npm prefix -g bila tidak ada di daftar PATH statis', async () => {
+      const customPrefix = 'D:\\CustomNode\\npm-global'
+      const customBin = 'D:\\CustomNode\\npm-global\\9router.cmd'
+      const deps = createBaseMockDeps({
+        fastWhere: vi.fn((bin) => (bin === 'npm' ? ['D:\\CustomNode\\npm.cmd'] : [])),
+        resolveRouterBinary: vi.fn(() => ({ cmd: null, ok: false })),
+        existsSync: vi.fn((p) => String(p).replace(/\//g, '\\') === customBin),
+        runCommand: vi.fn(async (_cmd, args) => {
+          if (args[0] === 'prefix' && args[1] === '-g') {
+            return { code: 0, stdout: `${customPrefix}\n`, stderr: '' }
+          }
+          return { code: 0, stdout: 'added 10 packages', stderr: '' }
+        })
+      })
+
+      const res = await installRouter({ deps })
+      expect(res.ok).toBe(true)
+      expect(res.cmd.replace(/\//g, '\\')).toBe(customBin)
+      expect(deps.savePersistedPath).toHaveBeenCalledWith('router_bin', expect.stringContaining('9router.cmd'))
     })
   })
 
@@ -250,7 +293,7 @@ describe('package-installer', () => {
 
       expect(res.ok).toBe(true)
       expect(isPackageInstallRunning()).toBe(false)
-      expect(Object.keys(res.results)).toEqual(['python', 'hermes', '9router', 'kokoro'])
+      expect(Object.keys(res.results)).toEqual(['hermes', '9router', 'python', 'kokoro'])
       expect(res.queue.overallPercent).toBe(100)
       expect(res.queue.items.hermes.status).toBe('done')
       expect(events.some((e) => e.pkgId === 'all' && e.percent === 100)).toBe(true)
