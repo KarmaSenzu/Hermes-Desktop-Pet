@@ -9,10 +9,10 @@
 
 **Pendamping AI Visual Interaktif (Live2D & 3D WebGL) yang Hidup di Atas Layar Kerja Anda**
 
-[![Version](https://img.shields.io/badge/Version-v1.1.2-0284c7.svg?style=for-the-badge)](https://github.com/KarmaSenzu/Hermes-Desktop-Pet/releases/latest)
+[![Version](https://img.shields.io/badge/Version-v1.2.0-0284c7.svg?style=for-the-badge)](https://github.com/KarmaSenzu/Hermes-Desktop-Pet/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge)](LICENSE)
 [![CI Pipeline](https://github.com/KarmaSenzu/Hermes-Desktop-Pet/actions/workflows/ci.yml/badge.svg)](https://github.com/KarmaSenzu/Hermes-Desktop-Pet/actions/workflows/ci.yml)
-[![Vitest Suite](https://img.shields.io/badge/Tests-219%20Passed%20(31%20Suites)-10b981.svg?style=for-the-badge)](#7-panduan-instalasi-installation--setup)
+[![Vitest Suite](https://img.shields.io/badge/Tests-239%20Passed%20(35%20Suites)-10b981.svg?style=for-the-badge)](#7-panduan-instalasi-installation--setup)
 
 [![Electron](https://img.shields.io/badge/Electron-45.1.0-47848F.svg?logo=electron&logoColor=white)](https://www.electronjs.org/)
 [![Node.js](https://img.shields.io/badge/Node.js-%3E%3D24.0.0%20LTS-339933.svg?logo=node.js&logoColor=white)](https://nodejs.org/)
@@ -91,8 +91,8 @@ flowchart LR
         <img src="docs/assets/showcase-characters.jpeg" alt="Pustaka Karakter & Model Live2D" width="100%" style="border-radius: 8px; box-shadow: 0 4px 14px rgba(0,0,0,0.25);" />
       </a>
       <br />
-      <b>🎭 Pustaka Karakter & Galeri Live2D</b>
-      <p align="left"><sub>Galeri thumbnail visual karakter Live2D tersimpan (Mother, Jingliu, HuoHuo, Sparkle, Ellen Joe, Jane Doe, Camellya, Allium) dengan aksi 1-klik gunakan, kustomisasi model, dan simpan karakter.</sub></p>
+      <b>🎭 Pustaka Karakter & Galeri Live2D (12 Karakter)</b>
+      <p align="left"><sub>Galeri thumbnail visual 12 karakter Live2D tersimpan (Mother, Jingliu, HuoHuo, Sparkle, Ellen Joe, Jane Doe, Camellya, Allium, Changli, Frieren, Fern, Asuka) dengan aksi 1-klik gunakan, kustomisasi model, dan simpan karakter.</sub></p>
     </td>
   </tr>
   <tr>
@@ -206,13 +206,13 @@ flowchart LR
 
 | Sistem Operasi | Kegunaan | Nama Asset Rilis | Pembaruan Cepat (Terminal) |
 | :--- | :--- | :--- | :--- |
-| **Windows 10 / 11 (64-bit)** | Installer Setup (Disarankan) | `WINDOWS-Installer-Hermes-Desktop-Pet-v1.1.2-x64.exe` | `irm https://raw.githubusercontent.com/KarmaSenzu/Hermes-Desktop-Pet/main/update.ps1 \| iex` |
-| **Windows 10 / 11 (64-bit)** | Portabel (Tanpa Install) | `WINDOWS-Portable-Hermes-Desktop-Pet-v1.1.2-x64.zip` | — |
-| **macOS Apple Silicon (M1–M4)** | Installer DMG (Disarankan) | `MACOS-M-Series-Hermes-Desktop-Pet-v1.1.2-arm64.dmg` | `curl -fsSL https://raw.githubusercontent.com/KarmaSenzu/Hermes-Desktop-Pet/main/update.sh \| bash` |
-| **macOS Apple Silicon (M1–M4)** | Arsip Aplikasi (`.app`) | `MACOS-M-Series-Hermes-Desktop-Pet-v1.1.2-arm64.zip` | — |
-| **Linux (`x86_64`)** | AppImage Universal | `LINUX-Hermes-Desktop-Pet-v1.1.2-x86_64.AppImage` | `curl -fsSL https://raw.githubusercontent.com/KarmaSenzu/Hermes-Desktop-Pet/main/update.sh \| bash` |
-| **Linux (`x86_64`)** | Arsip Portabel (`.tar.gz`) | `LINUX-Hermes-Desktop-Pet-v1.1.2-x86_64.tar.gz` | — |
-| **Pembaruan Ringan (OTA)** | Patch Internal Aplikasi | `OTA-Patch-Hermes-Desktop-Pet-v1.1.2.zip` | Lewat menu **Home → Cek Update** |
+| **Windows 10 / 11 (64-bit)** | Installer Setup (Disarankan) | `WINDOWS-Installer-Hermes-Desktop-Pet-v1.2.0-x64.exe` | `irm https://raw.githubusercontent.com/KarmaSenzu/Hermes-Desktop-Pet/main/update.ps1 \| iex` |
+| **Windows 10 / 11 (64-bit)** | Portabel (Tanpa Install) | `WINDOWS-Portable-Hermes-Desktop-Pet-v1.2.0-x64.zip` | — |
+| **macOS Apple Silicon (M1–M4)** | Installer DMG (Disarankan) | `MACOS-M-Series-Hermes-Desktop-Pet-v1.2.0-arm64.dmg` | `curl -fsSL https://raw.githubusercontent.com/KarmaSenzu/Hermes-Desktop-Pet/main/update.sh \| bash` |
+| **macOS Apple Silicon (M1–M4)** | Arsip Aplikasi (`.app`) | `MACOS-M-Series-Hermes-Desktop-Pet-v1.2.0-arm64.zip` | — |
+| **Linux (`x86_64`)** | AppImage Universal | `LINUX-Hermes-Desktop-Pet-v1.2.0-x86_64.AppImage` | `curl -fsSL https://raw.githubusercontent.com/KarmaSenzu/Hermes-Desktop-Pet/main/update.sh \| bash` |
+| **Linux (`x86_64`)** | Arsip Portabel (`.tar.gz`) | `LINUX-Hermes-Desktop-Pet-v1.2.0-x86_64.tar.gz` | — |
+| **Pembaruan Ringan (OTA)** | Patch Internal Aplikasi | `OTA-Patch-Hermes-Desktop-Pet-v1.2.0.zip` | Lewat menu **Home → Cek Update** |
 
 [**Buka Halaman Rilis Resmi GitHub**](https://github.com/KarmaSenzu/Hermes-Desktop-Pet/releases/latest)
 
@@ -457,6 +457,9 @@ Beberapa model contoh di folder `avatar/assets/live2d/*` **bukan karya proyek in
 | `huohuo` | Karakter *Huohuo* — © **miHoYo / HoYoverse** (HSR) | **Distribusi sekunder DILARANG** |
 | `jane`, `camellya` | Pihak ketiga (tanpa teks lisensi; hanya catatan kontrol) | Tidak diketahui — jangan diasumsikan boleh redistribusi |
 | `allium`, `jingliu` | Pihak ketiga (tanpa lisensi terlampir) | Tidak diketahui — jangan diasumsikan boleh redistribusi |
+| `changli` | Karakter *Changli* (© Kuro Games); ilustrasi 涉谷芒, rigging 苏俩 | Non-komersial pribadi — lihat `NOTICE.md` |
+| `fern` | Karakter *Fern*; ilustrasi & rigging oleh **oki-studio(X)** | Non-komersial pribadi (tanpa monetisasi/live stream) — lihat `NOTICE.md` |
+| `frieren`, `asuka` | Pihak ketiga (penggunaan eksperimen pribadi) | Non-komersial pribadi — lihat `NOTICE.md` |
 
 > **Catatan jujur:** Model `ellen`, `sparkle`, `huohuo` dibagikan oleh pihak ketiga untuk penggunaan pribadi/eksperimen, namun **ketentuan mereka melarang redistribusi publik**. Proyek ini **tidak mengklaim** maupun **memonetisasi** aset tersebut. Untuk penggunaan & kolaborasi yang sepenuhnya bebas, disarankan memakai model dengan lisensi yang jelas mengizinkan redistribusi (mis. model Cubism resmi, VRoid, atau CC0), dan **tidak membundel** model yang dilarang ke distribusi publik. Hak cipta tetap sepenuhnya milik masing-masing pemilik sah.
 
