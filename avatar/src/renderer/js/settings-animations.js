@@ -9,6 +9,7 @@ import { renderIcon } from './icons.js'
 let settings = null
 let saveSettings = null
 let statusEl = null
+let showConfirm = (message) => Promise.resolve(confirm(message))
 
 // --- Animasi (2-level: menu → detail sub-panel) ---
 const animMenuView = document.getElementById('anim-menu-view')
@@ -824,4 +825,5 @@ export function initAnimationsPanel(ctx) {
   settings = ctx.settings
   saveSettings = ctx.saveSettings
   statusEl = ctx.statusEl
+  if (typeof ctx.showConfirm === 'function') showConfirm = ctx.showConfirm
 }

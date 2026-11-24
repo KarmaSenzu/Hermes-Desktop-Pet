@@ -42,6 +42,7 @@ export async function synthesizeTts({
       const resp = await fetch(kokoroUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: AbortSignal.timeout(25000),
         body: JSON.stringify({
           model: 'kokoro',
           input: String(text),
@@ -71,43 +72,42 @@ export async function synthesizeTts({
       return null
     }
 
+    let kokoroStartError = ''
     try {
-      let autoStarted = false
-      if (typeof isPortOpen === 'function' && !(await isPortOpen(kokoroPort))) {
-        // JANGAN memblokir balasan pertama selama ~12 dtk menunggu Kokoro menyala.
-        // Nyalakan di latar (fire-and-forget) lalu langsung pakai jalur cadangan untuk
-        // giliran ini; Kokoro siap untuk balasan berikutnya.
-        console.log('[tts-service] Kokoro belum aktif di port 8880 — menyalakan di latar, memakai fallback giliran ini.')
-        if (typeof startKokoro === 'function') {
-          Promise.resolve(startKokoro()).catch(() => {})
-          return null
+      let result = null
+      const portWasOpen = typeof isPortOpen === 'function' ? await isPortOpen(kokoroPort) : true
+
+      if (portWasOpen) {
+        try {
+          result = await attemptKokoroFetch()
+        } catch (fetchErr) {
+          console.warn('[tts-service] Percobaan awal Kokoro gagal, mencoba start ulang server:', fetchErr?.message || fetchErr)
+          result = null
         }
       }
 
-      let result = null
-      try {
-        result = await attemptKokoroFetch()
-      } catch (fetchErr) {
-        console.warn('[tts-service] Percobaan awal Kokoro gagal, mencoba start ulang server:', fetchErr?.message || fetchErr)
-        result = null
-      }
-
-      if (!result && !autoStarted && typeof startKokoro === 'function') {
+      if (!result && typeof startKokoro === 'function') {
+        console.log(`[tts-service] Kokoro belum siap di port ${kokoroPort} — menyalakan server otomatis...`)
         const startRes = await startKokoro()
         if (startRes?.ok) {
           result = await attemptKokoroFetch()
+        } else if (startRes?.error) {
+          kokoroStartError = String(startRes.error)
         }
       }
 
       if (result) return result
     } catch (err) {
-      console.warn('[tts-service] Kokoro server offline / gagal diakses, mencoba jalur cadangan:', err?.message || err)
+      kokoroStartError = err?.message || String(err)
+      console.warn('[tts-service] Kokoro server offline / gagal diakses, mencoba jalur cadangan:', kokoroStartError)
     }
 
     if (options.noFallback) {
       return {
         ok: false,
-        error: `Server Kokoro-TTS (port 8880) belum aktif atau tidak merespons. Silakan buka tab Package Hub lalu klik 'Jalankan di Background App' atau 'Buka Terminal & Jalankan Server' terlebih dahulu.`
+        error: kokoroStartError
+          ? `Server Kokoro-TTS (port ${kokoroPort}) gagal dijalankan: ${kokoroStartError}`
+          : `Server Kokoro-TTS (port ${kokoroPort}) belum aktif atau tidak merespons. Silakan buka tab Package Hub lalu klik 'Jalankan di Background App' atau 'Buka Terminal & Jalankan Server' terlebih dahulu.`
       }
     }
   }
@@ -121,12 +121,12 @@ export async function synthesizeTts({
     : null
 
   try {
+    const hermesHeaders = { 'Content-Type': 'application/json' }
+    if (token) hermesHeaders['X-Hermes-Session-Token'] = token
     const resp = await fetch(ttsUrl, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Hermes-Session-Token': token
-      },
+      headers: hermesHeaders,
+      signal: AbortSignal.timeout(12000),
       body: JSON.stringify({ text: String(text), voice: fallbackVoice })
     })
     if (resp.ok) {
@@ -200,6 +200,9 @@ export async function synthesizeTts({
       chunks.push(Buffer.from(chunk))
     }
     const buffer = Buffer.concat(chunks)
+    if (!buffer.length) {
+      throw new Error('Edge-TTS mengembalikan audio kosong')
+    }
     return {
       ok: true,
       base64: buffer.toString('base64'),
@@ -208,6 +211,7 @@ export async function synthesizeTts({
       warning: fallbackWarning
     }
   } catch (err) {
-    return { ok: false, error: err?.message || String(err) }
+    const errMsg = err?.message || (typeof err === 'object' ? JSON.stringify(err) : String(err))
+    return { ok: false, error: errMsg }
   }
 }

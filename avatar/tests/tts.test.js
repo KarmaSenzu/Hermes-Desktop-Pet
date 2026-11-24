@@ -50,4 +50,17 @@ describe('tts.synthesize — parsing respons backend', () => {
     await expect(synthesize('halo', 'af_heart', { provider: 'kokoro' }))
       .rejects.toThrow(/server mati/i)
   })
+
+  it('melempar error jelas bila IPC mengembalikan null atau undefined', async () => {
+    setupWindow(null)
+    const { synthesize } = await import('../src/renderer/js/tts.js')
+    await expect(synthesize('halo', 'af_heart', { provider: 'kokoro' }))
+      .rejects.toThrow(/tidak ada respons/i)
+
+    vi.resetModules()
+    setupWindow(undefined)
+    const { synthesize: synthesize2 } = await import('../src/renderer/js/tts.js')
+    await expect(synthesize2('halo', 'af_heart', { provider: 'kokoro' }))
+      .rejects.toThrow(/tidak ada respons/i)
+  })
 })

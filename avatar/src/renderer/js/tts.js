@@ -15,7 +15,7 @@ const VOICE_DEFAULT = 'id-ID-GadisNeural'
  */
 export async function synthesize(text, voice = VOICE_DEFAULT, options = {}) {
   const result = await window.hermesAvatar.synthesizeSpeech(text, voice, options)
-  if (!result.ok) throw new Error(result.error || 'TTS gagal')
+  if (!result || !result.ok) throw new Error(result?.error || 'TTS gagal (tidak ada respons dari engine suara)')
 
   let base64 = result.base64 || ''
   let mimeType = result.mimeType || 'audio/mpeg'

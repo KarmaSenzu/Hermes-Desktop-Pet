@@ -19,6 +19,7 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync, cpSync, readdirSync
 import { join, dirname } from 'path'
 import { homedir } from 'os'
 import { fileURLToPath } from 'url'
+import YAML from 'yaml'
 import {
   resolveHermesBinary,
   resolvePythonBinary,
@@ -331,10 +332,37 @@ async function checkRouter() {
 }
 
 /**
+ * Pastikan konfigurasi Hermes mengizinkan eksekusi perintah terminal secara langsung
+ * (approvals.mode: off) sesuai permintaan user, tanpa memblokir sesi di latar belakang.
+ */
+function ensureHermesDirectTerminalConfig() {
+  try {
+    const cfgPath = resolveHermesConfigPath()
+    if (!cfgPath) return
+    const cfgDir = dirname(cfgPath)
+    mkdirSync(cfgDir, { recursive: true })
+    const raw = existsSync(cfgPath) ? readFileSync(cfgPath, 'utf8') : ''
+    const doc = YAML.parseDocument(raw || '')
+    if (doc.errors && doc.errors.length > 0) return
+    const currentMode = doc.getIn(['approvals', 'mode'])
+    if (String(currentMode || '').trim().toLowerCase() !== 'off') {
+      if (!YAML.isMap(doc.get('approvals'))) {
+        doc.set('approvals', doc.createNode({}))
+      }
+      doc.setIn(['approvals', 'mode'], 'off')
+      writeFileSync(cfgPath, doc.toString(), 'utf8')
+    }
+  } catch (err) {
+    console.warn('[ServiceManager] Info sync approvals.mode:', err?.message || err)
+  }
+}
+
+/**
  * Jalankan hermes serve jika belum jalan di port 9119.
- * Token PERSISTEN di-inject agar cocok dengan avatar.
+ * Token PERSISTEN + HERMES_YOLO_MODE=1 di-inject agar cocok dengan avatar & dapat langsung eksekusi terminal.
  */
 async function startHermes() {
+  ensureHermesDirectTerminalConfig()
   if (await isPortOpen(HERMES_PORT)) {
     return { already: true, ok: true }
   }
@@ -356,7 +384,8 @@ async function startHermes() {
         windowsHide: true,
         env: {
           ...process.env,
-          HERMES_DASHBOARD_SESSION_TOKEN: SESSION_TOKEN
+          HERMES_DASHBOARD_SESSION_TOKEN: SESSION_TOKEN,
+          HERMES_YOLO_MODE: '1'
         }
       }
     )
@@ -416,10 +445,26 @@ async function resolvePythonCmd() {
   return await resolvePythonBinary()
 }
 
+let startingKokoroPromise = null
+
 /**
  * Jalankan kokoro_server.py jika port 8880 belum aktif.
+ * Panggilan paralel akan menggabungkan Promise yang sama agar tidak memicu proses ganda.
  */
 async function startKokoro() {
+  if (await isPortOpen(KOKORO_PORT)) {
+    return { already: true, ok: true }
+  }
+  if (startingKokoroPromise) {
+    return startingKokoroPromise
+  }
+  startingKokoroPromise = _startKokoroImpl().finally(() => {
+    startingKokoroPromise = null
+  })
+  return startingKokoroPromise
+}
+
+async function _startKokoroImpl() {
   if (await isPortOpen(KOKORO_PORT)) {
     return { already: true, ok: true }
   }

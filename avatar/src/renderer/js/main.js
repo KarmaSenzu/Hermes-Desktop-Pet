@@ -2092,17 +2092,122 @@ document.addEventListener('keydown', (e) => {
 
 // Kunci input selama Hermes sedang bekerja agar perintah tidak bertabrakan.
 let busy = false
+let turnWatchdogTimer = null
+const TURN_INACTIVITY_TIMEOUT_MS = 65000
+
+function clearTurnWatchdog() {
+  if (turnWatchdogTimer) {
+    clearTimeout(turnWatchdogTimer)
+    turnWatchdogTimer = null
+  }
+}
+
+function touchTurnWatchdog() {
+  clearTurnWatchdog()
+  if (!busy) return
+  turnWatchdogTimer = setTimeout(() => {
+    if (!busy) return
+    abortActiveTurn('Tidak ada respons lanjutan dari model — proses dihentikan otomatis agar aplikasi tetap responsif.')
+  }, TURN_INACTIVITY_TIMEOUT_MS)
+}
+
+function resizeChatInput() {
+  if (!input) return
+  input.style.height = 'auto'
+  const nextHeight = Math.min(132, Math.max(36, input.scrollHeight || 36))
+  input.style.height = `${nextHeight}px`
+}
+
+function abortActiveTurn(reasonMsg = '') {
+  clearTurnWatchdog()
+  isStreamingResponse = false
+  activeProgressLabel = ''
+  updatePerfMode()
+  removeToolProgress()
+  accumulatedDeltaText = ''
+
+  if (streamingLine) {
+    const bodyText = streamingLine.querySelector('.chat-body')?.textContent?.trim() || ''
+    if (!bodyText) {
+      streamingLine.remove()
+    }
+    streamingLine = null
+  }
+
+  if (isGeneratingSummary) {
+    isGeneratingSummary = false
+    if (activeNotulenBody && !summaryStreamingBuffer.trim()) {
+      activeNotulenBody.innerHTML = `<p style="color: #94a3b8;">Proses penyusunan notulen dihentikan.</p>`
+    }
+    activeNotulenCard = null
+    activeNotulenBody = null
+  }
+
+  if (hermes && hermesReady) {
+    hermes.interruptSession().catch(() => {})
+  }
+
+  setInputLocked(false)
+  setStatus('')
+  controller?.setExpression('neutral')
+
+  if (reasonMsg) {
+    log('avatar', `*${reasonMsg}*`)
+  }
+}
 
 function setInputLocked(locked) {
   busy = locked
-  input.disabled = locked
-  sendBtn.disabled = locked
-  micBtn.disabled = locked
-  input.placeholder = locked ? t('avatar.thinking') : t('avatar.input.placeholder')
-  form.classList.toggle('is-busy', locked)
-  if (!locked && !chatSheet?.classList.contains('hidden')) input.focus()
+  if (locked) {
+    touchTurnWatchdog()
+  } else {
+    clearTurnWatchdog()
+  }
+  if (input) {
+    input.disabled = locked
+    input.placeholder = locked ? t('avatar.thinking') : t('avatar.input.placeholder')
+  }
+  if (micBtn) micBtn.disabled = locked
+  if (sendBtn) {
+    sendBtn.disabled = false
+    if (locked) {
+      sendBtn.type = 'button'
+      sendBtn.classList.add('abort-btn')
+      sendBtn.textContent = 'Batal'
+      sendBtn.title = 'Hentikan proses seketika & kembalikan kontrol'
+    } else {
+      sendBtn.type = 'submit'
+      sendBtn.classList.remove('abort-btn')
+      sendBtn.textContent = 'Kirim'
+      sendBtn.title = ''
+    }
+  }
+  form?.classList.toggle('is-busy', locked)
+  if (!locked && !chatSheet?.classList.contains('hidden')) {
+    input?.focus()
+  }
   syncBackgroundChatIndicators()
 }
+
+sendBtn?.addEventListener('click', (e) => {
+  if (busy) {
+    e.preventDefault()
+    e.stopPropagation()
+    abortActiveTurn('Proses dihentikan — silakan lanjutkan pesan Anda.')
+  }
+})
+
+input?.addEventListener('input', () => {
+  resizeChatInput()
+})
+
+input?.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
+    e.preventDefault()
+    if (busy) return
+    form?.requestSubmit()
+  }
+})
 
 // --- Bubble status di atas avatar (thinking/processing/speaking/idle) ---
 // Saat idle, bubble tetap tampil dengan teks netral (titik), bukan hilang.
@@ -2116,6 +2221,10 @@ function setStatus(text) {
 // --- Sanitasi teks jawaban: bersihkan tag internal & format ANSI (tetap jaga newline & markdown) ---
 function cleanText(text) {
   return (text || '')
+    // Hapus blok thinking internal model bila bocor ke teks utama
+    .replace(/<thinking_mode>[\s\S]*?<\/thinking_mode>/gi, '')
+    .replace(/<\/?thinking_mode[^>]*>/gi, '')
+    .replace(/<think>[\s\S]*?<\/think>/gi, '')
     // Hapus tag emosi/affect/gesture internal Hermes bila ada.
     .replace(/\[(?:emotion|affect|gesture):[^\]]*\]/gi, '')
     // Hapus markup ANSI bila ada.
@@ -2129,7 +2238,8 @@ function log(who, text, { renderOnly = false } = {}) {
   const line = document.createElement('div')
   line.className = who
   if (who === 'user') {
-    line.innerHTML = `<span class="sender-tag user-tag">Kamu:</span> ${escapeHtml(text)}`
+    const normalizedUserText = String(text ?? '').replace(/\r\n/g, '\n')
+    line.innerHTML = `<span class="sender-tag user-tag">Kamu:</span> <span class="user-msg-text">${escapeHtml(normalizedUserText)}</span>`
   } else {
     line.innerHTML = `<span class="sender-tag">Hermes:</span><div class="chat-body markdown-body">${renderMarkdown(text)}</div>`
     bindDynamicAssessmentCards(line)
@@ -2184,14 +2294,19 @@ function removeToolProgress() {
   }
 }
 
+let defaultHermesCwd = null
+
 async function initHermes() {
   try {
-    // Baca WS URL + token dari main process (env saat app diluncurkan).
+    // Baca WS URL + token + working directory user dari main process.
     const cfg = await window.hermesAvatar.getHermesConfig()
+    defaultHermesCwd = cfg.cwd || null
     hermes = new HermesClient(cfg.wsUrl, cfg.token)
 
     await hermes.connect()
-    await hermes.createSession('Avatar chat')
+    await hermes.createSession('Avatar chat', defaultHermesCwd)
+    // Pastikan eksekusi perintah terminal langsung diizinkan tanpa menggantung di prompt persetujuan
+    hermes.configSet('approvals.mode', 'off').catch(() => {})
     hermesReady = true
     log('avatar', 'Terhubung ke Hermes. Siap!')
     flushPendingOfflineChatPrompt().catch(() => {})
@@ -2209,16 +2324,74 @@ async function initHermes() {
       }
     })
 
+    // Auto-approve bila daemon Hermes memicu approval.request untuk tool terminal / execute_code
+    hermes.on('approval.request', (evt) => {
+      touchTurnWatchdog()
+      const cmdPreview = String(evt?.payload?.command || '').trim()
+      const shortCmd = cmdPreview.length > 60 ? `${cmdPreview.slice(0, 57)}…` : cmdPreview
+      const label = shortCmd ? `Mengeksekusi: ${shortCmd}` : 'Mengeksekusi perintah terminal…'
+      updateToolProgress(label)
+      setStatus('Menjalankan perintah…')
+      const sid = evt?.session_id || hermes?.sessionId
+      hermes?.respondApproval('once', sid).catch((err) => {
+        console.warn('[approval.respond] warning:', err?.message || err)
+      })
+    })
+
+    // Safety net: di akhir setiap turn, hermes serve selalu mengirim session.info { running: false }.
+    // Jika turn berakhir tanpa message.complete (mis. pesan tidak ditemukan/ditolak), buka kunci seketika!
+    hermes.on('session.info', (evt) => {
+      if (evt?.payload?.running === false && busy) {
+        setTimeout(() => {
+          if (busy && !isStreamingResponse) {
+            abortActiveTurn()
+          } else if (busy) {
+            // Beri kesempatan 300ms bila frame message.complete sedang menyusul di antrean WS
+            setTimeout(() => {
+              if (busy) abortActiveTurn()
+            }, 300)
+          }
+        }, 180)
+      }
+    })
+
     // Jawaban final.
     hermes.on('message.complete', (evt) => {
+      clearTurnWatchdog()
       isStreamingResponse = false
       activeProgressLabel = ''
       updatePerfMode()
       removeToolProgress()
+
+      // Jika diinterupsi / dibatalkan, segera kembalikan kontrol ke user tanpa memproses lebih lanjut
+      if (evt?.payload?.status === 'interrupted') {
+        if (streamingLine) {
+          const partial = streamingLine.querySelector('.chat-body')?.textContent?.trim() || ''
+          if (!partial) streamingLine.remove()
+          streamingLine = null
+        }
+        accumulatedDeltaText = ''
+        setInputLocked(false)
+        setStatus('')
+        controller?.setExpression('neutral')
+        return
+      }
+
       // Jika ini adalah respon pembuatan notulen eksekutif:
       if (isGeneratingSummary) {
         isGeneratingSummary = false
         const rawText = evt?.payload?.text ?? summaryStreamingBuffer
+        if (!String(rawText || '').trim()) {
+          if (activeNotulenBody) {
+            activeNotulenBody.innerHTML = `<p style="color: #94a3b8;">Tidak ada isi pesan untuk diringkas.</p>`
+          }
+          activeNotulenCard = null
+          activeNotulenBody = null
+          setInputLocked(false)
+          setStatus('')
+          controller?.setExpression('neutral')
+          return
+        }
         currentSummaryMarkdown = rawText
         if (activeNotulenBody) {
           activeNotulenBody.innerHTML = renderMarkdown(rawText)
@@ -2242,6 +2415,21 @@ async function initHermes() {
 
       const text = cleanText(rawText)
 
+      // ABORT / RETURN EARLY bila pesan balasan kosong atau tidak ditemukan!
+      // Jangan biarkan balon kosong atau proses terus berputar menggantung.
+      if (!text) {
+        if (streamingLine) {
+          streamingLine.remove()
+          streamingLine = null
+        }
+        accumulatedDeltaText = ''
+        setInputLocked(false)
+        setStatus('')
+        controller?.setExpression('neutral')
+        log('avatar', '*Pesan atau respons tidak ditemukan (kosong). Proses dihentikan agar Anda dapat langsung melanjutkan.*')
+        return
+      }
+
       if (streamingLine) {
         const body = streamingLine.querySelector('.chat-body')
         if (body) {
@@ -2254,7 +2442,7 @@ async function initHermes() {
           text,
           time: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
         })
-      } else if (text) {
+      } else {
         log('avatar', text)
       }
 
@@ -2281,7 +2469,6 @@ async function initHermes() {
       // speechText = teks natural untuk TTS (tanpa markdown, ringkas kalimat).
       const vs = getVoiceSettings()
       const speechText = toSpeechText(rawText, { maxChars: vs.verbosity === 'full' ? 1800 : 500 })
-      lastSummary = speechText ? summaryText(speechText) : ''
       setStatus('')
       console.log('[speech] ttsEnabled=', ttsEnabled, 'provider=', vs.provider, 'voice=', vs.voice, 'len=', speechText?.length, 'verbosity=', vs.verbosity)
 
@@ -2298,6 +2485,7 @@ async function initHermes() {
 
     // Streaming delta (teks muncul saat Hermes mengetik / menyusun jawaban).
     hermes.on('message.delta', (evt) => {
+      touchTurnWatchdog()
       const wasStreamingText = activeProgressLabel === 'Menulis jawaban…'
       isStreamingResponse = true
       activeProgressLabel = 'Menulis jawaban…'
@@ -2356,6 +2544,7 @@ async function initHermes() {
 
     // Thinking presisi (reasoning stream) → pasang gaya berpikir aktif.
     hermes.on('thinking.delta', () => {
+      touchTurnWatchdog()
       activeProgressLabel = 'Berpikir…'
       triggerStateAnimation('thinking', 'glasses')
       setStatus('Berpikir…')
@@ -2363,6 +2552,7 @@ async function initHermes() {
 
     // Tool mulai dipakai → gaya berpikir aktif + indikator animasi melayang sementara (chat log tetap bersih).
     hermes.on('tool.start', (evt) => {
+      touchTurnWatchdog()
       const tool = evt?.payload?.name || evt?.payload?.tool || 'tool'
       const label = toolLabel(tool)
       activeProgressLabel = label
@@ -2373,6 +2563,7 @@ async function initHermes() {
 
     // Tool selesai → "Menyusun jawaban…" + ganti ekspresi sesuai gaya memproses aktif.
     hermes.on('tool.complete', () => {
+      touchTurnWatchdog()
       activeProgressLabel = 'Menyusun jawaban…'
       updateToolProgress('Menyusun jawaban…')
       setStatus('Menyusun jawaban…')
@@ -2679,10 +2870,17 @@ async function processSpeechQueue() {
         await audioPlayer.play(res.buffer)
       } catch (err) {
         prefetched = null
+        if (item.cancelled || runGen !== speechGeneration) {
+          if (runGen !== speechGeneration) hadInterrupted = true
+          continue
+        }
         console.error('[TTS error]', err?.message || err)
+        if (isProgress) {
+          continue
+        }
         // Selalu tampilkan sekali & hentikan antrean agar kegagalan tidak "senyap"
         // (sebelumnya hanya muncul bila antrean kosong, lalu ditutup hideSpeechBubble).
-        if (!isProgress && !speechErrorShown) {
+        if (!speechErrorShown) {
           speechErrorShown = true
           showSpeechBubble(`Suara TTS gagal: ${err?.message || 'periksa pengaturan suara'}`, 8000)
         }
@@ -3072,35 +3270,59 @@ async function buildPrompt(text, options = {}) {
 2. Jika butuh cek cuaca kota lain, jalankan: 'ddgs text -q "cuaca <kota> hari ini" -r id-id -t d -m 2'.
 3. Selalu sebutkan hari dan tanggal yang tepat (${dateStr}) dan gunakan format Markdown yang rapi.]\n`
 
+  const directTerminalGuideline = `[ATURAN MUTLAK EKSEKUSI PERINTAH TERMINAL & SISTEM SECARA LANGSUNG:
+Kamu memiliki akses penuh dan izin langsung ke tool \`terminal\` (PowerShell / CMD / Bash) serta filesystem di laptop/komputer lokal pengguna${defaultHermesCwd ? ` (direktori home pengguna: ${defaultHermesCwd})` : ''}.
+- Ketika pengguna meminta melakukan tindakan sistem di laptop/komputer (contoh: menghapus file/folder, membuat/memindahkan/mengubah file, mengecek isi folder/storage/proses/port, atau menjalankan perintah terminal apa pun), KAMU WAJIB LANGSUNG MENGEKSEKUSI perintah tersebut menggunakan tool \`terminal\` yang kamu miliki sampai selesai, kemudian laporkan hasil eksekusi nyatanya kepada pengguna!
+- DILARANG KERAS hanya memberikan jawaban berupa teks langkah-langkah manual atau menyuruh pengguna mengetik/menjalankan perintah sendiri di terminal, kecuali pengguna memang secara eksplisit hanya bertanya teori tanpa meminta dieksekusi!
+- Jika target file/pesan/data yang dicari memang tidak ditemukan di sistem, segera hentikan pencarian dan laporkan secara lugas bahwa target tidak ditemukan tanpa berputar-putar.]\n`
+
   const dynamicAssessmentGuideline = `[PANDUAN INTERAKTIF AI ASSESSMENT & PILIHAN TINDAKAN:
-Jika topik percakapan bersifat OBJEKTIF, KONSULTASI MASALAH, PERENCANAAN, ANALISIS, ATAU MEMILIKI BEBERAPA CABANG/LANGKAH OPSI (contoh: cara optimasi komputer, jalur belajar coding, arsitektur sistem, troubleshooting teknis, pilihan strategi, opsi menu):
+Jika topik percakapan MURNI bersifat KONSULTASI KONSEPTUAL, PERENCANAAN BELAJAR, ATAU MEMILIKI BEBERAPA CABANG STRATEGI TEORITIS (dan BUKAN permintaan eksekusi perintah terminal/file/sistem langsung!):
 - Berikan pengantar dan ringkasan singkat terlebih dahulu (1-2 paragraf padat).
-- WAJIB lampirkan blok assessment pilihan interaktif di bagian paling akhir respon dengan format persis berikut:
+- Lampirkan blok assessment pilihan interaktif di bagian paling akhir respon dengan format persis berikut:
 <assessment title="Judul Penilaian / Topik" prompt="Pilih satu atau beberapa langkah di bawah ini untuk saya jelaskan atau eksekusi lebih lanjut:">
   <option id="1" title="1. [Judul Langkah/Opsi 1]">Penjelasan singkat manfaat atau cara kerja opsi 1.</option>
   <option id="2" title="2. [Judul Langkah/Opsi 2]">Penjelasan singkat manfaat atau cara kerja opsi 2.</option>
   <option id="3" title="3. [Judul Langkah/Opsi 3]">Penjelasan singkat manfaat atau cara kerja opsi 3.</option>
 </assessment>
 
-ATURAN MUTLAK CHAT RINGAN:
-- Untuk chat ringan, sapaan santai ("halo", "hai", "apa kabar"), pertanyaan fakta langsung/singkat ("1+1 berapa", "ibukota jepang apa"), atau instruksi spesifik to-the-point: DILARANG KERAS menyertakan tag <assessment>. Cukup jawab biasa secara natural tanpa blok assessment!]`
+ATURAN MUTLAK TANPA ASSESSMENT:
+- Untuk permintaan tindakan sistem/terminal langsung (hapus file, cek folder, jalankan command, dll.), chat ringan, sapaan santai ("halo", "hai", "apa kabar"), atau pertanyaan fakta langsung/singkat: DILARANG KERAS menyertakan tag <assessment>. Langsung eksekusi atau jawab secara natural!]`
 
-  return `${timeContext}${appCtx}${liveWeatherCtx}${liveNewsCtx}${academicCtx}${skillCtx}${speedHint}${dynamicAssessmentGuideline}\n${text}`
+  return `${timeContext}${appCtx}${liveWeatherCtx}${liveNewsCtx}${academicCtx}${skillCtx}${speedHint}${directTerminalGuideline}${dynamicAssessmentGuideline}\n${text}`
 }
 
 async function handleUserChat(text, displayText = null, options = {}) {
-  const promptText = (text || '').trim()
-  if (!promptText) return
+  const rawNormalized = String(text ?? '').replace(/\r\n/g, '\n')
+  // Hapus hanya baris kosong di awal/akhir agar spasi penataan & paragraf multi-baris (Shift+Enter) tetap utuh!
+  const formattedPromptText = rawNormalized.replace(/^\n+|\n+$/g, '')
+  const visibleCheck = formattedPromptText.replace(/[\s\u200B-\u200D\uFEFF]/g, '')
+  if (!visibleCheck) {
+    // Pesan kosong: abort / return early seketika tanpa mengunci UI
+    if (input) {
+      input.value = ''
+      resizeChatInput()
+    }
+    setInputLocked(false)
+    return
+  }
+  const promptText = formattedPromptText
 
   if (busy) {
-    log('avatar', '(sibuk) Tunggu Hermes selesai dulu ya…')
+    log('avatar', '(sibuk) Tunggu Hermes selesai dulu ya, atau klik tombol **Batal** untuk menghentikan…')
     return
   }
 
   if (!options?.skipUserLog) {
-    log('user', displayText || promptText)
+    const shownText = displayText != null
+      ? String(displayText).replace(/\r\n/g, '\n').replace(/^\n+|\n+$/g, '')
+      : promptText
+    log('user', shownText)
   }
-  if (input) input.value = ''
+  if (input) {
+    input.value = ''
+    resizeChatInput()
+  }
 
   // Cek apakah perintah membuat notulen / ringkasan percakapan
   if (isSummaryRequest(promptText)) {
@@ -3588,6 +3810,14 @@ async function resumeHermesSessionById(sessionId) {
     // 3. Tentukan daftar pesan yang akan ditampilkan:
     // Gunakan rpcMessages bila ada isinya; bila kosong / gagal, gunakan localMessages dari state.db
     const sourceMsgs = (rpcMessages.length > 0) ? rpcMessages : localMessages
+
+    // Bila sesi/pesan sama sekali tidak ditemukan, abort & return early agar UI tidak menggantung
+    if (!sessionMeta && sourceMsgs.length === 0) {
+      if (chatLog) chatLog.innerHTML = ''
+      setInputLocked(false)
+      log('avatar', `Pesan atau sesi \`${sid}\` tidak ditemukan. Siap memulai percakapan baru.`)
+      return
+    }
 
     // Reset log dan buffer sesi percakapan sebelum merender ulang
     sessionChatHistory.length = 0
