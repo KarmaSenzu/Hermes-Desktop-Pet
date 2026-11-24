@@ -17,6 +17,8 @@ vi.mock('electron', () => ({
 import {
   isNewerVersion,
   getVersionDiffType,
+  isWindowsInstalledApp,
+  selectUpdateAsset,
   checkAppUpdate,
   isValidAssetName,
   isValidGithubAssetUrl,
@@ -43,8 +45,45 @@ describe('updater-service', () => {
     expect(getVersionDiffType('1.2.0', '1.1.5')).toBe('minor')
     expect(getVersionDiffType('v2.0.0', 'v1.9.9')).toBe('major')
     expect(getVersionDiffType('1.1.2', '0.1.7')).toBe('major')
+    expect(getVersionDiffType('1.2.0', '1.1.3')).toBe('minor')
+    expect(getVersionDiffType('1.2.1', '1.1.3')).toBe('minor')
     expect(getVersionDiffType('1.1.1', '1.1.1')).toBe('none')
     expect(getVersionDiffType('1.1.0', '1.1.2')).toBe('none')
+  })
+
+  it('selectUpdateAsset memilih Full Installer saat minor/major dan OTA Patch saat patch', () => {
+    const releaseAssets = [
+      { name: 'WINDOWS-Installer-Hermes-Desktop-Pet-v1.2.0-x64.exe' },
+      { name: 'WINDOWS-Portable-Hermes-Desktop-Pet-v1.2.0-x64.zip' },
+      { name: 'MACOS-M-Series-Hermes-Desktop-Pet-v1.2.0-arm64.dmg' },
+      { name: 'MACOS-M-Series-Hermes-Desktop-Pet-v1.2.0-arm64.zip' },
+      { name: 'LINUX-Hermes-Desktop-Pet-v1.2.0-x86_64.AppImage' },
+      { name: 'OTA-Patch-Hermes-Desktop-Pet-v1.2.0.zip' }
+    ]
+
+    expect(selectUpdateAsset(releaseAssets, { platform: 'win32', isMajorOrMinor: true, isWindowsInstalled: true })?.name)
+      .toBe('WINDOWS-Installer-Hermes-Desktop-Pet-v1.2.0-x64.exe')
+    expect(selectUpdateAsset(releaseAssets, { platform: 'win32', isMajorOrMinor: true, isWindowsInstalled: false })?.name)
+      .toBe('WINDOWS-Portable-Hermes-Desktop-Pet-v1.2.0-x64.zip')
+    expect(selectUpdateAsset(releaseAssets, { platform: 'darwin', isMajorOrMinor: true })?.name)
+      .toBe('MACOS-M-Series-Hermes-Desktop-Pet-v1.2.0-arm64.dmg')
+    expect(selectUpdateAsset(releaseAssets, { platform: 'linux', isMajorOrMinor: true })?.name)
+      .toBe('LINUX-Hermes-Desktop-Pet-v1.2.0-x86_64.AppImage')
+    expect(selectUpdateAsset(releaseAssets, { platform: 'win32', isMajorOrMinor: false })?.name)
+      .toBe('OTA-Patch-Hermes-Desktop-Pet-v1.2.0.zip')
+    expect(selectUpdateAsset(releaseAssets, { platform: 'darwin', isMajorOrMinor: false })?.name)
+      .toBe('OTA-Patch-Hermes-Desktop-Pet-v1.2.0.zip')
+  })
+
+  it('isWindowsInstalledApp membedakan direktori instalasi NSIS vs Portable', async () => {
+    const mockDir = await mkdtemp(join(tmpdir(), 'hermes-win-install-check-'))
+    try {
+      expect(isWindowsInstalledApp(mockDir)).toBe(false)
+      await writeFile(join(mockDir, 'Uninstall Hermes Desktop Pet.exe'), 'stub')
+      expect(isWindowsInstalledApp(mockDir)).toBe(true)
+    } finally {
+      await rm(mockDir, { recursive: true, force: true })
+    }
   })
 
   it('checkAppUpdate terdefinisi sebagai fungsi async', () => {

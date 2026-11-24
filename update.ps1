@@ -1,4 +1,4 @@
-# ==============================================================================
+﻿# ==============================================================================
 # Hermes Desktop Pet — Fast One-Liner Auto-Updater Script (Windows PowerShell)
 # Repository: https://github.com/KarmaSenzu/Hermes-Desktop-Pet
 # Usage:
@@ -26,9 +26,10 @@ $ReleaseName = $Release.name
 Write-Host "  ✓ Rilis terbaru ditemukan: $LatestTag ($ReleaseName)" -ForegroundColor Green
 
 # 2. Prioritaskan paket pembaruan portabel (.zip) agar tidak perlu menjalankan installer .exe ulang
-$Asset = $Release.assets | Where-Object { $_.name -like "*win*.zip" } | Select-Object -First 1
+#    Pastikan selalu mengecualikan berkas OTA-Patch agar update.ps1 selalu menerapkan rilis penuh.
+$Asset = $Release.assets | Where-Object { $_.name -like "*win*.zip" -and $_.name -notlike "*patch*" } | Select-Object -First 1
 if (-not $Asset) {
-    $Asset = $Release.assets | Where-Object { $_.name -like "*.zip" -and $_.name -notlike "*mac*" -and $_.name -notlike "*linux*" } | Select-Object -First 1
+    $Asset = $Release.assets | Where-Object { $_.name -like "*.zip" -and $_.name -notlike "*mac*" -and $_.name -notlike "*linux*" -and $_.name -notlike "*patch*" } | Select-Object -First 1
 }
 if (-not $Asset) {
     $Asset = $Release.assets | Where-Object { $_.name -like "*.exe" } | Select-Object -First 1

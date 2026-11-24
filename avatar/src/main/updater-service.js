@@ -5,7 +5,7 @@
 import { app } from 'electron'
 import { basename, dirname, join, posix, win32 } from 'node:path'
 import { mkdir, writeFile, rm, readdir, stat, cp } from 'node:fs/promises'
-import { existsSync, createWriteStream } from 'node:fs'
+import { existsSync, createWriteStream, readdirSync } from 'node:fs'
 import { createHash } from 'node:crypto'
 import { execFile, spawn } from 'node:child_process'
 import { homedir } from 'node:os'
@@ -54,6 +54,64 @@ export function getVersionDiffType(vLatest, vCurrent) {
   if (major1 === major2 && minor1 > minor2) return 'minor'
   if (major1 === major2 && minor1 === minor2 && patch1 > patch2) return 'patch'
   return 'none'
+}
+
+/**
+ * Deteksi apakah build Windows terpasang lewat installer NSIS (ada Uninstall*.exe)
+ * atau dijalankan dari arsip Portable ZIP (tanpa uninstaller).
+ */
+export function isWindowsInstalledApp(dirPath) {
+  try {
+    const targetDir = dirPath || (app?.isPackaged ? dirname(process.execPath) : '')
+    if (!targetDir || !existsSync(targetDir)) return true
+    const files = readdirSync(targetDir)
+    return files.some((f) => /^uninstall.*\.exe$/i.test(f))
+  } catch {
+    return true
+  }
+}
+
+/**
+ * Memilih asset rilis terbaik sesuai OS, jenis instalasi (installer vs portable),
+ * dan tipe pembaruan (Major/Minor/Full vs Patch ringan).
+ */
+export function selectUpdateAsset(
+  assets,
+  { platform = process.platform, isMajorOrMinor = false, isWindowsInstalled = true } = {}
+) {
+  if (!Array.isArray(assets) || assets.length === 0) return null
+  const nameOf = (a) => String(a?.name || '').toLowerCase()
+  const patchAsset = assets.find((a) => nameOf(a).endsWith('.zip') && nameOf(a).includes('patch'))
+
+  let fullAsset = null
+  if (platform === 'darwin') {
+    fullAsset =
+      assets.find((a) => nameOf(a).endsWith('.dmg')) ||
+      assets.find((a) => nameOf(a).endsWith('.zip') && nameOf(a).includes('mac') && !nameOf(a).includes('patch'))
+  } else if (platform === 'win32') {
+    const winExe = assets.find((a) => nameOf(a).endsWith('.exe'))
+    const winZip =
+      assets.find(
+        (a) =>
+          nameOf(a).endsWith('.zip') &&
+          (nameOf(a).includes('win') || nameOf(a).includes('windows') || nameOf(a).includes('portable')) &&
+          !nameOf(a).includes('patch')
+      ) ||
+      assets.find(
+        (a) =>
+          nameOf(a).endsWith('.zip') &&
+          !nameOf(a).includes('mac') &&
+          !nameOf(a).includes('linux') &&
+          !nameOf(a).includes('patch')
+      )
+    fullAsset = isWindowsInstalled ? (winExe || winZip) : (winZip || winExe)
+  } else {
+    fullAsset =
+      assets.find((a) => nameOf(a).endsWith('.appimage')) ||
+      assets.find((a) => nameOf(a).endsWith('.deb'))
+  }
+
+  return isMajorOrMinor ? (fullAsset || patchAsset) : (patchAsset || fullAsset)
 }
 
 /**
@@ -284,6 +342,7 @@ export async function checkAppUpdate() {
           const rawPkg = await rawPkgResp.json()
           const remoteVer = rawPkg.version || ''
           const hasUpdate = isNewerVersion(remoteVer, currentVersion)
+          const fallbackDiff = getVersionDiffType(remoteVer, currentVersion)
           const fallbackReleaseUrl = `https://github.com/${REPO_OWNER}/${REPO_NAME}/releases`
           lastRelease = {
             tag: `v${remoteVer}`,
@@ -294,6 +353,10 @@ export async function checkAppUpdate() {
             ok: true,
             hasUpdate,
             canAutoUpdate: false,
+            isPatchUpdate: false,
+            updateType: fallbackDiff,
+            isMajorOrMinor: fallbackDiff === 'major' || fallbackDiff === 'minor',
+            assetSizeMb: null,
             currentVersion,
             latestVersion: `v${remoteVer}`,
             releaseName: `Hermes Desktop Pet v${remoteVer}`,
@@ -345,50 +408,20 @@ export async function checkAppUpdate() {
     }
 
     const diffType = getVersionDiffType(cleanLatest, cleanCurrent)
-    const isMajorOrMinor = diffType === 'major' || diffType === 'minor'
+    const forceFullByNotes = /\[full[-_\s]?update\]/i.test(releaseBody)
+    const isMajorOrMinor = diffType === 'major' || diffType === 'minor' || forceFullByNotes
+    const winInstalled = process.platform === 'win32'
+      ? (app?.isPackaged ? isWindowsInstalledApp() : true)
+      : true
 
     let downloadUrl = data.html_url
-    let matchedAsset = null
-    if (data.assets && Array.isArray(data.assets)) {
-      // Normalisasi nama aset ke huruf kecil agar `.ZIP`/`.DMG`/`.EXE` tetap cocok.
-      const nameOf = (a) => String(a?.name || '').toLowerCase()
-      const patchAsset = data.assets.find((a) => nameOf(a).endsWith('.zip') && nameOf(a).includes('patch'))
-
-      // Temukan paket instalasi penuh (Full Package: installer setup atau full portable zip/dmg)
-      let fullAsset = null
-      if (process.platform === 'darwin') {
-        fullAsset =
-          data.assets.find((a) => nameOf(a).endsWith('.dmg')) ||
-          data.assets.find((a) => nameOf(a).endsWith('.zip') && nameOf(a).includes('mac') && !nameOf(a).includes('patch'))
-      } else if (process.platform === 'win32') {
-        fullAsset =
-          data.assets.find((a) => nameOf(a).endsWith('.exe')) ||
-          data.assets.find(
-            (a) => nameOf(a).endsWith('.zip') && (nameOf(a).includes('win') || nameOf(a).includes('windows') || nameOf(a).includes('portable')) && !nameOf(a).includes('patch')
-          ) ||
-          data.assets.find(
-            (a) => nameOf(a).endsWith('.zip') && !nameOf(a).includes('mac') && !nameOf(a).includes('linux') && !nameOf(a).includes('patch')
-          )
-      } else {
-        fullAsset =
-          data.assets.find((a) => nameOf(a).endsWith('.appimage')) ||
-          data.assets.find((a) => nameOf(a).endsWith('.deb'))
-      }
-
-      // Aturan Cerdas Pemilihan Aset:
-      // 1. Jika ini update Major/Minor (lompatan versi besar / penambahan fitur & aset model baru):
-      //    Prioritaskan Full Package/Installer agar seluruh model karakter & aset baru ikut terpasang!
-      // 2. Jika ini update Patch biasa (misal 1.1.1 -> 1.1.2):
-      //    Prioritaskan Patch Ringan (~1-2 MB) agar proses unduh super cepat dan hemat kuota!
-      if (isMajorOrMinor) {
-        matchedAsset = fullAsset || patchAsset
-      } else {
-        matchedAsset = patchAsset || fullAsset
-      }
-
-      if (matchedAsset?.browser_download_url) {
-        downloadUrl = matchedAsset.browser_download_url
-      }
+    const matchedAsset = selectUpdateAsset(data.assets, {
+      platform: process.platform,
+      isMajorOrMinor,
+      isWindowsInstalled: winInstalled
+    })
+    if (matchedAsset?.browser_download_url) {
+      downloadUrl = matchedAsset.browser_download_url
     }
 
     const isPatchUpdate = Boolean(matchedAsset && /patch/i.test(matchedAsset.name))
@@ -539,14 +572,16 @@ export async function downloadAndApplyUpdate(event, _downloadUrl, assetName) {
         })
 
         const appSource = join(mountDir, 'Hermes Desktop Pet.app')
+        const macDestApp = '/Applications/Hermes Desktop Pet.app'
         if (existsSync(appSource)) {
+          await rm(macDestApp, { recursive: true, force: true }).catch(() => {})
           await new Promise((resolve, reject) => {
             execFile('cp', ['-R', appSource, '/Applications/'], (err) => {
               if (err) return reject(err)
               resolve()
             })
           })
-          await new Promise((resolve) => execFile('xattr', ['-cr', '/Applications/Hermes Desktop Pet.app'], () => resolve()))
+          await new Promise((resolve) => execFile('xattr', ['-cr', macDestApp], () => resolve()))
         }
 
         await new Promise((resolve) => execFile('hdiutil', ['detach', mountDir, '-force'], () => resolve()))
@@ -592,13 +627,26 @@ export async function downloadAndApplyUpdate(event, _downloadUrl, assetName) {
           }
           await new Promise((resolve) => execFile('xattr', ['-cr', '/Applications/Hermes Desktop Pet.app'], () => resolve()))
         } else {
+          const stagingDir = join(tempDir, 'staging')
+          const macDestApp = '/Applications/Hermes Desktop Pet.app'
+          await mkdir(stagingDir, { recursive: true })
           await new Promise((resolve, reject) => {
-            execFile('unzip', ['-q', '-o', targetFilePath, '-d', '/Applications/'], (err) => {
+            execFile('unzip', ['-q', '-o', targetFilePath, '-d', stagingDir], (err) => {
               if (err) return reject(err)
               resolve()
             })
           })
-          await new Promise((resolve) => execFile('xattr', ['-cr', '/Applications/Hermes Desktop Pet.app'], () => resolve()))
+          const stagedApp = join(stagingDir, 'Hermes Desktop Pet.app')
+          if (existsSync(stagedApp)) {
+            await rm(macDestApp, { recursive: true, force: true }).catch(() => {})
+            await new Promise((resolve, reject) => {
+              execFile('cp', ['-R', stagedApp, '/Applications/'], (err) => {
+                if (err) return reject(err)
+                resolve()
+              })
+            })
+          }
+          await new Promise((resolve) => execFile('xattr', ['-cr', macDestApp], () => resolve()))
         }
       }
       await rm(tempDir, { recursive: true, force: true }).catch(() => {})
