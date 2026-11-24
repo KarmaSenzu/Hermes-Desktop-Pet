@@ -61,6 +61,12 @@ export class Live2DAvatar {
     this.currentOutfit = 'casual' // 'casual' | 'focus' | 'suit'
     this.isTimerFocusActive = false
     this.ignoringMouse = true // Mulai dengan click-through aktif agar tembus ke desktop
+    this.isMotherModel = false
+    this.isEllenModel = false
+    this.isFernModel = false
+    this.isChangliModel = false
+    this.isAsukaModel = false
+    this.isFrierenModel = false
     this._dragStartMouse = { x: 0, y: 0 }
     this._dragStartModel = { x: 0, y: 0 }
     this._motionTimer = null
@@ -98,8 +104,21 @@ export class Live2DAvatar {
     this.app.ticker.maxFPS = targetFps
   }
 
+  _setMotherParam(core, id, value) {
+    if (!this.isMotherModel || !core || typeof core.setParameterValueById !== 'function') return
+    core.setParameterValueById(id, value)
+  }
+
   async load(url) {
     console.log('[Live2DAvatar] Loading model from:', url)
+
+    const urlNorm = decodeURIComponent(String(url || '')).toLowerCase()
+    this.isMotherModel = /(?:^|[/\\])mother[/\\]|20250106/.test(urlNorm)
+    this.isEllenModel = /(?:^|[/\\])ellen[/\\]|免费模型艾莲/.test(urlNorm)
+    this.isFernModel = /(?:^|[/\\])fern[/\\]|fern\.model3\.json/.test(urlNorm)
+    this.isChangliModel = /(?:^|[/\\])changli[/\\]|长离/.test(urlNorm)
+    this.isAsukaModel = /(?:^|[/\\])asuka[/\\]|asuka\.model3\.json/.test(urlNorm)
+    this.isFrierenModel = /(?:^|[/\\])frieren[/\\]|frieren\.model3\.json/.test(urlNorm)
 
     // Bersihkan stage terlebih dahulu untuk mencegah penumpukan ganda (ghosting) & kebocoran tekstur GPU
     if (this.model) {
@@ -125,26 +144,96 @@ export class Live2DAvatar {
       this.expressions = this.model.internalModel.settings.expressions.map((e) => e.name || e.Name)
     }
 
-    // Reset parameter pose tangan alternatif (Param30) & kepalan like (Param98) ke 0 agar tangan selalu kembali ke posisi rileks (mencegah bug tangan ganda)
     if (this.model.internalModel?.coreModel) {
-      try {
-        this.model.internalModel.coreModel.setParameterValueById('Param30', 0)
-        this.model.internalModel.coreModel.setParameterValueById('Param98', 0)
-      } catch {
-        // abaikan jika model tidak memiliki parameter ini
+      const core = this.model.internalModel.coreModel
+
+      // Reset parameter pose tangan alternatif khusus Mother (Param30 & Param98)
+      if (this.isMotherModel) {
+        try {
+          this._setMotherParam(core, 'Param30', 0)
+          this._setMotherParam(core, 'Param98', 0)
+        } catch {
+          // abaikan
+        }
       }
 
-      // Matikan part/parameter watermark atau proteksi anti-scalping (seperti Part17 / Paramheadxy pada Ellen Joe)
+      // Konfigurasi part, parameter watermark, dan anti-ghosting tangan spesifik per-model secara presisi.
+      // PENTING: Jangan pernah mematikan Part17 secara global karena pada Frieren Part17 = seluruh tubuh!
       try {
-        const core = this.model.internalModel.coreModel
-        if (typeof core.setPartOpacityById === 'function') {
-          core.setPartOpacityById('Part17', 0)
+        const rawDrawables = core._model?.drawables
+        const drawableIds = Array.isArray(rawDrawables?.ids) || ArrayBuffer.isView(rawDrawables?.ids)
+          ? Array.from(rawDrawables.ids)
+          : []
+        const hiddenDrawableIndices = new Set()
+
+        if (this.isEllenModel) {
+          if (typeof core.setPartOpacityById === 'function') {
+            core.setPartOpacityById('Part17', 0)
+          }
+          if (typeof core.setParameterValueById === 'function') {
+            core.setParameterValueById('Paramheadxy', 0)
+          }
         }
-        if (typeof core.setParameterValueById === 'function') {
-          core.setParameterValueById('Paramheadxy', 0)
+
+        if (this.isFernModel) {
+          if (typeof core.setParameterValueById === 'function') {
+            core.setParameterValueById('Param33', 1)
+          }
+          for (const wmId of ['ArtMesh130', 'ArtMesh129', 'ArtMesh143', 'ArtMesh133', 'ArtMesh146']) {
+            const idx = drawableIds.indexOf(wmId)
+            if (idx >= 0) hiddenDrawableIndices.add(idx)
+          }
+        }
+
+        if (this.isChangliModel) {
+          if (typeof core.setPartOpacityById === 'function') {
+            core.setPartOpacityById('Part53', 0)
+          }
+          const wmIdx = drawableIds.indexOf('ArtMesh414')
+          if (wmIdx >= 0) hiddenDrawableIndices.add(wmIdx)
+        }
+
+        let asukaWaveArmIndices = null
+        let asukaLowerArmIndices = null
+        if (this.isAsukaModel) {
+          if (typeof core.setParameterValueById === 'function') {
+            core.setParameterValueById('Param55', 0)
+            core.setParameterValueById('Param54', 0)
+          }
+          asukaWaveArmIndices = new Set(
+            ['ArtMesh0', 'ArtMesh1'].map((id) => drawableIds.indexOf(id)).filter((idx) => idx >= 0)
+          )
+          asukaLowerArmIndices = new Set(
+            ['ArtMesh114', 'ArtMesh116'].map((id) => drawableIds.indexOf(id)).filter((idx) => idx >= 0)
+          )
+        }
+
+        if (hiddenDrawableIndices.size > 0 && rawDrawables?.opacities) {
+          for (const idx of hiddenDrawableIndices) {
+            rawDrawables.opacities[idx] = 0
+          }
+        }
+
+        if (
+          typeof core.getDrawableOpacity === 'function' &&
+          (hiddenDrawableIndices.size > 0 || (asukaWaveArmIndices && asukaWaveArmIndices.size > 0))
+        ) {
+          const origGetDrawableOpacity = core.getDrawableOpacity.bind(core)
+          core.getDrawableOpacity = (idx) => {
+            if (hiddenDrawableIndices.has(idx)) return 0
+            if (asukaWaveArmIndices && (asukaWaveArmIndices.has(idx) || asukaLowerArmIndices.has(idx))) {
+              const toggleVal = typeof core.getParameterValueById === 'function'
+                ? Number(core.getParameterValueById('Param55'))
+                : 0
+              const isWaving = Number.isFinite(toggleVal) && toggleVal >= 0.5
+              if (asukaWaveArmIndices.has(idx)) return isWaving ? 1 : 0
+              if (asukaLowerArmIndices.has(idx)) return isWaving ? 0 : 1
+            }
+            return origGetDrawableOpacity(idx)
+          }
         }
       } catch {
-        // abaikan jika model tidak memiliki part/param watermark ini
+        // abaikan jika model tidak memiliki part/param spesifik ini
       }
     }
 
@@ -363,35 +452,108 @@ export class Live2DAvatar {
     }
 
     const em = (emotion || 'neutral').toLowerCase()
-    this.currentEmotion = em
 
-    // Map emosi standar AI Hermes ke file ekspresi Live2D Mother
-    const expMap = {
-      happy: 'heart',
-      joy: 'heart',
-      smile: 'heart',
-      love: 'heart',
-      heart: 'heart',
-      blush: 'heart',
-      friendly: 'heart',
-      like: 'like',
-      sad: 'blue',
-      sorrow: 'blue',
-      thinking: 'glasses',
-      reasoning: 'glasses',
-      focus: 'glasses',
-      ponder: 'glasses',
-      curious: 'glasses',
-      composing: 'Charterer',
-      generating: 'Charterer',
-      charterer: 'Charterer',
-      roll: 'Charterer',
-      curlers: 'Charterer',
-      wave: 'wave',
-      neutral: null
+    // Khusus Asuka: lambaian tangan dijalankan lewat motion one-shot 'Wave', bukan menahan state wave
+    if (this.isAsukaModel && em === 'wave') {
+      this.currentEmotion = 'neutral'
+      try {
+        await this.model.motion('Wave', 0, 3)
+      } catch {}
+      return
     }
 
-    const targetExp = expMap[em] !== undefined ? expMap[em] : em
+    this.currentEmotion = em
+
+    // Map emosi standar AI Hermes ke file ekspresi sesuai model aktif
+    let expMap
+    if (this.isMotherModel) {
+      expMap = {
+        happy: 'heart',
+        joy: 'heart',
+        smile: 'heart',
+        love: 'heart',
+        heart: 'heart',
+        blush: 'heart',
+        friendly: 'heart',
+        like: 'like',
+        sad: 'blue',
+        sorrow: 'blue',
+        thinking: 'glasses',
+        reasoning: 'glasses',
+        focus: 'glasses',
+        ponder: 'glasses',
+        curious: 'glasses',
+        composing: 'Charterer',
+        generating: 'Charterer',
+        charterer: 'Charterer',
+        roll: 'Charterer',
+        curlers: 'Charterer',
+        wave: 'wave',
+        neutral: null
+      }
+    } else if (this.isFernModel) {
+      expMap = {
+        happy: 'blush',
+        joy: 'blush',
+        smile: 'blush',
+        love: 'blush',
+        heart: 'blush',
+        blush: 'blush',
+        friendly: 'blush',
+        angry: 'angry',
+        sad: null,
+        sorrow: null,
+        neutral: null
+      }
+    } else if (this.isAsukaModel) {
+      expMap = {
+        happy: 'happy',
+        joy: 'happy',
+        smile: 'happy',
+        love: 'star_eyes',
+        heart: 'star_eyes',
+        blush: 'happy',
+        friendly: 'happy',
+        sad: 'gloom',
+        sorrow: 'gloom',
+        neutral: null
+      }
+    } else if (this.isChangliModel) {
+      expMap = {
+        happy: 'blush',
+        joy: 'blush',
+        smile: 'blush',
+        love: 'heart_eyes',
+        heart: 'heart_eyes',
+        blush: 'blush',
+        friendly: 'blush',
+        angry: 'angry',
+        sad: 'gloom',
+        sorrow: 'gloom',
+        neutral: null
+      }
+    } else if (this.isFrierenModel) {
+      expMap = {
+        happy: 'mmy',
+        joy: 'mmy',
+        smile: 'mmy',
+        love: 'W',
+        heart: 'W',
+        blush: 'W',
+        friendly: 'mmy',
+        thinking: 'wh',
+        reasoning: 'wh',
+        ponder: 'wh',
+        curious: 'wh',
+        sad: 'ku',
+        sorrow: 'ku',
+        neutral: null
+      }
+    } else {
+      expMap = { neutral: null }
+    }
+
+    const targetExp = expMap[em] !== undefined ? expMap[em] : (this.expressions.includes(em) ? em : null)
     const core = this.model.internalModel?.coreModel
 
     // Jika beralih ke emosi selain focus/watch dan timer tidak aktif, kembalikan outfit ke casual
@@ -410,31 +572,31 @@ export class Live2DAvatar {
     if (core) {
       try {
         if (['thinking', 'reasoning', 'focus', 'ponder', 'curious'].includes(em)) {
-          // Mode Kacamata (Glasses / Param99) aktif saat berpikir/reasoning
-          core.setParameterValueById('Param99', 1)
-          core.setParameterValueById('Param74', 0) // Lepas tangan sarangheo
-          core.setParameterValueById('Param108', 0) // Lepas tangan melambai
-          core.setParameterValueById('Param98', 0)
-          core.setParameterValueById('Param32', 0) // Lepas roll rambut
-          core.setParameterValueById('Param58', 0)
+          // Mode Kacamata (Glasses / Param99) khusus Mother saat berpikir/reasoning
+          this._setMotherParam(core, 'Param99', 1)
+          this._setMotherParam(core, 'Param74', 0)
+          this._setMotherParam(core, 'Param108', 0)
+          this._setMotherParam(core, 'Param98', 0)
+          this._setMotherParam(core, 'Param32', 0)
+          this._setMotherParam(core, 'Param58', 0)
           if (!this.isTimerFocusActive) {
-            core.setParameterValueById('Param35', 0) // Lepas jas
-            core.setParameterValueById('Param80', 0) // Lepas jam tangan
+            this._setMotherParam(core, 'Param35', 0)
+            this._setMotherParam(core, 'Param80', 0)
           }
           core.setParameterValueById('ParamBrowLAngle', 0.35)
           core.setParameterValueById('ParamBrowRAngle', -0.35)
           core.setParameterValueById('ParamBrowLY', 0.2)
         } else if (['composing', 'generating', 'charterer', 'roll', 'curlers'].includes(em)) {
-          // Mode Roll Rambut (Charterer / 包租婆 / Param32 & Param58) aktif saat menyusun jawaban
-          core.setParameterValueById('Param32', 1) // Roll rambut depan (包租婆前发)
-          core.setParameterValueById('Param58', 1) // Roll rambut belakang (包租婆后发1)
-          core.setParameterValueById('Param99', 0) // Lepas kacamata berpikir
-          core.setParameterValueById('Param74', 0) // Lepas tangan sarangheo
-          core.setParameterValueById('Param108', 0) // Lepas tangan melambai
-          core.setParameterValueById('Param98', 0)
+          // Mode Roll Rambut (Charterer / Param32 & Param58) khusus Mother saat menyusun jawaban
+          this._setMotherParam(core, 'Param32', 1)
+          this._setMotherParam(core, 'Param58', 1)
+          this._setMotherParam(core, 'Param99', 0)
+          this._setMotherParam(core, 'Param74', 0)
+          this._setMotherParam(core, 'Param108', 0)
+          this._setMotherParam(core, 'Param98', 0)
           if (!this.isTimerFocusActive) {
-            core.setParameterValueById('Param35', 0) // Lepas jas
-            core.setParameterValueById('Param80', 0) // Lepas jam tangan
+            this._setMotherParam(core, 'Param35', 0)
+            this._setMotherParam(core, 'Param80', 0)
           }
           core.setParameterValueById('ParamEyeLSmile', 0.6)
           core.setParameterValueById('ParamEyeRSmile', 0.6)
@@ -444,55 +606,52 @@ export class Live2DAvatar {
           core.setParameterValueById('ParamBrowLAngle', 0)
           core.setParameterValueById('ParamBrowRAngle', 0)
         } else if (['happy', 'joy', 'smile', 'love', 'heart', 'blush', 'friendly'].includes(em)) {
-          // Mode Rona Pipi & Tangan Sarangheo (Param74)
-          core.setParameterValueById('Param99', 0) // Lepas kacamata
-          core.setParameterValueById('Param32', 0) // Lepas roll rambut
-          core.setParameterValueById('Param58', 0)
-          core.setParameterValueById('Param74', 1) // Aktifkan tangan sarangheo
-          core.setParameterValueById('Param108', 0) // Lepas tangan melambai
-          core.setParameterValueById('Param98', 0)
-          core.setParameterValueById('Param35', 0) // Lepas jas
-          core.setParameterValueById('Param80', 0) // Lepas jam tangan (cegah tumpuk dengan sarangheo!)
+          this._setMotherParam(core, 'Param99', 0)
+          this._setMotherParam(core, 'Param32', 0)
+          this._setMotherParam(core, 'Param58', 0)
+          this._setMotherParam(core, 'Param74', 1)
+          this._setMotherParam(core, 'Param108', 0)
+          this._setMotherParam(core, 'Param98', 0)
+          this._setMotherParam(core, 'Param35', 0)
+          this._setMotherParam(core, 'Param80', 0)
           core.setParameterValueById('ParamEyeLSmile', 1)
           core.setParameterValueById('ParamEyeRSmile', 1)
           core.setParameterValueById('ParamMouthForm', 1)
           core.setParameterValueById('ParamBrowLY', 0.2)
           core.setParameterValueById('ParamBrowRY', 0.2)
         } else if (['wave'].includes(em)) {
-          // Mode Melambaikan Tangan (Param108)
-          core.setParameterValueById('Param108', 1)
-          core.setParameterValueById('Param74', 0)
-          core.setParameterValueById('Param99', 0)
-          core.setParameterValueById('Param32', 0)
-          core.setParameterValueById('Param58', 0)
-          core.setParameterValueById('Param98', 0)
-          core.setParameterValueById('Param35', 0)
-          core.setParameterValueById('Param80', 0)
+          this._setMotherParam(core, 'Param108', 1)
+          this._setMotherParam(core, 'Param74', 0)
+          this._setMotherParam(core, 'Param99', 0)
+          this._setMotherParam(core, 'Param32', 0)
+          this._setMotherParam(core, 'Param58', 0)
+          this._setMotherParam(core, 'Param98', 0)
+          this._setMotherParam(core, 'Param35', 0)
+          this._setMotherParam(core, 'Param80', 0)
           core.setParameterValueById('ParamEyeLSmile', 0.8)
           core.setParameterValueById('ParamEyeRSmile', 0.8)
           core.setParameterValueById('ParamMouthForm', 0.8)
         } else if (['sad', 'sorrow'].includes(em)) {
-          core.setParameterValueById('Param99', 0)
-          core.setParameterValueById('Param32', 0)
-          core.setParameterValueById('Param58', 0)
-          core.setParameterValueById('Param74', 0)
-          core.setParameterValueById('Param108', 0)
-          core.setParameterValueById('Param35', 0)
-          core.setParameterValueById('Param80', 0)
+          this._setMotherParam(core, 'Param99', 0)
+          this._setMotherParam(core, 'Param32', 0)
+          this._setMotherParam(core, 'Param58', 0)
+          this._setMotherParam(core, 'Param74', 0)
+          this._setMotherParam(core, 'Param108', 0)
+          this._setMotherParam(core, 'Param35', 0)
+          this._setMotherParam(core, 'Param80', 0)
           core.setParameterValueById('ParamMouthForm', -0.8)
           core.setParameterValueById('ParamBrowLY', -0.6)
           core.setParameterValueById('ParamBrowRY', -0.6)
         } else if (['neutral'].includes(em)) {
-          // Kembali ke ekspresi santai/netral: lepas semua aksesoris & tangan
-          core.setParameterValueById('Param99', 0)
-          core.setParameterValueById('Param32', 0)
-          core.setParameterValueById('Param58', 0)
-          core.setParameterValueById('Param74', 0)
-          core.setParameterValueById('Param108', 0)
-          core.setParameterValueById('Param98', 0)
+          this._setMotherParam(core, 'Param99', 0)
+          this._setMotherParam(core, 'Param32', 0)
+          this._setMotherParam(core, 'Param58', 0)
+          this._setMotherParam(core, 'Param74', 0)
+          this._setMotherParam(core, 'Param108', 0)
+          this._setMotherParam(core, 'Param98', 0)
           if (!this.isTimerFocusActive) {
-            core.setParameterValueById('Param35', 0)
-            core.setParameterValueById('Param80', 0)
+            this._setMotherParam(core, 'Param35', 0)
+            this._setMotherParam(core, 'Param80', 0)
           }
           core.setParameterValueById('ParamEyeLSmile', 0)
           core.setParameterValueById('ParamEyeRSmile', 0)
@@ -549,14 +708,14 @@ export class Live2DAvatar {
       } catch {}
     }
 
-    if (this.model?.internalModel?.coreModel) {
+    if (this.isMotherModel && this.model?.internalModel?.coreModel) {
       const core = this.model.internalModel.coreModel
       try {
-        core.setParameterValueById('Param74', 0) // Lepas tangan sarangheo
-        core.setParameterValueById('Param108', 0) // Lepas tangan melambai
-        core.setParameterValueById('Param98', 0)
-        core.setParameterValueById('Param32', 0)
-        core.setParameterValueById('Param58', 0)
+        this._setMotherParam(core, 'Param74', 0) // Lepas tangan sarangheo
+        this._setMotherParam(core, 'Param108', 0) // Lepas tangan melambai
+        this._setMotherParam(core, 'Param98', 0)
+        this._setMotherParam(core, 'Param32', 0)
+        this._setMotherParam(core, 'Param58', 0)
       } catch {}
     }
 
@@ -599,14 +758,18 @@ export class Live2DAvatar {
     if (this.model?.internalModel?.coreModel) {
       const core = this.model.internalModel.coreModel
       try {
-        core.setParameterValueById('Param35', 0) // Suit / Jas
-        core.setParameterValueById('Param80', 0) // Watch / Jam tangan
-        core.setParameterValueById('Param99', 0) // Glasses / Kacamata
-        core.setParameterValueById('Param74', 0) // Tangan sarangheo
-        core.setParameterValueById('Param108', 0) // Tangan melambai (wave)
-        core.setParameterValueById('Param98', 0) // Kepalan tangan
-        core.setParameterValueById('Param32', 0) // Roll rambut depan
-        core.setParameterValueById('Param58', 0) // Roll rambut belakang
+        this._setMotherParam(core, 'Param35', 0) // Suit / Jas
+        this._setMotherParam(core, 'Param80', 0) // Watch / Jam tangan
+        this._setMotherParam(core, 'Param99', 0) // Glasses / Kacamata
+        this._setMotherParam(core, 'Param74', 0) // Tangan sarangheo
+        this._setMotherParam(core, 'Param108', 0) // Tangan melambai (wave)
+        this._setMotherParam(core, 'Param98', 0) // Kepalan tangan
+        this._setMotherParam(core, 'Param32', 0) // Roll rambut depan
+        this._setMotherParam(core, 'Param58', 0) // Roll rambut belakang
+        if (this.isAsukaModel) {
+          core.setParameterValueById('Param55', 0)
+          core.setParameterValueById('Param54', 0)
+        }
         core.setParameterValueById('ParamEyeLSmile', 0)
         core.setParameterValueById('ParamEyeRSmile', 0)
         core.setParameterValueById('ParamMouthForm', 0)
@@ -619,40 +782,40 @@ export class Live2DAvatar {
   }
 
   _applyOutfitParameters() {
-    if (!this.model?.internalModel?.coreModel) return
+    if (!this.isMotherModel || !this.model?.internalModel?.coreModel) return
     const core = this.model.internalModel.coreModel
     try {
       const style = this.watchStyle || 'watch_suit'
       if (this.currentOutfit === 'focus' || this.isTimerFocusActive) {
         // Matikan sarangheo, lambaian tangan, & roll rambut saat mode jam aktif
-        core.setParameterValueById('Param74', 0)
-        core.setParameterValueById('Param108', 0)
-        core.setParameterValueById('Param98', 0)
-        core.setParameterValueById('Param32', 0)
-        core.setParameterValueById('Param58', 0)
+        this._setMotherParam(core, 'Param74', 0)
+        this._setMotherParam(core, 'Param108', 0)
+        this._setMotherParam(core, 'Param98', 0)
+        this._setMotherParam(core, 'Param32', 0)
+        this._setMotherParam(core, 'Param58', 0)
 
         if (style === 'watch_suit') {
-          core.setParameterValueById('Param35', 1) // Suit / Jas
-          core.setParameterValueById('Param80', 1) // Watch / Jam tangan
-          core.setParameterValueById('Param99', 1) // Glasses / Kacamata
+          this._setMotherParam(core, 'Param35', 1) // Suit / Jas
+          this._setMotherParam(core, 'Param80', 1) // Watch / Jam tangan
+          this._setMotherParam(core, 'Param99', 1) // Glasses / Kacamata
         } else if (style === 'watch_only') {
-          core.setParameterValueById('Param35', 0) // Santai
-          core.setParameterValueById('Param80', 1) // Jam tangan saja
-          core.setParameterValueById('Param99', 0)
+          this._setMotherParam(core, 'Param35', 0) // Santai
+          this._setMotherParam(core, 'Param80', 1) // Jam tangan saja
+          this._setMotherParam(core, 'Param99', 0)
         } else if (style === 'glasses_only') {
-          core.setParameterValueById('Param35', 0)
-          core.setParameterValueById('Param80', 0)
-          core.setParameterValueById('Param99', 1) // Kacamata saja
+          this._setMotherParam(core, 'Param35', 0)
+          this._setMotherParam(core, 'Param80', 0)
+          this._setMotherParam(core, 'Param99', 1) // Kacamata saja
         } else if (style === 'casual') {
-          core.setParameterValueById('Param35', 0)
-          core.setParameterValueById('Param80', 0)
-          core.setParameterValueById('Param99', 0)
+          this._setMotherParam(core, 'Param35', 0)
+          this._setMotherParam(core, 'Param80', 0)
+          this._setMotherParam(core, 'Param99', 0)
         }
       } else {
-        core.setParameterValueById('Param35', 0)
-        core.setParameterValueById('Param80', 0)
+        this._setMotherParam(core, 'Param35', 0)
+        this._setMotherParam(core, 'Param80', 0)
         if (!['thinking', 'reasoning', 'focus', 'ponder', 'curious'].includes(this.currentEmotion)) {
-          core.setParameterValueById('Param99', 0)
+          this._setMotherParam(core, 'Param99', 0)
         }
       }
     } catch (e) {
@@ -709,126 +872,133 @@ export class Live2DAvatar {
         core.setParameterValueById('ParamEyeROpen', 0)
       } else if (this.currentEmotion) {
         // 2. Terapkan parameter raut wajah dinamis setiap frame sesuai emosi aktif
+        // Parameter bernomor khusus Mother (Param32/35/58/74/80/98/99/108) di-gate via _setMotherParam
         try {
           if (['thinking', 'reasoning', 'focus', 'ponder', 'curious'].includes(this.currentEmotion)) {
-            // Mode Kacamata (Glasses / Param99) saat berpikir
-            core.setParameterValueById('Param99', 1)
-            core.setParameterValueById('Param74', 0)
-            core.setParameterValueById('Param108', 0)
-            core.setParameterValueById('Param32', 0)
-            core.setParameterValueById('Param58', 0)
+            this._setMotherParam(core, 'Param99', 1)
+            this._setMotherParam(core, 'Param74', 0)
+            this._setMotherParam(core, 'Param108', 0)
+            this._setMotherParam(core, 'Param32', 0)
+            this._setMotherParam(core, 'Param58', 0)
             core.setParameterValueById('ParamBrowLAngle', 0.35)
             core.setParameterValueById('ParamBrowRAngle', -0.35)
             core.setParameterValueById('ParamBrowLY', 0.2)
           } else if (['composing', 'generating', 'charterer', 'roll', 'curlers'].includes(this.currentEmotion)) {
-            // Mode Roll Rambut (Charterer / 包租婆 / Param32 & Param58) saat menyusun jawaban
-            core.setParameterValueById('Param32', 1)
-            core.setParameterValueById('Param58', 1)
-            core.setParameterValueById('Param99', 0)
-            core.setParameterValueById('Param74', 0)
-            core.setParameterValueById('Param108', 0)
+            this._setMotherParam(core, 'Param32', 1)
+            this._setMotherParam(core, 'Param58', 1)
+            this._setMotherParam(core, 'Param99', 0)
+            this._setMotherParam(core, 'Param74', 0)
+            this._setMotherParam(core, 'Param108', 0)
             core.setParameterValueById('ParamEyeLSmile', 0.6)
             core.setParameterValueById('ParamEyeRSmile', 0.6)
           } else if (['happy', 'joy', 'smile', 'love', 'heart', 'blush', 'friendly'].includes(this.currentEmotion)) {
-            // Mode Rona Pipi & Tangan Sarangheo (Param74)
-            core.setParameterValueById('Param99', 0)
-            core.setParameterValueById('Param32', 0)
-            core.setParameterValueById('Param58', 0)
-            core.setParameterValueById('Param74', 1)
-            core.setParameterValueById('Param108', 0)
-            core.setParameterValueById('Param98', 0)
-            core.setParameterValueById('Param35', 0)
-            core.setParameterValueById('Param80', 0)
+            this._setMotherParam(core, 'Param99', 0)
+            this._setMotherParam(core, 'Param32', 0)
+            this._setMotherParam(core, 'Param58', 0)
+            this._setMotherParam(core, 'Param74', 1)
+            this._setMotherParam(core, 'Param108', 0)
+            this._setMotherParam(core, 'Param98', 0)
+            this._setMotherParam(core, 'Param35', 0)
+            this._setMotherParam(core, 'Param80', 0)
             core.setParameterValueById('ParamEyeLSmile', 1)
             core.setParameterValueById('ParamEyeRSmile', 1)
             core.setParameterValueById('ParamMouthForm', 1)
             core.setParameterValueById('ParamBrowLY', 0.2)
             core.setParameterValueById('ParamBrowRY', 0.2)
           } else if (['wave'].includes(this.currentEmotion)) {
-            // Mode Melambaikan Tangan (Param108)
-            core.setParameterValueById('Param108', 1)
-            core.setParameterValueById('Param74', 0)
-            core.setParameterValueById('Param99', 0)
-            core.setParameterValueById('Param32', 0)
-            core.setParameterValueById('Param58', 0)
-            core.setParameterValueById('Param98', 0)
-            core.setParameterValueById('Param35', 0)
-            core.setParameterValueById('Param80', 0)
+            this._setMotherParam(core, 'Param108', 1)
+            this._setMotherParam(core, 'Param74', 0)
+            this._setMotherParam(core, 'Param99', 0)
+            this._setMotherParam(core, 'Param32', 0)
+            this._setMotherParam(core, 'Param58', 0)
+            this._setMotherParam(core, 'Param98', 0)
+            this._setMotherParam(core, 'Param35', 0)
+            this._setMotherParam(core, 'Param80', 0)
             core.setParameterValueById('ParamEyeLSmile', 0.8)
             core.setParameterValueById('ParamEyeRSmile', 0.8)
           } else if (['sad', 'sorrow'].includes(this.currentEmotion)) {
-            core.setParameterValueById('Param99', 0)
-            core.setParameterValueById('Param32', 0)
-            core.setParameterValueById('Param58', 0)
-            core.setParameterValueById('Param74', 0)
-            core.setParameterValueById('Param108', 0)
+            this._setMotherParam(core, 'Param99', 0)
+            this._setMotherParam(core, 'Param32', 0)
+            this._setMotherParam(core, 'Param58', 0)
+            this._setMotherParam(core, 'Param74', 0)
+            this._setMotherParam(core, 'Param108', 0)
             core.setParameterValueById('ParamMouthForm', -0.8)
             core.setParameterValueById('ParamBrowLY', -0.6)
             core.setParameterValueById('ParamBrowRY', -0.6)
           } else if (['angry'].includes(this.currentEmotion)) {
-            core.setParameterValueById('Param99', 0)
-            core.setParameterValueById('Param32', 0)
-            core.setParameterValueById('Param58', 0)
-            core.setParameterValueById('Param74', 0)
-            core.setParameterValueById('Param108', 0)
+            this._setMotherParam(core, 'Param99', 0)
+            this._setMotherParam(core, 'Param32', 0)
+            this._setMotherParam(core, 'Param58', 0)
+            this._setMotherParam(core, 'Param74', 0)
+            this._setMotherParam(core, 'Param108', 0)
             core.setParameterValueById('ParamBrowLAngle', -0.6)
             core.setParameterValueById('ParamBrowRAngle', 0.6)
             core.setParameterValueById('ParamMouthForm', -1)
           } else if (['neutral'].includes(this.currentEmotion)) {
-            core.setParameterValueById('Param99', 0)
-            core.setParameterValueById('Param32', 0)
-            core.setParameterValueById('Param58', 0)
-            core.setParameterValueById('Param74', 0)
-            core.setParameterValueById('Param108', 0)
-            core.setParameterValueById('Param98', 0)
+            this._setMotherParam(core, 'Param99', 0)
+            this._setMotherParam(core, 'Param32', 0)
+            this._setMotherParam(core, 'Param58', 0)
+            this._setMotherParam(core, 'Param74', 0)
+            this._setMotherParam(core, 'Param108', 0)
+            this._setMotherParam(core, 'Param98', 0)
           }
         } catch {
           // Abaikan jika ada parameter yang tidak didukung model
         }
       }
 
-      // 3. Terapkan parameter outfit aktif setiap frame agar tidak tertimpa motion internal
+      // 3. Terapkan parameter outfit khusus Mother & guard watermark spesifik per-model setiap frame
       try {
-        const style = this.watchStyle || 'watch_suit'
-        const isConflictEmotion = ['happy', 'joy', 'smile', 'love', 'heart', 'blush', 'friendly', 'composing', 'charterer', 'roll', 'curlers', 'wave'].includes(this.currentEmotion)
-        const isFocus = (this.currentOutfit === 'focus' || this.isTimerFocusActive) && !isConflictEmotion
+        if (this.isMotherModel) {
+          const style = this.watchStyle || 'watch_suit'
+          const isConflictEmotion = ['happy', 'joy', 'smile', 'love', 'heart', 'blush', 'friendly', 'composing', 'charterer', 'roll', 'curlers', 'wave'].includes(this.currentEmotion)
+          const isFocus = (this.currentOutfit === 'focus' || this.isTimerFocusActive) && !isConflictEmotion
 
-        if (isFocus) {
-          if (style === 'watch_suit') {
-            core.setParameterValueById('Param35', 1) // Suit / Jas Kerja
-            core.setParameterValueById('Param80', 1) // Watch / Jam tangan
-            core.setParameterValueById('Param99', 1) // Glasses / Kacamata
-          } else if (style === 'watch_only') {
-            core.setParameterValueById('Param35', 0)
-            core.setParameterValueById('Param80', 1)
-            core.setParameterValueById('Param99', 0)
-          } else if (style === 'glasses_only') {
-            core.setParameterValueById('Param35', 0)
-            core.setParameterValueById('Param80', 0)
-            core.setParameterValueById('Param99', 1)
-          } else if (style === 'casual') {
-            core.setParameterValueById('Param35', 0)
-            core.setParameterValueById('Param80', 0)
-            core.setParameterValueById('Param99', 0)
+          if (isFocus) {
+            if (style === 'watch_suit') {
+              this._setMotherParam(core, 'Param35', 1)
+              this._setMotherParam(core, 'Param80', 1)
+              this._setMotherParam(core, 'Param99', 1)
+            } else if (style === 'watch_only') {
+              this._setMotherParam(core, 'Param35', 0)
+              this._setMotherParam(core, 'Param80', 1)
+              this._setMotherParam(core, 'Param99', 0)
+            } else if (style === 'glasses_only') {
+              this._setMotherParam(core, 'Param35', 0)
+              this._setMotherParam(core, 'Param80', 0)
+              this._setMotherParam(core, 'Param99', 1)
+            } else if (style === 'casual') {
+              this._setMotherParam(core, 'Param35', 0)
+              this._setMotherParam(core, 'Param80', 0)
+              this._setMotherParam(core, 'Param99', 0)
+            }
+            this._setMotherParam(core, 'Param74', 0)
+            this._setMotherParam(core, 'Param108', 0)
+            this._setMotherParam(core, 'Param32', 0)
+            this._setMotherParam(core, 'Param58', 0)
+            this._setMotherParam(core, 'Param98', 0)
+          } else {
+            this._setMotherParam(core, 'Param35', 0)
+            this._setMotherParam(core, 'Param80', 0)
           }
-          // Matikan gestur yang bertabrakan dengan pose jam
-          core.setParameterValueById('Param74', 0)
-          core.setParameterValueById('Param108', 0)
-          core.setParameterValueById('Param32', 0)
-          core.setParameterValueById('Param58', 0)
-          core.setParameterValueById('Param98', 0)
-        } else {
-          // Jika bukan mode fokus, pastikan jas & jam tangan selalu nonaktif
-          core.setParameterValueById('Param35', 0)
-          core.setParameterValueById('Param80', 0)
         }
 
-        // Pastikan watermark part & parameter (seperti Part17 / Paramheadxy pada Ellen Joe) selalu nonaktif setiap frame
-        if (typeof core.setPartOpacityById === 'function') {
-          core.setPartOpacityById('Part17', 0)
-        }
-        if (typeof core.setParameterValueById === 'function') {
-          core.setParameterValueById('Paramheadxy', 0)
+        // Guard watermark HANYA pada model terkait (jangan matikan Part17 di Frieren/model lain!)
+        if (this.isEllenModel) {
+          if (typeof core.setPartOpacityById === 'function') {
+            core.setPartOpacityById('Part17', 0)
+          }
+          if (typeof core.setParameterValueById === 'function') {
+            core.setParameterValueById('Paramheadxy', 0)
+          }
+        } else if (this.isFernModel) {
+          if (typeof core.setParameterValueById === 'function') {
+            core.setParameterValueById('Param33', 1)
+          }
+        } else if (this.isChangliModel) {
+          if (typeof core.setPartOpacityById === 'function') {
+            core.setPartOpacityById('Part53', 0)
+          }
         }
       } catch {
         // Abaikan jika parameter tidak didukung model

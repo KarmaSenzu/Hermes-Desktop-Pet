@@ -1,0 +1,63 @@
+{
+  "Version": 3,
+  "FileReferences": {
+    "Moc": "Asuka.moc3",
+    "Textures": [
+      "Asuka.4096/texture_00.png"
+    ],
+    "Physics": "Asuka.physics3.json",
+    "DisplayInfo": "Asuka.cdi3.json",
+    "Expressions": [
+      {
+        "Name": "coat_toggle",
+        "File": "EXPRESSIONS/coat toggle.exp3.json"
+      },
+      {
+        "Name": "gloom",
+        "File": "EXPRESSIONS/Gloom.exp3.json"
+      },
+      {
+        "Name": "happy",
+        "File": "EXPRESSIONS/Happy Sparkle.exp3.json"
+      },
+      {
+        "Name": "star_eyes",
+        "File": "EXPRESSIONS/Star Eyes Toggle.exp3.json"
+      }
+    ],
+    "Motions": {
+      "Wave": [
+        {
+          "File": "ANIMATIONS/Hand wave.motion3.json"
+        }
+      ],
+      "Touch": [
+        {
+          "File": "ANIMATIONS/Hand wave.motion3.json"
+        }
+      ],
+      "Slap": [
+        {
+          "File": "ANIMATIONS/cry.motion3.json"
+        }
+      ]
+    }
+  },
+  "Groups": [
+    {
+      "Target": "Parameter",
+      "Name": "EyeBlink",
+      "Ids": [
+        "ParamEyeLOpen",
+        "ParamEyeROpen"
+      ]
+    },
+    {
+      "Target": "Parameter",
+      "Name": "LipSync",
+      "Ids": [
+        "ParamMouthOpenY"
+      ]
+    }
+  ]
+}
